@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Menu, X } from "lucide-react";
 import logo from "@/assets/logo.png";
@@ -18,13 +19,13 @@ const Header = () => {
       <div className="container mx-auto px-4">
         <div className="flex items-center justify-between h-16 md:h-20">
           {/* Logo */}
-          <a href="/" className="flex items-center gap-2">
+          <Link to="/" className="flex items-center gap-2">
             <img 
               src={logo} 
               alt="TalkPDF AI" 
               className="h-8 md:h-10 w-auto"
             />
-          </a>
+          </Link>
 
           {/* Desktop Navigation */}
           <nav className="hidden md:flex items-center gap-8">
@@ -41,11 +42,11 @@ const Header = () => {
 
           {/* Desktop CTA */}
           <div className="hidden md:flex items-center gap-3">
-            <Button variant="ghost" size="sm">
-              Log In
+            <Button variant="ghost" size="sm" asChild>
+              <Link to="/auth">Log In</Link>
             </Button>
-            <Button size="sm">
-              Start Free
+            <Button size="sm" asChild>
+              <Link to="/auth">Start Free</Link>
             </Button>
           </div>
 
@@ -78,11 +79,11 @@ const Header = () => {
                 </a>
               ))}
               <div className="flex flex-col gap-2 pt-4 border-t border-border">
-                <Button variant="ghost" size="sm" className="justify-start">
-                  Log In
+                <Button variant="ghost" size="sm" className="justify-start" asChild>
+                  <Link to="/auth">Log In</Link>
                 </Button>
-                <Button size="sm">
-                  Start Free
+                <Button size="sm" asChild>
+                  <Link to="/auth">Start Free</Link>
                 </Button>
               </div>
             </nav>

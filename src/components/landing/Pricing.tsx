@@ -1,9 +1,12 @@
 "use client";
 
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { Check, Sparkles } from "lucide-react";
+import { Check, Sparkles, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
 
 interface PlanFeature {
   text: string;
@@ -19,6 +22,7 @@ interface PricingPlan {
   popular?: boolean;
   ctaText: string;
   ctaVariant: "default" | "outline" | "secondary";
+  planId: string;
 }
 
 const plans: PricingPlan[] = [
@@ -27,6 +31,7 @@ const plans: PricingPlan[] = [
     description: "Perfect for trying out TalkPDF AI",
     monthlyPrice: 0,
     yearlyPrice: 0,
+    planId: "free",
     features: [
       { text: "5 minutes audio/day", included: true },
       { text: "Standard AI voices", included: true },
@@ -44,6 +49,7 @@ const plans: PricingPlan[] = [
     description: "For students who want more learning time",
     monthlyPrice: 2000,
     yearlyPrice: 20000,
+    planId: "student_pro",
     features: [
       { text: "60 minutes audio/day", included: true },
       { text: "Premium AI voices", included: true },
@@ -61,6 +67,7 @@ const plans: PricingPlan[] = [
     description: "Unlimited learning for serious students",
     monthlyPrice: 3500,
     yearlyPrice: 40000,
+    planId: "mastery_pass",
     popular: true,
     features: [
       { text: "Unlimited audio", included: true },
@@ -94,6 +101,59 @@ const calculateSavings = (monthly: number, yearly: number) => {
 
 const Pricing = () => {
   const [isAnnual, setIsAnnual] = useState(true);
+  const [loadingPlan, setLoadingPlan] = useState<string | null>(null);
+  const navigate = useNavigate();
+
+  const handleSubscribe = async (plan: PricingPlan) => {
+    if (plan.monthlyPrice === 0) {
+      navigate("/auth");
+      return;
+    }
+
+    setLoadingPlan(plan.planId);
+
+    try {
+      // Check if user is logged in
+      const { data: { session } } = await supabase.auth.getSession();
+
+      if (!session?.user) {
+        toast.info("Please sign in to subscribe");
+        navigate("/auth");
+        return;
+      }
+
+      const price = isAnnual ? plan.yearlyPrice : plan.monthlyPrice;
+      const billingCycle = isAnnual ? "yearly" : "monthly";
+
+      const { data, error } = await supabase.functions.invoke("flutterwave-payment", {
+        body: {
+          amount: price,
+          plan: plan.planId,
+          billingCycle,
+          email: session.user.email,
+          name: session.user.user_metadata?.full_name || session.user.email,
+          userId: session.user.id,
+        },
+      });
+
+      if (error) {
+        console.error("Payment error:", error);
+        toast.error("Failed to initialize payment. Please try again.");
+        return;
+      }
+
+      if (data?.paymentLink) {
+        window.location.href = data.paymentLink;
+      } else {
+        toast.error("Failed to get payment link. Please try again.");
+      }
+    } catch (error) {
+      console.error("Payment error:", error);
+      toast.error("An error occurred. Please try again.");
+    } finally {
+      setLoadingPlan(null);
+    }
+  };
 
   return (
     <section id="pricing" className="py-16 md:py-24 bg-secondary/30">
@@ -152,6 +212,7 @@ const Pricing = () => {
           {plans.map((plan) => {
             const price = isAnnual ? plan.yearlyPrice : plan.monthlyPrice;
             const savings = calculateSavings(plan.monthlyPrice, plan.yearlyPrice);
+            const isLoading = loadingPlan === plan.planId;
 
             return (
               <div
@@ -275,8 +336,17 @@ const Pricing = () => {
                   )}
                   variant={plan.popular ? "secondary" : plan.ctaVariant}
                   size="lg"
+                  onClick={() => handleSubscribe(plan)}
+                  disabled={isLoading}
                 >
-                  {plan.ctaText}
+                  {isLoading ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                      Processing...
+                    </>
+                  ) : (
+                    plan.ctaText
+                  )}
                 </Button>
               </div>
             );

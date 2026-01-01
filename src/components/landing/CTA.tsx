@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { ArrowRight } from "lucide-react";
 
@@ -23,16 +24,20 @@ const CTA = () => {
               size="lg" 
               variant="secondary"
               className="w-full sm:w-auto gap-2 text-base bg-primary-foreground text-primary hover:bg-primary-foreground/90"
+              asChild
             >
-              Get Started Free
-              <ArrowRight className="h-4 w-4" />
+              <Link to="/auth">
+                Get Started Free
+                <ArrowRight className="h-4 w-4" />
+              </Link>
             </Button>
             <Button 
               size="lg" 
               variant="outline"
               className="w-full sm:w-auto text-base border-primary-foreground/30 text-primary-foreground hover:bg-primary-foreground/10 bg-transparent"
+              asChild
             >
-              View Pricing
+              <a href="#pricing">View Pricing</a>
             </Button>
           </div>
         </div>

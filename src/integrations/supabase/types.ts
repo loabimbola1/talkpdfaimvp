@@ -14,6 +14,93 @@ export type Database = {
   }
   public: {
     Tables: {
+      daily_usage_summary: {
+        Row: {
+          audio_minutes_used: number | null
+          created_at: string
+          date: string
+          explain_back_count: number | null
+          id: string
+          pdfs_uploaded: number | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          audio_minutes_used?: number | null
+          created_at?: string
+          date?: string
+          explain_back_count?: number | null
+          id?: string
+          pdfs_uploaded?: number | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          audio_minutes_used?: number | null
+          created_at?: string
+          date?: string
+          explain_back_count?: number | null
+          id?: string
+          pdfs_uploaded?: number | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      documents: {
+        Row: {
+          audio_duration_seconds: number | null
+          audio_language: string | null
+          audio_url: string | null
+          created_at: string
+          explain_back_score: number | null
+          file_name: string
+          file_size: number | null
+          file_url: string | null
+          id: string
+          last_studied_at: string | null
+          page_count: number | null
+          status: string | null
+          title: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          audio_duration_seconds?: number | null
+          audio_language?: string | null
+          audio_url?: string | null
+          created_at?: string
+          explain_back_score?: number | null
+          file_name: string
+          file_size?: number | null
+          file_url?: string | null
+          id?: string
+          last_studied_at?: string | null
+          page_count?: number | null
+          status?: string | null
+          title: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          audio_duration_seconds?: number | null
+          audio_language?: string | null
+          audio_url?: string | null
+          created_at?: string
+          explain_back_score?: number | null
+          file_name?: string
+          file_size?: number | null
+          file_url?: string | null
+          id?: string
+          last_studied_at?: string | null
+          page_count?: number | null
+          status?: string | null
+          title?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       payments: {
         Row: {
           amount: number
@@ -92,15 +179,72 @@ export type Database = {
         }
         Relationships: []
       }
+      usage_tracking: {
+        Row: {
+          action_type: string
+          audio_minutes_used: number | null
+          created_at: string
+          id: string
+          metadata: Json | null
+          tokens_used: number | null
+          user_id: string
+        }
+        Insert: {
+          action_type: string
+          audio_minutes_used?: number | null
+          created_at?: string
+          id?: string
+          metadata?: Json | null
+          tokens_used?: number | null
+          user_id: string
+        }
+        Update: {
+          action_type?: string
+          audio_minutes_used?: number | null
+          created_at?: string
+          id?: string
+          metadata?: Json | null
+          tokens_used?: number | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      user_roles: {
+        Row: {
+          created_at: string
+          id: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      has_role: {
+        Args: {
+          _role: Database["public"]["Enums"]["app_role"]
+          _user_id: string
+        }
+        Returns: boolean
+      }
     }
     Enums: {
-      [_ in never]: never
+      app_role: "admin" | "moderator" | "user"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -227,6 +371,8 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      app_role: ["admin", "moderator", "user"],
+    },
   },
 } as const

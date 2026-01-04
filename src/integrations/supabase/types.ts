@@ -61,6 +61,8 @@ export type Database = {
           last_studied_at: string | null
           page_count: number | null
           status: string | null
+          study_prompts: Json | null
+          summary: string | null
           title: string
           updated_at: string
           user_id: string
@@ -78,6 +80,8 @@ export type Database = {
           last_studied_at?: string | null
           page_count?: number | null
           status?: string | null
+          study_prompts?: Json | null
+          summary?: string | null
           title: string
           updated_at?: string
           user_id: string
@@ -95,6 +99,8 @@ export type Database = {
           last_studied_at?: string | null
           page_count?: number | null
           status?: string | null
+          study_prompts?: Json | null
+          summary?: string | null
           title?: string
           updated_at?: string
           user_id?: string

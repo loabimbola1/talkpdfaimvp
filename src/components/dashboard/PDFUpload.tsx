@@ -2,23 +2,38 @@ import { useState, useCallback } from "react";
 import { useDropzone } from "react-dropzone";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
-import { Upload, FileText, X, CheckCircle, AlertCircle } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Upload, FileText, X, CheckCircle, AlertCircle, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { supabase } from "@/integrations/supabase/client";
 
 interface UploadedFile {
+  id?: string;
+  file: File;
   name: string;
   size: number;
-  status: "uploading" | "complete" | "error";
+  status: "uploading" | "complete" | "processing" | "error";
   progress: number;
 }
+
+const languages = [
+  { value: "en", label: "English" },
+  { value: "yo", label: "Yoruba" },
+  { value: "ha", label: "Hausa" },
+  { value: "ig", label: "Igbo" },
+  { value: "pcm", label: "Pidgin" },
+];
 
 const PDFUpload = () => {
   const [files, setFiles] = useState<UploadedFile[]>([]);
   const [isUploading, setIsUploading] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [selectedLanguage, setSelectedLanguage] = useState("en");
 
-  const simulateUpload = (file: File) => {
+  const uploadFile = async (file: File) => {
     const newFile: UploadedFile = {
+      file,
       name: file.name,
       size: file.size,
       status: "uploading",
@@ -28,23 +43,72 @@ const PDFUpload = () => {
     setFiles((prev) => [...prev, newFile]);
     setIsUploading(true);
 
-    // Simulate upload progress
-    const interval = setInterval(() => {
-      setFiles((prev) =>
-        prev.map((f) => {
-          if (f.name === file.name && f.status === "uploading") {
-            const newProgress = Math.min(f.progress + Math.random() * 30, 100);
-            if (newProgress >= 100) {
-              clearInterval(interval);
-              setIsUploading(false);
-              return { ...f, progress: 100, status: "complete" as const };
-            }
-            return { ...f, progress: newProgress };
-          }
-          return f;
+    try {
+      // Get current user
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        throw new Error("Not authenticated");
+      }
+
+      // Create document record first
+      const { data: document, error: docError } = await supabase
+        .from("documents")
+        .insert({
+          user_id: user.id,
+          title: file.name.replace(".pdf", ""),
+          file_name: file.name,
+          file_size: file.size,
+          status: "uploading"
         })
+        .select()
+        .single();
+
+      if (docError) throw docError;
+
+      // Upload file to storage
+      const filePath = `${user.id}/${document.id}/${file.name}`;
+      
+      const { error: uploadError } = await supabase
+        .storage
+        .from("talkpdf")
+        .upload(filePath, file, {
+          cacheControl: "3600",
+          upsert: false
+        });
+
+      if (uploadError) throw uploadError;
+
+      // Update document with file URL
+      await supabase
+        .from("documents")
+        .update({ 
+          file_url: filePath,
+          status: "uploaded"
+        })
+        .eq("id", document.id);
+
+      setFiles((prev) =>
+        prev.map((f) =>
+          f.name === file.name
+            ? { ...f, id: document.id, progress: 100, status: "complete" as const }
+            : f
+        )
       );
-    }, 200);
+
+      toast.success(`${file.name} uploaded successfully`);
+    } catch (error: any) {
+      console.error("Upload error:", error);
+      setFiles((prev) =>
+        prev.map((f) =>
+          f.name === file.name
+            ? { ...f, status: "error" as const }
+            : f
+        )
+      );
+      toast.error(`Failed to upload ${file.name}: ${error.message}`);
+    } finally {
+      setIsUploading(false);
+    }
   };
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
@@ -57,7 +121,7 @@ const PDFUpload = () => {
         toast.error("File size must be less than 20MB");
         return;
       }
-      simulateUpload(file);
+      uploadFile(file);
     });
   }, []);
 
@@ -66,11 +130,18 @@ const PDFUpload = () => {
     accept: {
       "application/pdf": [".pdf"],
     },
-    maxSize: 20 * 1024 * 1024, // 20MB
+    maxSize: 20 * 1024 * 1024,
     multiple: true,
   });
 
-  const removeFile = (fileName: string) => {
+  const removeFile = async (fileName: string, fileId?: string) => {
+    if (fileId) {
+      try {
+        await supabase.from("documents").delete().eq("id", fileId);
+      } catch (error) {
+        console.error("Failed to delete document:", error);
+      }
+    }
     setFiles((prev) => prev.filter((f) => f.name !== fileName));
   };
 
@@ -80,8 +151,76 @@ const PDFUpload = () => {
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   };
 
+  const processPDFs = async () => {
+    const completedFiles = files.filter((f) => f.status === "complete" && f.id);
+    
+    if (completedFiles.length === 0) {
+      toast.error("No files to process");
+      return;
+    }
+
+    setIsProcessing(true);
+
+    for (const file of completedFiles) {
+      try {
+        setFiles((prev) =>
+          prev.map((f) =>
+            f.name === file.name ? { ...f, status: "processing" as const } : f
+          )
+        );
+
+        const { data, error } = await supabase.functions.invoke("process-pdf", {
+          body: {
+            documentId: file.id,
+            language: selectedLanguage
+          }
+        });
+
+        if (error) throw error;
+
+        toast.success(`${file.name} processed successfully!`);
+        
+        // Remove from list after successful processing
+        setFiles((prev) => prev.filter((f) => f.name !== file.name));
+      } catch (error: any) {
+        console.error("Processing error:", error);
+        setFiles((prev) =>
+          prev.map((f) =>
+            f.name === file.name ? { ...f, status: "error" as const } : f
+          )
+        );
+        toast.error(`Failed to process ${file.name}: ${error.message}`);
+      }
+    }
+
+    setIsProcessing(false);
+    
+    if (files.length === completedFiles.length) {
+      toast.success("All documents processed! Check 'My Documents' to view them.");
+    }
+  };
+
+  const hasCompletedFiles = files.some((f) => f.status === "complete");
+
   return (
     <div className="space-y-6">
+      {/* Language Selection */}
+      <div className="flex items-center gap-4">
+        <label className="text-sm font-medium text-foreground">Audio Language:</label>
+        <Select value={selectedLanguage} onValueChange={setSelectedLanguage}>
+          <SelectTrigger className="w-40">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {languages.map((lang) => (
+              <SelectItem key={lang.value} value={lang.value}>
+                {lang.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
       {/* Dropzone */}
       <div
         {...getRootProps()}
@@ -142,12 +281,16 @@ const PDFUpload = () => {
                     {file.status === "complete" && (
                       <CheckCircle className="h-4 w-4 text-green-500" />
                     )}
+                    {file.status === "processing" && (
+                      <Loader2 className="h-4 w-4 text-primary animate-spin" />
+                    )}
                     {file.status === "error" && (
                       <AlertCircle className="h-4 w-4 text-destructive" />
                     )}
                     <button
-                      onClick={() => removeFile(file.name)}
+                      onClick={() => removeFile(file.name, file.id)}
                       className="text-muted-foreground hover:text-foreground transition-colors"
+                      disabled={file.status === "processing"}
                     >
                       <X className="h-4 w-4" />
                     </button>
@@ -155,12 +298,14 @@ const PDFUpload = () => {
                 </div>
                 <div className="flex items-center gap-3">
                   <Progress
-                    value={file.progress}
+                    value={file.status === "processing" ? 50 : file.progress}
                     className="h-1.5 flex-1"
                   />
                   <span className="text-xs text-muted-foreground whitespace-nowrap">
                     {file.status === "uploading"
                       ? `${Math.round(file.progress)}%`
+                      : file.status === "processing"
+                      ? "Processing..."
                       : formatFileSize(file.size)}
                   </span>
                 </div>
@@ -171,11 +316,24 @@ const PDFUpload = () => {
       )}
 
       {/* Actions */}
-      {files.some((f) => f.status === "complete") && (
+      {hasCompletedFiles && (
         <div className="flex justify-end">
-          <Button className="gap-2">
-            Process PDFs
-            <FileText className="h-4 w-4" />
+          <Button 
+            className="gap-2" 
+            onClick={processPDFs}
+            disabled={isProcessing}
+          >
+            {isProcessing ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Processing...
+              </>
+            ) : (
+              <>
+                Process PDFs
+                <FileText className="h-4 w-4" />
+              </>
+            )}
           </Button>
         </div>
       )}

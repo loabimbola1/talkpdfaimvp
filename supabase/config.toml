@@ -1,1 +1,16 @@
 project_id = "jpcdklqqhoewdnpgpjep"
+
+[functions.flutterwave-payment]
+verify_jwt = false
+
+[functions.flutterwave-verify]
+verify_jwt = false
+
+[functions.process-pdf]
+verify_jwt = false
+
+[functions.elevenlabs-tts]
+verify_jwt = false
+
+[functions.explain-back-evaluate]
+verify_jwt = false

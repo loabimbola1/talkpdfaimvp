@@ -2,7 +2,6 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Menu, X } from "lucide-react";
-import logo from "@/assets/logo.png";
 
 const Header = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -20,11 +19,12 @@ const Header = () => {
         <div className="flex items-center justify-between h-16 md:h-20">
           {/* Logo */}
           <Link to="/" className="flex items-center gap-2">
-            <img 
-              src={logo} 
-              alt="TalkPDF AI" 
-              className="h-8 md:h-10 w-auto"
-            />
+            <span className="font-display text-2xl md:text-3xl font-extrabold text-primary tracking-tight">
+              TalkPDF
+            </span>
+            <span className="bg-primary text-primary-foreground text-xs font-bold px-2 py-0.5 rounded-md">
+              AI
+            </span>
           </Link>
 
           {/* Desktop Navigation */}

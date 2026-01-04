@@ -1,7 +1,8 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Progress } from "@/components/ui/progress";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { 
   Mic, 
   MicOff, 
@@ -11,31 +12,97 @@ import {
   CheckCircle, 
   XCircle,
   RefreshCw,
-  Volume2
+  Volume2,
+  FileText
 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
+
+interface StudyPrompt {
+  topic: string;
+  prompt: string;
+}
+
+interface Document {
+  id: string;
+  title: string;
+  study_prompts: StudyPrompt[] | null;
+  summary: string | null;
+}
+
+type RawDocument = {
+  id: string;
+  title: string;
+  study_prompts: unknown;
+  summary: string | null;
+}
 
 interface ExplainBackModeProps {
   documentId?: string;
   documentTitle?: string;
 }
 
-const ExplainBackMode = ({ documentId, documentTitle }: ExplainBackModeProps) => {
+const ExplainBackMode = ({ documentId: propDocumentId, documentTitle }: ExplainBackModeProps) => {
   const [isRecording, setIsRecording] = useState(false);
   const [explanation, setExplanation] = useState("");
   const [isEvaluating, setIsEvaluating] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [documents, setDocuments] = useState<Document[]>([]);
+  const [selectedDocumentId, setSelectedDocumentId] = useState<string>(propDocumentId || "");
+  const [currentPromptIndex, setCurrentPromptIndex] = useState(0);
   const [result, setResult] = useState<{
     score: number;
     feedback: string;
     strengths: string[];
     improvements: string[];
   } | null>(null);
-  const [concept, setConcept] = useState("What is photosynthesis and why is it important?");
   
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
+
+  // Fetch user's documents with study prompts
+  useEffect(() => {
+    fetchDocuments();
+  }, []);
+
+  const fetchDocuments = async () => {
+    try {
+      const { data, error } = await supabase
+        .from("documents")
+        .select("id, title, study_prompts, summary")
+        .eq("status", "ready")
+        .order("created_at", { ascending: false });
+
+      if (error) throw error;
+
+      const docsWithPrompts: Document[] = ((data || []) as RawDocument[])
+        .filter((doc) => {
+          const prompts = doc.study_prompts;
+          return prompts && Array.isArray(prompts) && prompts.length > 0;
+        })
+        .map((doc) => ({
+          id: doc.id,
+          title: doc.title,
+          summary: doc.summary,
+          study_prompts: doc.study_prompts as StudyPrompt[]
+        }));
+      
+      setDocuments(docsWithPrompts);
+      
+      if (docsWithPrompts.length > 0 && !propDocumentId) {
+        setSelectedDocumentId(docsWithPrompts[0].id);
+      }
+    } catch (error) {
+      console.error("Error fetching documents:", error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const selectedDocument = documents.find((d) => d.id === selectedDocumentId);
+  const studyPrompts = (selectedDocument?.study_prompts as StudyPrompt[]) || [];
+  const currentPrompt = studyPrompts[currentPromptIndex];
 
   const startRecording = async () => {
     try {
@@ -52,8 +119,6 @@ const ExplainBackMode = ({ documentId, documentTitle }: ExplainBackModeProps) =>
 
       mediaRecorder.onstop = async () => {
         const audioBlob = new Blob(chunksRef.current, { type: "audio/webm" });
-        // Here you would transcribe the audio using a speech-to-text service
-        // For now, we'll just indicate recording completed
         toast.success("Recording saved. Type your explanation below or edit the transcription.");
         stream.getTracks().forEach(track => track.stop());
       };
@@ -80,13 +145,19 @@ const ExplainBackMode = ({ documentId, documentTitle }: ExplainBackModeProps) =>
       return;
     }
 
+    if (!currentPrompt) {
+      toast.error("No concept to evaluate against");
+      return;
+    }
+
     setIsEvaluating(true);
     try {
       const { data, error } = await supabase.functions.invoke("explain-back-evaluate", {
         body: {
-          concept,
+          concept: currentPrompt.prompt,
           explanation: explanation.trim(),
-          documentId
+          documentId: selectedDocumentId,
+          documentSummary: selectedDocument?.summary
         }
       });
 
@@ -100,7 +171,7 @@ const ExplainBackMode = ({ documentId, documentTitle }: ExplainBackModeProps) =>
         await supabase.from("usage_tracking").insert({
           user_id: session.user.id,
           action_type: "explain_back",
-          metadata: { documentId, score: data.score }
+          metadata: { documentId: selectedDocumentId, score: data.score }
         });
       }
     } catch (error) {
@@ -114,6 +185,15 @@ const ExplainBackMode = ({ documentId, documentTitle }: ExplainBackModeProps) =>
   const resetExercise = () => {
     setExplanation("");
     setResult(null);
+  };
+
+  const nextPrompt = () => {
+    if (currentPromptIndex < studyPrompts.length - 1) {
+      setCurrentPromptIndex((prev) => prev + 1);
+    } else {
+      setCurrentPromptIndex(0);
+    }
+    resetExercise();
   };
 
   const getScoreColor = (score: number) => {
@@ -130,6 +210,31 @@ const ExplainBackMode = ({ documentId, documentTitle }: ExplainBackModeProps) =>
     return "Needs improvement";
   };
 
+  if (isLoading) {
+    return (
+      <div className="flex flex-col items-center justify-center py-12">
+        <Loader2 className="h-8 w-8 text-primary animate-spin mb-4" />
+        <p className="text-muted-foreground">Loading your documents...</p>
+      </div>
+    );
+  }
+
+  if (documents.length === 0) {
+    return (
+      <div className="text-center py-12">
+        <div className="w-16 h-16 rounded-2xl bg-secondary flex items-center justify-center mx-auto mb-4">
+          <FileText className="h-8 w-8 text-muted-foreground" />
+        </div>
+        <h3 className="font-display text-xl font-semibold text-foreground mb-2">
+          No Documents Yet
+        </h3>
+        <p className="text-muted-foreground text-sm max-w-md mx-auto">
+          Upload and process a PDF first to generate study prompts. The AI will create questions based on your document content.
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -141,22 +246,55 @@ const ExplainBackMode = ({ documentId, documentTitle }: ExplainBackModeProps) =>
           Explain-Back Mode
         </h3>
         <p className="text-muted-foreground text-sm max-w-md mx-auto">
-          Test your understanding by explaining concepts in your own words. The AI will evaluate your explanation.
+          Test your understanding by explaining concepts from your documents in your own words.
         </p>
+      </div>
+
+      {/* Document Selection */}
+      <div className="bg-secondary/30 rounded-xl p-4">
+        <label className="text-sm font-medium text-foreground mb-2 block">Select Document:</label>
+        <Select value={selectedDocumentId} onValueChange={(value) => {
+          setSelectedDocumentId(value);
+          setCurrentPromptIndex(0);
+          resetExercise();
+        }}>
+          <SelectTrigger>
+            <SelectValue placeholder="Choose a document" />
+          </SelectTrigger>
+          <SelectContent>
+            {documents.map((doc) => (
+              <SelectItem key={doc.id} value={doc.id}>
+                {doc.title}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
 
       {!result ? (
         <>
           {/* Concept to Explain */}
-          <div className="bg-secondary/30 rounded-xl p-4">
-            <div className="flex items-start gap-3">
-              <Volume2 className="h-5 w-5 text-primary flex-shrink-0 mt-0.5" />
-              <div>
-                <p className="text-sm text-muted-foreground mb-1">Explain this concept:</p>
-                <p className="font-medium text-foreground">{concept}</p>
+          {currentPrompt && (
+            <div className="bg-secondary/30 rounded-xl p-4">
+              <div className="flex items-start gap-3">
+                <Volume2 className="h-5 w-5 text-primary flex-shrink-0 mt-0.5" />
+                <div className="flex-1">
+                  <div className="flex items-center justify-between mb-1">
+                    <p className="text-sm text-muted-foreground">
+                      Concept {currentPromptIndex + 1} of {studyPrompts.length}:
+                    </p>
+                    {studyPrompts.length > 1 && (
+                      <Button variant="ghost" size="sm" onClick={nextPrompt}>
+                        Next Concept
+                      </Button>
+                    )}
+                  </div>
+                  <p className="text-xs text-primary font-medium mb-1">{currentPrompt.topic}</p>
+                  <p className="font-medium text-foreground">{currentPrompt.prompt}</p>
+                </div>
               </div>
             </div>
-          </div>
+          )}
 
           {/* Recording / Text Input */}
           <div className="space-y-4">
@@ -206,7 +344,7 @@ const ExplainBackMode = ({ documentId, documentTitle }: ExplainBackModeProps) =>
           {/* Submit Button */}
           <Button
             onClick={evaluateExplanation}
-            disabled={isEvaluating || !explanation.trim()}
+            disabled={isEvaluating || !explanation.trim() || !currentPrompt}
             className="w-full gap-2"
             size="lg"
           >
@@ -279,10 +417,17 @@ const ExplainBackMode = ({ documentId, documentTitle }: ExplainBackModeProps) =>
           )}
 
           {/* Try Again */}
-          <Button onClick={resetExercise} variant="outline" className="w-full gap-2">
-            <RefreshCw className="h-4 w-4" />
-            Try Another Concept
-          </Button>
+          <div className="flex gap-3">
+            <Button onClick={resetExercise} variant="outline" className="flex-1 gap-2">
+              <RefreshCw className="h-4 w-4" />
+              Try Again
+            </Button>
+            {studyPrompts.length > 1 && (
+              <Button onClick={nextPrompt} className="flex-1 gap-2">
+                Next Concept
+              </Button>
+            )}
+          </div>
         </div>
       )}
     </div>

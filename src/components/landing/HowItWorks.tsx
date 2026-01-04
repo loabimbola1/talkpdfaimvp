@@ -66,10 +66,7 @@ const HowItWorks = () => {
                   </p>
                 </div>
 
-                {/* Connector Line (hidden on mobile) */}
-                {index < steps.length - 1 && index % 2 === 0 && (
-                  <div className="hidden md:block absolute -right-4 lg:-right-6 top-1/2 w-8 lg:w-12 h-0.5 bg-border" />
-                )}
+                {/* Removed connector line that was causing visual issues */}
               </div>
             ))}
           </div>

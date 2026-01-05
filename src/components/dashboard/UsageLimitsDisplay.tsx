@@ -4,7 +4,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
 import { FileText, Headphones, Brain, AlertTriangle, Crown } from "lucide-react";
-import { Link } from "react-router-dom";
+
+interface UsageLimitsDisplayProps {
+  onUpgrade?: () => void;
+}
 
 interface UsageLimits {
   pdfs_per_day: number;
@@ -40,7 +43,7 @@ interface DailyUsage {
   explain_back_count: number;
 }
 
-const UsageLimitsDisplay = () => {
+const UsageLimitsDisplay = ({ onUpgrade }: UsageLimitsDisplayProps) => {
   const [plan, setPlan] = useState<string>("free");
   const [usage, setUsage] = useState<DailyUsage>({
     pdfs_uploaded: 0,
@@ -125,12 +128,10 @@ const UsageLimitsDisplay = () => {
             <CardDescription>Your usage resets at midnight</CardDescription>
           </div>
           {plan !== "mastery_pass" && (
-            <Link to="/?scrollTo=pricing">
-              <Button variant="outline" size="sm" className="gap-2">
-                <Crown className="h-4 w-4" />
-                Upgrade
-              </Button>
-            </Link>
+            <Button variant="outline" size="sm" className="gap-2" onClick={onUpgrade}>
+              <Crown className="h-4 w-4" />
+              Upgrade
+            </Button>
           )}
         </div>
       </CardHeader>

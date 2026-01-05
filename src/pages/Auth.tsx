@@ -121,7 +121,10 @@ const Auth = () => {
         <div className="bg-card rounded-2xl shadow-elevated p-8 border border-border">
           {/* Logo */}
           <div className="text-center mb-8">
-            <img src={logo} alt="TalkPDF AI" className="h-10 mx-auto mb-4" />
+            <div className="flex items-center justify-center gap-2 mb-4">
+              <img src={logo} alt="TalkPDF AI" className="h-10" />
+              <span className="font-display text-xl font-bold text-foreground">TalkPDF AI</span>
+            </div>
             <h1 className="font-display text-2xl font-bold text-foreground">
               {isLogin ? "Welcome Back" : "Create Account"}
             </h1>

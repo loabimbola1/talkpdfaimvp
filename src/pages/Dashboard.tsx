@@ -76,6 +76,7 @@ const Dashboard = () => {
           <div className="flex items-center justify-between h-16">
             <a href="/" className="flex items-center gap-2">
               <img src={logo} alt="TalkPDF AI" className="h-8 w-auto" />
+              <span className="font-display text-lg font-bold text-foreground">TalkPDF AI</span>
             </a>
             <div className="flex items-center gap-4">
               <div className="hidden sm:flex items-center gap-2 text-sm text-muted-foreground">

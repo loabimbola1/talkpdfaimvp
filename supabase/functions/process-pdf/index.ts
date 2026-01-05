@@ -81,7 +81,7 @@ serve(async (req) => {
     
     console.log("Extracting text from PDF...");
     
-    const extractResponse = await fetch("https://ai.lovable.dev/api/v1/chat/completions", {
+    const extractResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: {
         "Authorization": `Bearer ${LOVABLE_API_KEY}`,
@@ -147,7 +147,7 @@ serve(async (req) => {
     // Generate summary and study prompts
     console.log("Generating summary and study prompts...");
     
-    const summaryResponse = await fetch("https://ai.lovable.dev/api/v1/chat/completions", {
+    const summaryResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: {
         "Authorization": `Bearer ${LOVABLE_API_KEY}`,

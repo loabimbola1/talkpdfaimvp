@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { LogOut, Upload, Headphones, Award, Settings, User, FileText, Brain } from "lucide-react";
+import { LogOut, Upload, Headphones, Award, Settings, User, FileText, Brain, Crown } from "lucide-react";
 import logo from "@/assets/logo.png";
 import PDFUpload from "@/components/dashboard/PDFUpload";
 import AudioPlayer from "@/components/dashboard/AudioPlayer";
@@ -11,9 +11,10 @@ import MyDocuments from "@/components/dashboard/MyDocuments";
 import ProfileSettings from "@/components/dashboard/ProfileSettings";
 import ExplainBackMode from "@/components/dashboard/ExplainBackMode";
 import UsageLimitsDisplay from "@/components/dashboard/UsageLimitsDisplay";
+import SubscriptionPlans from "@/components/dashboard/SubscriptionPlans";
 import type { User as SupabaseUser } from "@supabase/supabase-js";
 
-type TabType = "upload" | "documents" | "listen" | "explain" | "badges" | "settings";
+type TabType = "upload" | "documents" | "listen" | "explain" | "badges" | "subscription" | "settings";
 
 const Dashboard = () => {
   const [user, setUser] = useState<SupabaseUser | null>(null);
@@ -66,6 +67,7 @@ const Dashboard = () => {
     { id: "listen" as TabType, label: "Listen", icon: Headphones },
     { id: "explain" as TabType, label: "Explain-Back", icon: Brain },
     { id: "badges" as TabType, label: "Badges", icon: Award },
+    { id: "subscription" as TabType, label: "Upgrade", icon: Crown },
     { id: "settings" as TabType, label: "Settings", icon: Settings },
   ];
 
@@ -133,12 +135,13 @@ const Dashboard = () => {
                     <p className="text-muted-foreground">Complete lessons to earn your first badge!</p>
                   </div>
                 )}
+                {activeTab === "subscription" && <SubscriptionPlans />}
                 {activeTab === "settings" && <ProfileSettings user={user} />}
               </div>
             </div>
 
             <div className="lg:col-span-1">
-              <UsageLimitsDisplay />
+              <UsageLimitsDisplay onUpgrade={() => setActiveTab("subscription")} />
             </div>
           </div>
         </div>

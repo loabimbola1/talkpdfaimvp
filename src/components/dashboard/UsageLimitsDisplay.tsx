@@ -125,7 +125,7 @@ const UsageLimitsDisplay = () => {
             <CardDescription>Your usage resets at midnight</CardDescription>
           </div>
           {plan !== "mastery_pass" && (
-            <Link to="/#pricing">
+            <Link to="/?scrollTo=pricing">
               <Button variant="outline" size="sm" className="gap-2">
                 <Crown className="h-4 w-4" />
                 Upgrade

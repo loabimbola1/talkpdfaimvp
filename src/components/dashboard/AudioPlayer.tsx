@@ -17,8 +17,10 @@ import {
   VolumeX,
   Headphones,
   Languages,
+  FileText,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
 
 interface NigerianLanguage {
   code: string;
@@ -34,6 +36,14 @@ const nigerianLanguages: NigerianLanguage[] = [
   { code: "pcm", name: "Nigerian Pidgin", nativeName: "Naija" },
 ];
 
+interface Document {
+  id: string;
+  title: string;
+  audio_url: string | null;
+  audio_language: string | null;
+  audio_duration_seconds: number | null;
+}
+
 const AudioPlayer = () => {
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -41,9 +51,70 @@ const AudioPlayer = () => {
   const [volume, setVolume] = useState(80);
   const [isMuted, setIsMuted] = useState(false);
   const [selectedLanguage, setSelectedLanguage] = useState("en");
-  const [hasAudio, setHasAudio] = useState(false);
+  const [documents, setDocuments] = useState<Document[]>([]);
+  const [selectedDocument, setSelectedDocument] = useState<Document | null>(null);
+  const [audioUrl, setAudioUrl] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
   
   const audioRef = useRef<HTMLAudioElement>(null);
+
+  useEffect(() => {
+    fetchDocumentsWithAudio();
+  }, []);
+
+  const fetchDocumentsWithAudio = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { data, error } = await supabase
+        .from("documents")
+        .select("id, title, audio_url, audio_language, audio_duration_seconds")
+        .eq("user_id", user.id)
+        .not("audio_url", "is", null)
+        .order("created_at", { ascending: false });
+
+      if (error) throw error;
+      setDocuments(data || []);
+      
+      if (data && data.length > 0) {
+        setSelectedDocument(data[0]);
+        loadAudioForDocument(data[0]);
+      }
+    } catch (error) {
+      console.error("Error fetching documents:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadAudioForDocument = async (doc: Document) => {
+    if (!doc.audio_url) return;
+    
+    try {
+      const { data } = await supabase.storage
+        .from("talkpdf")
+        .createSignedUrl(doc.audio_url, 3600);
+      
+      if (data?.signedUrl) {
+        setAudioUrl(data.signedUrl);
+        setSelectedLanguage(doc.audio_language || "en");
+      }
+    } catch (error) {
+      console.error("Error loading audio:", error);
+      toast.error("Failed to load audio");
+    }
+  };
+
+  const handleDocumentChange = (docId: string) => {
+    const doc = documents.find(d => d.id === docId);
+    if (doc) {
+      setSelectedDocument(doc);
+      loadAudioForDocument(doc);
+      setIsPlaying(false);
+      setCurrentTime(0);
+    }
+  };
 
   useEffect(() => {
     const audio = audioRef.current;
@@ -62,7 +133,7 @@ const AudioPlayer = () => {
       audio.removeEventListener("loadedmetadata", updateDuration);
       audio.removeEventListener("ended", handleEnded);
     };
-  }, []);
+  }, [audioUrl]);
 
   const togglePlay = () => {
     if (!audioRef.current) return;
@@ -109,38 +180,60 @@ const AudioPlayer = () => {
   };
 
   const formatTime = (time: number) => {
+    if (!isFinite(time)) return "0:00";
     const minutes = Math.floor(time / 60);
     const seconds = Math.floor(time % 60);
     return `${minutes}:${seconds.toString().padStart(2, "0")}`;
   };
 
-  // Placeholder audio element
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <div className="animate-pulse text-muted-foreground">Loading audio...</div>
+      </div>
+    );
+  }
+
+  const hasAudio = documents.length > 0 && audioUrl;
+
   return (
     <div className="space-y-8">
-      <audio ref={audioRef} />
+      {audioUrl && <audio ref={audioRef} src={audioUrl} />}
 
-      {/* Language Selection */}
-      <div className="space-y-3">
-        <label className="flex items-center gap-2 text-sm font-medium text-foreground">
-          <Languages className="h-4 w-4" />
-          Select Language
-        </label>
-        <Select value={selectedLanguage} onValueChange={setSelectedLanguage}>
-          <SelectTrigger className="w-full md:w-64">
-            <SelectValue placeholder="Select a language" />
-          </SelectTrigger>
-          <SelectContent>
-            {nigerianLanguages.map((lang) => (
-              <SelectItem key={lang.code} value={lang.code}>
-                <span className="flex items-center gap-2">
-                  {lang.name}
-                  <span className="text-muted-foreground">({lang.nativeName})</span>
-                </span>
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
+      {/* Document Selection */}
+      {documents.length > 0 && (
+        <div className="space-y-3">
+          <label className="flex items-center gap-2 text-sm font-medium text-foreground">
+            <FileText className="h-4 w-4" />
+            Select Document
+          </label>
+          <Select value={selectedDocument?.id} onValueChange={handleDocumentChange}>
+            <SelectTrigger className="w-full md:w-80">
+              <SelectValue placeholder="Select a document" />
+            </SelectTrigger>
+            <SelectContent>
+              {documents.map((doc) => (
+                <SelectItem key={doc.id} value={doc.id}>
+                  {doc.title}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
+
+      {/* Language Display */}
+      {selectedDocument && (
+        <div className="space-y-3">
+          <label className="flex items-center gap-2 text-sm font-medium text-foreground">
+            <Languages className="h-4 w-4" />
+            Audio Language
+          </label>
+          <p className="text-muted-foreground">
+            {nigerianLanguages.find((l) => l.code === selectedLanguage)?.name || "English"}
+          </p>
+        </div>
+      )}
 
       {/* Player Card */}
       <div className="bg-secondary/30 rounded-2xl p-6 md:p-8">
@@ -153,21 +246,18 @@ const AudioPlayer = () => {
               No Audio Available
             </h3>
             <p className="text-muted-foreground mb-6">
-              Upload a PDF first, then your audio will appear here.
+              Upload and process a PDF first, then your audio will appear here.
             </p>
-            <Button variant="outline">
-              Go to Upload
-            </Button>
           </div>
         ) : (
           <>
             {/* Current Track Info */}
             <div className="text-center mb-6">
               <h3 className="font-display text-lg font-semibold text-foreground mb-1">
-                Chapter 1: Introduction
+                {selectedDocument?.title || "Document"}
               </h3>
               <p className="text-sm text-muted-foreground">
-                {nigerianLanguages.find((l) => l.code === selectedLanguage)?.name} • Document.pdf
+                {nigerianLanguages.find((l) => l.code === selectedLanguage)?.name}
               </p>
             </div>
 

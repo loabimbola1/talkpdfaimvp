@@ -118,17 +118,12 @@ const SubscriptionPlans = ({ currentPlan = "free" }: SubscriptionPlansProps) => 
         return;
       }
 
-      const price = isAnnual ? plan.yearlyPrice : plan.monthlyPrice;
       const billingCycle = isAnnual ? "yearly" : "monthly";
 
       const { data, error } = await supabase.functions.invoke("flutterwave-payment", {
         body: {
-          amount: price,
           plan: plan.planId,
           billingCycle,
-          email: session.user.email,
-          name: session.user.user_metadata?.full_name || session.user.email,
-          userId: session.user.id,
         },
       });
 

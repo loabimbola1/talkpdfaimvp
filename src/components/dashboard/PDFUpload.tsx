@@ -43,14 +43,18 @@ const PDFUpload = () => {
     setFiles((prev) => [...prev, newFile]);
     setIsUploading(true);
 
+    let createdDocumentId: string | undefined;
+
     try {
       // Get current user
-      const { data: { user } } = await supabase.auth.getUser();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
       if (!user) {
         throw new Error("Not authenticated");
       }
 
-      // Create document record first
+      // Create document record first (status defaults to 'uploaded' in DB)
       const { data: document, error: docError } = await supabase
         .from("documents")
         .insert({
@@ -58,32 +62,29 @@ const PDFUpload = () => {
           title: file.name.replace(".pdf", ""),
           file_name: file.name,
           file_size: file.size,
-          status: "uploading"
         })
         .select()
         .single();
 
       if (docError) throw docError;
+      createdDocumentId = document.id;
 
       // Upload file to storage
       const filePath = `${user.id}/${document.id}/${file.name}`;
-      
-      const { error: uploadError } = await supabase
-        .storage
-        .from("talkpdf")
-        .upload(filePath, file, {
-          cacheControl: "3600",
-          upsert: false
-        });
+
+      const { error: uploadError } = await supabase.storage.from("talkpdf").upload(filePath, file, {
+        cacheControl: "3600",
+        upsert: false,
+      });
 
       if (uploadError) throw uploadError;
 
       // Update document with file URL
       await supabase
         .from("documents")
-        .update({ 
+        .update({
           file_url: filePath,
-          status: "uploaded"
+          status: "uploaded",
         })
         .eq("id", document.id);
 
@@ -98,12 +99,13 @@ const PDFUpload = () => {
       toast.success(`${file.name} uploaded successfully`);
     } catch (error: any) {
       console.error("Upload error:", error);
+
+      if (createdDocumentId) {
+        await supabase.from("documents").update({ status: "error" }).eq("id", createdDocumentId);
+      }
+
       setFiles((prev) =>
-        prev.map((f) =>
-          f.name === file.name
-            ? { ...f, status: "error" as const }
-            : f
-        )
+        prev.map((f) => (f.name === file.name ? { ...f, status: "error" as const } : f))
       );
       toast.error(`Failed to upload ${file.name}: ${error.message}`);
     } finally {

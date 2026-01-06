@@ -29,6 +29,16 @@ const PaymentCallback = () => {
       }
 
       try {
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+
+        if (!session?.user) {
+          toast.error("Please sign in to verify your payment");
+          setStatus("failed");
+          return;
+        }
+
         const { data, error } = await supabase.functions.invoke("flutterwave-verify", {
           body: {
             transaction_id: transactionId,

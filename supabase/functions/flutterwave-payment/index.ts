@@ -7,14 +7,17 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type",
 };
 
+type BillingCycle = "monthly" | "yearly";
+
 interface PaymentRequest {
-  amount: number;
   plan: string;
-  billingCycle: "monthly" | "yearly";
-  email: string;
-  name: string;
-  userId: string;
+  billingCycle: BillingCycle;
 }
+
+const PRICE_MAP: Record<string, Record<BillingCycle, number>> = {
+  student_pro: { monthly: 2000, yearly: 20000 },
+  mastery_pass: { monthly: 3500, yearly: 40000 },
+};
 
 serve(async (req) => {
   // Handle CORS preflight requests
@@ -23,36 +26,95 @@ serve(async (req) => {
   }
 
   try {
-    const FLUTTERWAVE_CLIENT_ID = Deno.env.get("FLUTTERWAVE_CLIENT_ID");
     const FLUTTERWAVE_CLIENT_SECRET = Deno.env.get("FLUTTERWAVE_CLIENT_SECRET");
-    const FLUTTERWAVE_ENCRYPTION_KEY = Deno.env.get("FLUTTERWAVE_ENCRYPTION_KEY");
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
+    const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY");
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 
-    if (!FLUTTERWAVE_CLIENT_ID || !FLUTTERWAVE_CLIENT_SECRET || !FLUTTERWAVE_ENCRYPTION_KEY) {
+    if (!FLUTTERWAVE_CLIENT_SECRET) {
       console.error("Missing Flutterwave API credentials");
-      return new Response(
-        JSON.stringify({ error: "Payment service not configured" }),
-        {
-          status: 500,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        }
-      );
+      return new Response(JSON.stringify({ error: "Payment service not configured" }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
-    const supabase = createClient(SUPABASE_URL!, SUPABASE_SERVICE_ROLE_KEY!);
+    if (!SUPABASE_URL || !SUPABASE_ANON_KEY || !SUPABASE_SERVICE_ROLE_KEY) {
+      console.error("Missing backend configuration");
+      return new Response(JSON.stringify({ error: "Service not configured" }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
-    const { amount, plan, billingCycle, email, name, userId }: PaymentRequest =
-      await req.json();
+    // Require authenticated caller
+    const authHeader = req.headers.get("Authorization") ?? "";
+    if (!authHeader.startsWith("Bearer ")) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
-    console.log("Processing payment request:", { amount, plan, billingCycle, email, userId });
+    const authClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      global: { headers: { Authorization: authHeader } },
+    });
 
-    // Generate unique transaction reference
-    const tx_ref = `TALKPDF_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+    const {
+      data: { user },
+      error: userError,
+    } = await authClient.auth.getUser();
 
-    // Store pending payment in database
-    const { error: dbError } = await supabase.from("payments").insert({
-      user_id: userId,
+    if (userError || !user) {
+      console.error("Auth error:", userError);
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
+    const { plan, billingCycle }: PaymentRequest = await req.json();
+
+    if (!plan || !PRICE_MAP[plan]) {
+      return new Response(JSON.stringify({ error: "Invalid plan" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    if (billingCycle !== "monthly" && billingCycle !== "yearly") {
+      return new Response(JSON.stringify({ error: "Invalid billing cycle" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const amount = PRICE_MAP[plan][billingCycle];
+    if (!amount || amount <= 0) {
+      return new Response(JSON.stringify({ error: "Invalid amount" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // Ensure we redirect only back to this site
+    const origin = req.headers.get("origin") ?? "";
+    if (!origin || !origin.startsWith("http")) {
+      return new Response(JSON.stringify({ error: "Invalid origin" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const tx_ref = `TALKPDF_${Date.now()}_${crypto.randomUUID().slice(0, 8)}`;
+
+    console.log("Creating payment", { tx_ref, plan, billingCycle, userId: user.id, amount });
+
+    // Store pending payment in database (server-trusted values only)
+    const { error: dbError } = await supabaseAdmin.from("payments").insert({
+      user_id: user.id,
       flutterwave_tx_ref: tx_ref,
       amount,
       currency: "NGN",
@@ -63,59 +125,56 @@ serve(async (req) => {
 
     if (dbError) {
       console.error("Database error:", dbError);
-      return new Response(
-        JSON.stringify({ error: "Failed to create payment record" }),
-        {
-          status: 500,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        }
-      );
+      return new Response(JSON.stringify({ error: "Failed to create payment record" }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
-    // Create Flutterwave payment link
+    const customerEmail = user.email ?? "";
+    const customerName =
+      (user.user_metadata?.full_name as string | undefined) ?? customerEmail;
+
     const flutterwavePayload = {
       tx_ref,
       amount,
       currency: "NGN",
-      redirect_url: `${req.headers.get("origin")}/payment/callback`,
+      redirect_url: `${origin.replace(/\/$/, "")}/payment/callback`,
       customer: {
-        email,
-        name,
+        email: customerEmail,
+        name: customerName,
       },
       customizations: {
         title: "TalkPDF AI",
         description: `${plan} Plan - ${billingCycle === "yearly" ? "Annual" : "Monthly"} Subscription`,
-        logo: "https://talkpdf.ai/logo.png",
       },
       meta: {
         plan,
         billing_cycle: billingCycle,
-        user_id: userId,
       },
     };
 
-    console.log("Creating Flutterwave payment:", flutterwavePayload);
-
-    const flutterwaveResponse = await fetch(
-      "https://api.flutterwave.com/v3/payments",
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${FLUTTERWAVE_CLIENT_SECRET}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(flutterwavePayload),
-      }
-    );
+    const flutterwaveResponse = await fetch("https://api.flutterwave.com/v3/payments", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${FLUTTERWAVE_CLIENT_SECRET}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(flutterwavePayload),
+    });
 
     const flutterwaveData = await flutterwaveResponse.json();
 
-    console.log("Flutterwave response:", flutterwaveData);
+    if (flutterwaveData?.status !== "success") {
+      console.error("Flutterwave init failed", { tx_ref, response: flutterwaveData });
 
-    if (flutterwaveData.status !== "success") {
-      console.error("Flutterwave error:", flutterwaveData);
+      await supabaseAdmin
+        .from("payments")
+        .update({ status: "failed" })
+        .eq("flutterwave_tx_ref", tx_ref);
+
       return new Response(
-        JSON.stringify({ error: flutterwaveData.message || "Payment initialization failed" }),
+        JSON.stringify({ error: flutterwaveData?.message || "Payment initialization failed" }),
         {
           status: 400,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -136,12 +195,9 @@ serve(async (req) => {
     );
   } catch (error) {
     console.error("Payment processing error:", error);
-    return new Response(
-      JSON.stringify({ error: "Internal server error" }),
-      {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      }
-    );
+    return new Response(JSON.stringify({ error: "Internal server error" }), {
+      status: 500,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
   }
 });

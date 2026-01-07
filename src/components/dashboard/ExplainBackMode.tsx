@@ -13,7 +13,10 @@ import {
   XCircle,
   RefreshCw,
   Volume2,
-  FileText
+  FileText,
+  Lightbulb,
+  Award,
+  Share2
 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
@@ -41,22 +44,35 @@ type RawDocument = {
 interface ExplainBackModeProps {
   documentId?: string;
   documentTitle?: string;
+  onBadgeEarned?: () => void;
 }
 
-const ExplainBackMode = ({ documentId: propDocumentId, documentTitle }: ExplainBackModeProps) => {
+interface EvaluationResult {
+  score: number;
+  feedback: string;
+  strengths: string[];
+  improvements: string[];
+}
+
+interface Badge {
+  badge_type: string;
+  badge_name: string;
+  description: string;
+}
+
+const ExplainBackMode = ({ documentId: propDocumentId, documentTitle, onBadgeEarned }: ExplainBackModeProps) => {
   const [isRecording, setIsRecording] = useState(false);
+  const [isTranscribing, setIsTranscribing] = useState(false);
   const [explanation, setExplanation] = useState("");
   const [isEvaluating, setIsEvaluating] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [documents, setDocuments] = useState<Document[]>([]);
   const [selectedDocumentId, setSelectedDocumentId] = useState<string>(propDocumentId || "");
   const [currentPromptIndex, setCurrentPromptIndex] = useState(0);
-  const [result, setResult] = useState<{
-    score: number;
-    feedback: string;
-    strengths: string[];
-    improvements: string[];
-  } | null>(null);
+  const [showHint, setShowHint] = useState(false);
+  const [earnedBadge, setEarnedBadge] = useState<Badge | null>(null);
+  const [completedPrompts, setCompletedPrompts] = useState<number>(0);
+  const [result, setResult] = useState<EvaluationResult | null>(null);
   
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
@@ -65,6 +81,15 @@ const ExplainBackMode = ({ documentId: propDocumentId, documentTitle }: ExplainB
   useEffect(() => {
     fetchDocuments();
   }, []);
+
+  // Handle propDocumentId changes
+  useEffect(() => {
+    if (propDocumentId && documents.length > 0) {
+      setSelectedDocumentId(propDocumentId);
+      setCurrentPromptIndex(0);
+      resetExercise();
+    }
+  }, [propDocumentId, documents]);
 
   const fetchDocuments = async () => {
     try {
@@ -107,7 +132,7 @@ const ExplainBackMode = ({ documentId: propDocumentId, documentTitle }: ExplainB
   const startRecording = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mediaRecorder = new MediaRecorder(stream);
+      const mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
       mediaRecorderRef.current = mediaRecorder;
       chunksRef.current = [];
 
@@ -119,8 +144,10 @@ const ExplainBackMode = ({ documentId: propDocumentId, documentTitle }: ExplainB
 
       mediaRecorder.onstop = async () => {
         const audioBlob = new Blob(chunksRef.current, { type: "audio/webm" });
-        toast.success("Recording saved. Type your explanation below or edit the transcription.");
         stream.getTracks().forEach(track => track.stop());
+        
+        // Transcribe the audio
+        await transcribeAudio(audioBlob);
       };
 
       mediaRecorder.start();
@@ -128,7 +155,7 @@ const ExplainBackMode = ({ documentId: propDocumentId, documentTitle }: ExplainB
       toast.info("Recording started. Explain the concept in your own words.");
     } catch (error) {
       console.error("Error starting recording:", error);
-      toast.error("Could not access microphone. Please type your explanation instead.");
+      toast.error("Could not access microphone. Please check permissions or type your explanation instead.");
     }
   };
 
@@ -136,6 +163,97 @@ const ExplainBackMode = ({ documentId: propDocumentId, documentTitle }: ExplainB
     if (mediaRecorderRef.current && isRecording) {
       mediaRecorderRef.current.stop();
       setIsRecording(false);
+    }
+  };
+
+  const transcribeAudio = async (audioBlob: Blob) => {
+    setIsTranscribing(true);
+    try {
+      // Convert blob to base64
+      const reader = new FileReader();
+      const base64Promise = new Promise<string>((resolve) => {
+        reader.onloadend = () => {
+          const base64 = (reader.result as string).split(',')[1];
+          resolve(base64);
+        };
+      });
+      reader.readAsDataURL(audioBlob);
+      const base64Audio = await base64Promise;
+
+      const { data, error } = await supabase.functions.invoke("voice-to-text", {
+        body: { audio: base64Audio }
+      });
+
+      if (error) throw error;
+
+      if (data?.text) {
+        setExplanation((prev) => prev ? `${prev} ${data.text}` : data.text);
+        toast.success("Voice transcribed successfully!");
+      }
+    } catch (error) {
+      console.error("Transcription error:", error);
+      toast.error("Failed to transcribe. Please type your explanation instead.");
+    } finally {
+      setIsTranscribing(false);
+    }
+  };
+
+  const awardBadge = async (score: number) => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      // Determine badge based on score
+      let badgeType: string | null = null;
+      let badgeName = "";
+      let description = "";
+
+      // Check if this is first explanation
+      const { count } = await supabase
+        .from("badges")
+        .select("*", { count: "exact", head: true })
+        .eq("user_id", user.id);
+
+      if (count === 0) {
+        badgeType = "first_concept";
+        badgeName = "First Concept Mastered";
+        description = "Completed your first Explain-Back exercise!";
+      } else if (score === 100) {
+        badgeType = "perfect_score";
+        badgeName = "Perfect Score";
+        description = "Achieved a flawless 100% on a concept!";
+      } else if (score >= 90) {
+        badgeType = "master_explainer";
+        badgeName = "Master Explainer";
+        description = `Scored ${score}% - Excellent understanding!`;
+      } else if (score >= 80) {
+        badgeType = "quick_learner";
+        badgeName = "Quick Learner";
+        description = `Scored ${score}% - Great job!`;
+      } else if (score >= 70) {
+        badgeType = "rising_star";
+        badgeName = "Rising Star";
+        description = `Scored ${score}% - Keep improving!`;
+      }
+
+      if (badgeType) {
+        const { error } = await supabase.from("badges").insert({
+          user_id: user.id,
+          badge_type: badgeType,
+          badge_name: badgeName,
+          description,
+          document_id: selectedDocumentId,
+          score,
+        });
+
+        if (!error) {
+          setEarnedBadge({ badge_type: badgeType, badge_name: badgeName, description });
+          onBadgeEarned?.();
+          toast.success(`🎉 Badge earned: ${badgeName}!`);
+        }
+      }
+    } catch (error) {
+      console.error("Error awarding badge:", error);
     }
   };
 
@@ -164,6 +282,10 @@ const ExplainBackMode = ({ documentId: propDocumentId, documentTitle }: ExplainB
       if (error) throw error;
 
       setResult(data);
+      setCompletedPrompts((prev) => prev + 1);
+      
+      // Award badge based on score
+      await awardBadge(data.score);
       
       // Track usage
       const { data: { session } } = await supabase.auth.getSession();
@@ -173,6 +295,15 @@ const ExplainBackMode = ({ documentId: propDocumentId, documentTitle }: ExplainB
           action_type: "explain_back",
           metadata: { documentId: selectedDocumentId, score: data.score }
         });
+
+        // Update document's explain_back_score
+        await supabase
+          .from("documents")
+          .update({ 
+            explain_back_score: data.score,
+            last_studied_at: new Date().toISOString()
+          })
+          .eq("id", selectedDocumentId);
       }
     } catch (error) {
       console.error("Error evaluating explanation:", error);
@@ -185,6 +316,8 @@ const ExplainBackMode = ({ documentId: propDocumentId, documentTitle }: ExplainB
   const resetExercise = () => {
     setExplanation("");
     setResult(null);
+    setShowHint(false);
+    setEarnedBadge(null);
   };
 
   const nextPrompt = () => {
@@ -192,6 +325,7 @@ const ExplainBackMode = ({ documentId: propDocumentId, documentTitle }: ExplainB
       setCurrentPromptIndex((prev) => prev + 1);
     } else {
       setCurrentPromptIndex(0);
+      toast.success("You've reviewed all concepts! Starting from the beginning.");
     }
     resetExercise();
   };
@@ -208,6 +342,13 @@ const ExplainBackMode = ({ documentId: propDocumentId, documentTitle }: ExplainB
     if (score >= 70) return "Good understanding";
     if (score >= 60) return "Keep practicing";
     return "Needs improvement";
+  };
+
+  // Generate hint from summary
+  const getHint = () => {
+    if (!selectedDocument?.summary || !currentPrompt) return null;
+    const summaryWords = selectedDocument.summary.split(" ").slice(0, 30).join(" ");
+    return `💡 Hint: Think about ${currentPrompt.topic.toLowerCase()}. Here's a clue from the document: "${summaryWords}..."`;
   };
 
   if (isLoading) {
@@ -246,7 +387,7 @@ const ExplainBackMode = ({ documentId: propDocumentId, documentTitle }: ExplainB
           Explain-Back Mode
         </h3>
         <p className="text-muted-foreground text-sm max-w-md mx-auto">
-          Test your understanding by explaining concepts from your documents in your own words.
+          Test your understanding by explaining concepts in your own words. Earn badges for great explanations!
         </p>
       </div>
 
@@ -285,12 +426,31 @@ const ExplainBackMode = ({ documentId: propDocumentId, documentTitle }: ExplainB
                     </p>
                     {studyPrompts.length > 1 && (
                       <Button variant="ghost" size="sm" onClick={nextPrompt}>
-                        Next Concept
+                        Skip
                       </Button>
                     )}
                   </div>
                   <p className="text-xs text-primary font-medium mb-1">{currentPrompt.topic}</p>
                   <p className="font-medium text-foreground">{currentPrompt.prompt}</p>
+                  
+                  {/* Hint Section */}
+                  <div className="mt-3">
+                    {!showHint ? (
+                      <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        onClick={() => setShowHint(true)}
+                        className="gap-1 text-muted-foreground hover:text-primary"
+                      >
+                        <Lightbulb className="h-4 w-4" />
+                        Need a hint?
+                      </Button>
+                    ) : (
+                      <p className="text-sm text-muted-foreground bg-primary/5 p-3 rounded-lg border border-primary/20">
+                        {getHint()}
+                      </p>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
@@ -303,9 +463,15 @@ const ExplainBackMode = ({ documentId: propDocumentId, documentTitle }: ExplainB
                 variant={isRecording ? "destructive" : "outline"}
                 size="lg"
                 onClick={isRecording ? stopRecording : startRecording}
+                disabled={isTranscribing}
                 className="gap-2"
               >
-                {isRecording ? (
+                {isTranscribing ? (
+                  <>
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                    Transcribing...
+                  </>
+                ) : isRecording ? (
                   <>
                     <MicOff className="h-5 w-5" />
                     Stop Recording
@@ -322,7 +488,7 @@ const ExplainBackMode = ({ documentId: propDocumentId, documentTitle }: ExplainB
             {isRecording && (
               <div className="flex items-center justify-center gap-2 text-destructive">
                 <span className="w-2 h-2 bg-destructive rounded-full animate-pulse" />
-                <span className="text-sm">Recording...</span>
+                <span className="text-sm">Recording... Speak clearly</span>
               </div>
             )}
 
@@ -364,6 +530,15 @@ const ExplainBackMode = ({ documentId: propDocumentId, documentTitle }: ExplainB
       ) : (
         /* Results */
         <div className="space-y-6">
+          {/* Badge Earned */}
+          {earnedBadge && (
+            <div className="bg-primary/10 border border-primary/20 rounded-xl p-4 text-center animate-in fade-in slide-in-from-bottom-4">
+              <Award className="h-10 w-10 text-primary mx-auto mb-2" />
+              <p className="font-bold text-primary text-lg">{earnedBadge.badge_name}</p>
+              <p className="text-sm text-muted-foreground">{earnedBadge.description}</p>
+            </div>
+          )}
+
           {/* Score */}
           <div className="text-center">
             <div className={cn("text-5xl font-bold mb-2", getScoreColor(result.score))}>
@@ -416,7 +591,7 @@ const ExplainBackMode = ({ documentId: propDocumentId, documentTitle }: ExplainB
             </div>
           )}
 
-          {/* Try Again */}
+          {/* Actions */}
           <div className="flex gap-3">
             <Button onClick={resetExercise} variant="outline" className="flex-1 gap-2">
               <RefreshCw className="h-4 w-4" />

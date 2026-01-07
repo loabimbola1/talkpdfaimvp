@@ -14,6 +14,53 @@ export type Database = {
   }
   public: {
     Tables: {
+      badges: {
+        Row: {
+          badge_name: string
+          badge_type: string
+          created_at: string
+          description: string | null
+          document_id: string | null
+          earned_at: string
+          id: string
+          score: number | null
+          shared_on: string[] | null
+          user_id: string
+        }
+        Insert: {
+          badge_name: string
+          badge_type: string
+          created_at?: string
+          description?: string | null
+          document_id?: string | null
+          earned_at?: string
+          id?: string
+          score?: number | null
+          shared_on?: string[] | null
+          user_id: string
+        }
+        Update: {
+          badge_name?: string
+          badge_type?: string
+          created_at?: string
+          description?: string | null
+          document_id?: string | null
+          earned_at?: string
+          id?: string
+          score?: number | null
+          shared_on?: string[] | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "badges_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "documents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       daily_usage_summary: {
         Row: {
           audio_minutes_used: number | null

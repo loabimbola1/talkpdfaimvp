@@ -1,5 +1,5 @@
-import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useState, useEffect, useCallback } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -12,6 +12,7 @@ import ProfileSettings from "@/components/dashboard/ProfileSettings";
 import ExplainBackMode from "@/components/dashboard/ExplainBackMode";
 import UsageLimitsDisplay from "@/components/dashboard/UsageLimitsDisplay";
 import SubscriptionPlans from "@/components/dashboard/SubscriptionPlans";
+import BadgesDisplay from "@/components/dashboard/BadgesDisplay";
 import type { User as SupabaseUser } from "@supabase/supabase-js";
 
 type TabType = "upload" | "documents" | "listen" | "explain" | "badges" | "subscription" | "settings";
@@ -21,7 +22,22 @@ const Dashboard = () => {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<TabType>("upload");
   const [selectedDocumentId, setSelectedDocumentId] = useState<string | null>(null);
+  const [badgeRefreshKey, setBadgeRefreshKey] = useState(0);
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  // Handle deep linking from URL params
+  useEffect(() => {
+    const tab = searchParams.get("tab");
+    const docId = searchParams.get("doc");
+    
+    if (tab && ["upload", "documents", "listen", "explain", "badges", "subscription", "settings"].includes(tab)) {
+      setActiveTab(tab as TabType);
+    }
+    if (docId) {
+      setSelectedDocumentId(docId);
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
@@ -52,6 +68,17 @@ const Dashboard = () => {
     setSelectedDocumentId(documentId);
     setActiveTab("listen");
   };
+
+  const handleDocumentProcessed = useCallback((documentId: string) => {
+    // Auto-navigate to Explain-Back with the newly processed document
+    setSelectedDocumentId(documentId);
+    setActiveTab("explain");
+    toast.success("Document ready! Let's test your understanding.", { duration: 4000 });
+  }, []);
+
+  const handleBadgeEarned = useCallback(() => {
+    setBadgeRefreshKey((prev) => prev + 1);
+  }, []);
 
   if (loading) {
     return (
@@ -124,17 +151,16 @@ const Dashboard = () => {
               </div>
 
               <div className="bg-card rounded-2xl border border-border p-6 md:p-8">
-                {activeTab === "upload" && <PDFUpload />}
+                {activeTab === "upload" && <PDFUpload onDocumentProcessed={handleDocumentProcessed} />}
                 {activeTab === "documents" && <MyDocuments onSelectDocument={handleSelectDocument} />}
-                {activeTab === "listen" && <AudioPlayer />}
-                {activeTab === "explain" && <ExplainBackMode />}
-                {activeTab === "badges" && (
-                  <div className="text-center py-12">
-                    <Award className="h-16 w-16 mx-auto text-muted-foreground mb-4" />
-                    <h3 className="font-display text-xl font-semibold text-foreground mb-2">No Badges Yet</h3>
-                    <p className="text-muted-foreground">Complete lessons to earn your first badge!</p>
-                  </div>
+                {activeTab === "listen" && <AudioPlayer selectedDocumentId={selectedDocumentId} />}
+                {activeTab === "explain" && (
+                  <ExplainBackMode 
+                    documentId={selectedDocumentId || undefined} 
+                    onBadgeEarned={handleBadgeEarned}
+                  />
                 )}
+                {activeTab === "badges" && <BadgesDisplay key={badgeRefreshKey} />}
                 {activeTab === "subscription" && <SubscriptionPlans />}
                 {activeTab === "settings" && <ProfileSettings user={user} />}
               </div>

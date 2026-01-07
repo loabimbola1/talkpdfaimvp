@@ -25,16 +25,30 @@ const languages = [
   { value: "pcm", label: "Pidgin" },
 ];
 
-const PDFUpload = () => {
+interface PDFUploadProps {
+  onDocumentProcessed?: (documentId: string) => void;
+}
+
+const PDFUpload = ({ onDocumentProcessed }: PDFUploadProps) => {
   const [files, setFiles] = useState<UploadedFile[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [selectedLanguage, setSelectedLanguage] = useState("en");
 
+  // Sanitize filename to remove special characters that cause storage issues
+  const sanitizeFileName = (name: string): string => {
+    return name
+      .replace(/[–—]/g, '-')  // Replace em-dash and en-dash with hyphen
+      .replace(/[^\w\s.-]/g, '') // Remove other special characters
+      .replace(/\s+/g, '_')     // Replace spaces with underscores
+      .substring(0, 100);        // Limit length
+  };
+
   const uploadFile = async (file: File) => {
+    const sanitizedName = sanitizeFileName(file.name);
     const newFile: UploadedFile = {
       file,
-      name: file.name,
+      name: file.name,  // Keep original name for display
       size: file.size,
       status: "uploading",
       progress: 0,
@@ -59,8 +73,8 @@ const PDFUpload = () => {
         .from("documents")
         .insert({
           user_id: user.id,
-          title: file.name.replace(".pdf", ""),
-          file_name: file.name,
+          title: file.name.replace(".pdf", ""),  // Keep original title for display
+          file_name: sanitizedName,  // Use sanitized name for storage
           file_size: file.size,
         })
         .select()
@@ -69,8 +83,8 @@ const PDFUpload = () => {
       if (docError) throw docError;
       createdDocumentId = document.id;
 
-      // Upload file to storage
-      const filePath = `${user.id}/${document.id}/${file.name}`;
+      // Upload file to storage with sanitized filename
+      const filePath = `${user.id}/${document.id}/${sanitizedName}`;
 
       const { error: uploadError } = await supabase.storage.from("talkpdf").upload(filePath, file, {
         cacheControl: "3600",
@@ -162,6 +176,7 @@ const PDFUpload = () => {
     }
 
     setIsProcessing(true);
+    let lastProcessedId: string | null = null;
 
     for (const file of completedFiles) {
       try {
@@ -181,6 +196,7 @@ const PDFUpload = () => {
         if (error) throw error;
 
         toast.success(`${file.name} processed successfully!`);
+        lastProcessedId = file.id!;
         
         // Remove from list after successful processing
         setFiles((prev) => prev.filter((f) => f.name !== file.name));
@@ -197,8 +213,9 @@ const PDFUpload = () => {
 
     setIsProcessing(false);
     
-    if (files.length === completedFiles.length) {
-      toast.success("All documents processed! Check 'My Documents' to view them.");
+    // Notify parent of the last processed document
+    if (lastProcessedId && onDocumentProcessed) {
+      onDocumentProcessed(lastProcessedId);
     }
   };
 

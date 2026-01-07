@@ -44,7 +44,11 @@ interface Document {
   audio_duration_seconds: number | null;
 }
 
-const AudioPlayer = () => {
+interface AudioPlayerProps {
+  selectedDocumentId?: string | null;
+}
+
+const AudioPlayer = ({ selectedDocumentId: propDocumentId }: AudioPlayerProps) => {
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -61,6 +65,19 @@ const AudioPlayer = () => {
   useEffect(() => {
     fetchDocumentsWithAudio();
   }, []);
+
+  // Handle prop document change
+  useEffect(() => {
+    if (propDocumentId && documents.length > 0) {
+      const doc = documents.find(d => d.id === propDocumentId);
+      if (doc) {
+        setSelectedDocument(doc);
+        loadAudioForDocument(doc);
+        setIsPlaying(false);
+        setCurrentTime(0);
+      }
+    }
+  }, [propDocumentId, documents]);
 
   const fetchDocumentsWithAudio = async () => {
     try {

@@ -201,16 +201,19 @@ Create 3-5 study prompts that will help students test their understanding.`
       }
     }
 
-    // Generate audio using ElevenLabs
+    // Generate audio using ElevenLabs (optional - continue even if it fails)
     console.log("Generating audio...");
     
-    // Truncate text for TTS (ElevenLabs has limits)
-    const textForTts = extractedText.substring(0, 5000);
+    let audioPath: string | null = null;
+    let audioDurationSeconds = 0;
+    
+    // Truncate text for TTS (ElevenLabs has character limits)
+    const textForTts = extractedText.substring(0, 3000); // Reduced to avoid quota issues
     
     // Map language to voice
     const voiceMap: Record<string, string> = {
       "en": "JBFqnCBsd6RMkjVDRZzb", // George
-      "yo": "JBFqnCBsd6RMkjVDRZzb", // Default to English voice
+      "yo": "JBFqnCBsd6RMkjVDRZzb", 
       "ha": "JBFqnCBsd6RMkjVDRZzb",
       "ig": "JBFqnCBsd6RMkjVDRZzb",
       "pcm": "JBFqnCBsd6RMkjVDRZzb"
@@ -218,70 +221,61 @@ Create 3-5 study prompts that will help students test their understanding.`
     
     const voiceId = voiceMap[language] || voiceMap["en"];
 
-    const ttsResponse = await fetch(
-      `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}?output_format=mp3_44100_128`,
-      {
-        method: "POST",
-        headers: {
-          "xi-api-key": ELEVENLABS_API_KEY!,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          text: textForTts,
-          model_id: "eleven_multilingual_v2",
-          voice_settings: {
-            stability: 0.5,
-            similarity_boost: 0.75,
-            speed: 1.0
-          }
-        })
+    try {
+      const ttsResponse = await fetch(
+        `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}?output_format=mp3_44100_128`,
+        {
+          method: "POST",
+          headers: {
+            "xi-api-key": ELEVENLABS_API_KEY!,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            text: textForTts,
+            model_id: "eleven_multilingual_v2",
+            voice_settings: {
+              stability: 0.5,
+              similarity_boost: 0.75,
+              speed: 1.0
+            }
+          })
+        }
+      );
+
+      if (!ttsResponse.ok) {
+        const errorText = await ttsResponse.text();
+        console.warn("TTS failed (continuing without audio):", errorText);
+      } else {
+        const audioBuffer = await ttsResponse.arrayBuffer();
+        const audioBlob = new Blob([audioBuffer], { type: "audio/mpeg" });
+        
+        // Calculate approximate audio duration
+        const wordCount = textForTts.split(/\s+/).length;
+        audioDurationSeconds = Math.round(wordCount / 2.5); // ~150 words per minute
+
+        // Upload audio to storage
+        audioPath = `${document.user_id}/${documentId}/audio.mp3`;
+        
+        const { error: uploadError } = await supabase
+          .storage
+          .from("talkpdf")
+          .upload(audioPath, audioBlob, {
+            contentType: "audio/mpeg",
+            upsert: true
+          });
+
+        if (uploadError) {
+          console.warn("Failed to upload audio:", uploadError);
+          audioPath = null;
+        } else {
+          console.log("Audio uploaded successfully:", audioPath);
+        }
       }
-    );
-
-    if (!ttsResponse.ok) {
-      const errorText = await ttsResponse.text();
-      console.error("TTS failed:", errorText);
-      await supabase
-        .from("documents")
-        .update({ status: "error" })
-        .eq("id", documentId);
-      return new Response(
-        JSON.stringify({ error: "Failed to generate audio" }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+    } catch (ttsError) {
+      console.warn("TTS error (continuing without audio):", ttsError);
     }
 
-    const audioBuffer = await ttsResponse.arrayBuffer();
-    const audioBlob = new Blob([audioBuffer], { type: "audio/mpeg" });
-    
-    // Calculate approximate audio duration (rough estimate)
-    const wordCount = textForTts.split(/\s+/).length;
-    const audioDurationSeconds = Math.round(wordCount / 2.5); // ~150 words per minute
-
-    // Upload audio to storage
-    const audioPath = `${document.user_id}/${documentId}/audio.mp3`;
-    
-    const { error: uploadError } = await supabase
-      .storage
-      .from("talkpdf")
-      .upload(audioPath, audioBlob, {
-        contentType: "audio/mpeg",
-        upsert: true
-      });
-
-    if (uploadError) {
-      console.error("Failed to upload audio:", uploadError);
-      await supabase
-        .from("documents")
-        .update({ status: "error" })
-        .eq("id", documentId);
-      return new Response(
-        JSON.stringify({ error: "Failed to save audio" }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
-    // Update document with all the generated content
+    // Update document with all the generated content (audio may be null if TTS failed)
     const { error: updateError } = await supabase
       .from("documents")
       .update({

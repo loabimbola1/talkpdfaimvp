@@ -48,10 +48,16 @@ interface ExplainBackModeProps {
 }
 
 interface EvaluationResult {
+  simplicity: number;
+  accuracy: number;
+  analogies: number;
+  totalScore: number;
   score: number;
+  badge: "bronze" | "silver" | "gold" | null;
   feedback: string;
   strengths: string[];
   improvements: string[];
+  needsRetry: boolean;
 }
 
 interface Badge {
@@ -198,63 +204,101 @@ const ExplainBackMode = ({ documentId: propDocumentId, documentTitle, onBadgeEar
     }
   };
 
-  const awardBadge = async (score: number) => {
+  const awardBadge = async (evaluation: EvaluationResult) => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      // Determine badge based on score
-      let badgeType: string | null = null;
+      // Use the badge from the PRD-based evaluation
+      if (!evaluation.badge) return;
+
       let badgeName = "";
       let description = "";
 
-      // Check if this is first explanation
+      // Check if this is first explanation for "First Concept Mastered" badge
       const { count } = await supabase
         .from("badges")
         .select("*", { count: "exact", head: true })
         .eq("user_id", user.id);
 
       if (count === 0) {
-        badgeType = "first_concept";
-        badgeName = "First Concept Mastered";
-        description = "Completed your first Explain-Back exercise!";
-      } else if (score === 100) {
-        badgeType = "perfect_score";
-        badgeName = "Perfect Score";
-        description = "Achieved a flawless 100% on a concept!";
-      } else if (score >= 90) {
-        badgeType = "master_explainer";
-        badgeName = "Master Explainer";
-        description = `Scored ${score}% - Excellent understanding!`;
-      } else if (score >= 80) {
-        badgeType = "quick_learner";
-        badgeName = "Quick Learner";
-        description = `Scored ${score}% - Great job!`;
-      } else if (score >= 70) {
-        badgeType = "rising_star";
-        badgeName = "Rising Star";
-        description = `Scored ${score}% - Keep improving!`;
-      }
-
-      if (badgeType) {
+        // First-time badge
         const { error } = await supabase.from("badges").insert({
           user_id: user.id,
-          badge_type: badgeType,
-          badge_name: badgeName,
-          description,
+          badge_type: "first_concept",
+          badge_name: "First Concept Mastered",
+          description: "Completed your first Explain-Back exercise!",
           document_id: selectedDocumentId,
-          score,
+          score: evaluation.score,
         });
-
+        
         if (!error) {
-          setEarnedBadge({ badge_type: badgeType, badge_name: badgeName, description });
+          setEarnedBadge({ 
+            badge_type: "first_concept", 
+            badge_name: "First Concept Mastered", 
+            description: "Completed your first Explain-Back exercise!" 
+          });
           onBadgeEarned?.();
-          toast.success(`🎉 Badge earned: ${badgeName}!`);
+          toast.success("🎉 Badge earned: First Concept Mastered!");
         }
+      }
+
+      // Award the tier badge based on PRD scoring
+      switch (evaluation.badge) {
+        case "gold":
+          badgeName = "Gold Scholar";
+          description = `Scored ${evaluation.score}% (${evaluation.totalScore}/30) - Excellent mastery!`;
+          break;
+        case "silver":
+          badgeName = "Silver Scholar";
+          description = `Scored ${evaluation.score}% (${evaluation.totalScore}/30) - Good understanding!`;
+          break;
+        case "bronze":
+          badgeName = "Bronze Scholar";
+          description = `Scored ${evaluation.score}% (${evaluation.totalScore}/30) - Keep improving!`;
+          break;
+      }
+
+      const { error } = await supabase.from("badges").insert({
+        user_id: user.id,
+        badge_type: evaluation.badge,
+        badge_name: badgeName,
+        description,
+        document_id: selectedDocumentId,
+        score: evaluation.score,
+      });
+
+      if (!error) {
+        setEarnedBadge({ badge_type: evaluation.badge, badge_name: badgeName, description });
+        onBadgeEarned?.();
+        toast.success(`🎉 Badge earned: ${badgeName}!`);
       }
     } catch (error) {
       console.error("Error awarding badge:", error);
     }
+  };
+
+  const shareBadge = (platform: "twitter" | "whatsapp" | "linkedin") => {
+    if (!earnedBadge) return;
+    
+    const shareText = `🎓 I just earned the "${earnedBadge.badge_name}" badge on TalkPDF AI! ${earnedBadge.description} #TalkPDFAI #Learning #Nigeria`;
+    const url = encodeURIComponent("https://talkpdf.ai");
+    const text = encodeURIComponent(shareText);
+
+    let shareUrl = "";
+    switch (platform) {
+      case "twitter":
+        shareUrl = `https://twitter.com/intent/tweet?text=${text}&url=${url}`;
+        break;
+      case "whatsapp":
+        shareUrl = `https://wa.me/?text=${text}%20${url}`;
+        break;
+      case "linkedin":
+        shareUrl = `https://www.linkedin.com/sharing/share-offsite/?url=${url}&summary=${text}`;
+        break;
+    }
+    
+    window.open(shareUrl, "_blank", "width=600,height=400");
   };
 
   const evaluateExplanation = async () => {
@@ -284,8 +328,8 @@ const ExplainBackMode = ({ documentId: propDocumentId, documentTitle, onBadgeEar
       setResult(data);
       setCompletedPrompts((prev) => prev + 1);
       
-      // Award badge based on score
-      await awardBadge(data.score);
+      // Award badge based on PRD evaluation
+      await awardBadge(data);
       
       // Track usage
       const { data: { session } } = await supabase.auth.getSession();
@@ -530,12 +574,43 @@ const ExplainBackMode = ({ documentId: propDocumentId, documentTitle, onBadgeEar
       ) : (
         /* Results */
         <div className="space-y-6">
-          {/* Badge Earned */}
+          {/* Badge Earned with Share */}
           {earnedBadge && (
             <div className="bg-primary/10 border border-primary/20 rounded-xl p-4 text-center animate-in fade-in slide-in-from-bottom-4">
               <Award className="h-10 w-10 text-primary mx-auto mb-2" />
               <p className="font-bold text-primary text-lg">{earnedBadge.badge_name}</p>
-              <p className="text-sm text-muted-foreground">{earnedBadge.description}</p>
+              <p className="text-sm text-muted-foreground mb-3">{earnedBadge.description}</p>
+              
+              {/* Social Share Buttons */}
+              <div className="flex items-center justify-center gap-2">
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={() => shareBadge("twitter")}
+                  className="gap-1"
+                >
+                  <Share2 className="h-3 w-3" />
+                  Twitter
+                </Button>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={() => shareBadge("whatsapp")}
+                  className="gap-1"
+                >
+                  <Share2 className="h-3 w-3" />
+                  WhatsApp
+                </Button>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={() => shareBadge("linkedin")}
+                  className="gap-1"
+                >
+                  <Share2 className="h-3 w-3" />
+                  LinkedIn
+                </Button>
+              </div>
             </div>
           )}
 
@@ -550,9 +625,30 @@ const ExplainBackMode = ({ documentId: propDocumentId, documentTitle, onBadgeEar
             <Progress value={result.score} className="mt-4 h-3" />
           </div>
 
+          {/* 3-Dimension Scores */}
+          <div className="grid grid-cols-3 gap-3">
+            <div className="bg-secondary/30 rounded-lg p-3 text-center">
+              <p className="text-xs text-muted-foreground mb-1">Simplicity</p>
+              <p className="text-xl font-bold text-foreground">{result.simplicity}/10</p>
+            </div>
+            <div className="bg-secondary/30 rounded-lg p-3 text-center">
+              <p className="text-xs text-muted-foreground mb-1">Accuracy</p>
+              <p className="text-xl font-bold text-foreground">{result.accuracy}/10</p>
+            </div>
+            <div className="bg-secondary/30 rounded-lg p-3 text-center">
+              <p className="text-xs text-muted-foreground mb-1">Analogies</p>
+              <p className="text-xl font-bold text-foreground">{result.analogies}/10</p>
+            </div>
+          </div>
+
           {/* Feedback */}
           <div className="bg-secondary/30 rounded-xl p-4">
             <p className="text-foreground">{result.feedback}</p>
+            {result.needsRetry && (
+              <p className="text-sm text-yellow-600 mt-2 font-medium">
+                💡 Try explaining with simpler words for a better score!
+              </p>
+            )}
           </div>
 
           {/* Strengths */}

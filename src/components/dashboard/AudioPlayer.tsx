@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import {
@@ -18,9 +18,19 @@ import {
   Headphones,
   Languages,
   FileText,
+  Brain,
+  Lightbulb,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
 
 interface NigerianLanguage {
   code: string;
@@ -42,13 +52,15 @@ interface Document {
   audio_url: string | null;
   audio_language: string | null;
   audio_duration_seconds: number | null;
+  study_prompts?: Array<{ topic: string; prompt: string }> | null;
 }
 
 interface AudioPlayerProps {
   selectedDocumentId?: string | null;
+  onExplainBackTrigger?: (documentId: string, promptIndex: number) => void;
 }
 
-const AudioPlayer = ({ selectedDocumentId: propDocumentId }: AudioPlayerProps) => {
+const AudioPlayer = ({ selectedDocumentId: propDocumentId, onExplainBackTrigger }: AudioPlayerProps) => {
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -60,7 +72,15 @@ const AudioPlayer = ({ selectedDocumentId: propDocumentId }: AudioPlayerProps) =
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   
+  // Auto-pause state
+  const [autoPauseEnabled, setAutoPauseEnabled] = useState(true);
+  const [pausePoints, setPausePoints] = useState<number[]>([]);
+  const [currentPauseIndex, setCurrentPauseIndex] = useState(0);
+  const [showExplainPrompt, setShowExplainPrompt] = useState(false);
+  const [currentPromptForPause, setCurrentPromptForPause] = useState<{topic: string; prompt: string} | null>(null);
+  
   const audioRef = useRef<HTMLAudioElement>(null);
+  const lastCheckedTimeRef = useRef(0);
 
   useEffect(() => {
     fetchDocumentsWithAudio();
@@ -75,9 +95,34 @@ const AudioPlayer = ({ selectedDocumentId: propDocumentId }: AudioPlayerProps) =
         loadAudioForDocument(doc);
         setIsPlaying(false);
         setCurrentTime(0);
+        setCurrentPauseIndex(0);
       }
     }
   }, [propDocumentId, documents]);
+
+  // Calculate pause points based on document duration and study prompts
+  useEffect(() => {
+    if (selectedDocument && duration > 0) {
+      const prompts = selectedDocument.study_prompts || [];
+      const numPausePoints = Math.min(prompts.length, 5); // Max 5 pause points
+      
+      if (numPausePoints > 0) {
+        // Distribute pause points evenly throughout the audio
+        const interval = duration / (numPausePoints + 1);
+        const points = Array.from({ length: numPausePoints }, (_, i) => 
+          Math.floor(interval * (i + 1))
+        );
+        setPausePoints(points);
+      } else {
+        // If no study prompts, pause at 30%, 60%, 90%
+        setPausePoints([
+          Math.floor(duration * 0.3),
+          Math.floor(duration * 0.6),
+          Math.floor(duration * 0.9)
+        ]);
+      }
+    }
+  }, [selectedDocument, duration]);
 
   const fetchDocumentsWithAudio = async () => {
     try {
@@ -86,17 +131,24 @@ const AudioPlayer = ({ selectedDocumentId: propDocumentId }: AudioPlayerProps) =
 
       const { data, error } = await supabase
         .from("documents")
-        .select("id, title, audio_url, audio_language, audio_duration_seconds")
+        .select("id, title, audio_url, audio_language, audio_duration_seconds, study_prompts")
         .eq("user_id", user.id)
         .not("audio_url", "is", null)
         .order("created_at", { ascending: false });
 
       if (error) throw error;
-      setDocuments(data || []);
       
-      if (data && data.length > 0) {
-        setSelectedDocument(data[0]);
-        loadAudioForDocument(data[0]);
+      // Transform study_prompts to correct type
+      const typedDocs = (data || []).map(doc => ({
+        ...doc,
+        study_prompts: doc.study_prompts as Array<{ topic: string; prompt: string }> | null
+      }));
+      
+      setDocuments(typedDocs);
+      
+      if (typedDocs.length > 0) {
+        setSelectedDocument(typedDocs[0]);
+        loadAudioForDocument(typedDocs[0]);
       }
     } catch (error) {
       console.error("Error fetching documents:", error);
@@ -116,6 +168,7 @@ const AudioPlayer = ({ selectedDocumentId: propDocumentId }: AudioPlayerProps) =
       if (data?.signedUrl) {
         setAudioUrl(data.signedUrl);
         setSelectedLanguage(doc.audio_language || "en");
+        setCurrentPauseIndex(0);
       }
     } catch (error) {
       console.error("Error loading audio:", error);
@@ -130,14 +183,53 @@ const AudioPlayer = ({ selectedDocumentId: propDocumentId }: AudioPlayerProps) =
       loadAudioForDocument(doc);
       setIsPlaying(false);
       setCurrentTime(0);
+      setCurrentPauseIndex(0);
     }
   };
+
+  // Check for pause points during playback
+  const checkPausePoints = useCallback((time: number) => {
+    if (!autoPauseEnabled || pausePoints.length === 0) return;
+    
+    // Avoid checking too frequently
+    if (Math.abs(time - lastCheckedTimeRef.current) < 0.5) return;
+    lastCheckedTimeRef.current = time;
+    
+    // Check if we've reached a pause point
+    if (currentPauseIndex < pausePoints.length) {
+      const pausePoint = pausePoints[currentPauseIndex];
+      
+      if (time >= pausePoint && time < pausePoint + 1) {
+        // Pause the audio
+        if (audioRef.current) {
+          audioRef.current.pause();
+          setIsPlaying(false);
+        }
+        
+        // Get the corresponding study prompt
+        const prompts = selectedDocument?.study_prompts || [];
+        const prompt = prompts[currentPauseIndex] || {
+          topic: `Key Concept ${currentPauseIndex + 1}`,
+          prompt: "Can you explain what you just learned in your own simple words?"
+        };
+        
+        setCurrentPromptForPause(prompt);
+        setShowExplainPrompt(true);
+        setCurrentPauseIndex(prev => prev + 1);
+        
+        toast.info("🎧 Audio paused! Time to explain what you learned.");
+      }
+    }
+  }, [autoPauseEnabled, pausePoints, currentPauseIndex, selectedDocument]);
 
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
 
-    const updateTime = () => setCurrentTime(audio.currentTime);
+    const updateTime = () => {
+      setCurrentTime(audio.currentTime);
+      checkPausePoints(audio.currentTime);
+    };
     const updateDuration = () => setDuration(audio.duration);
     const handleEnded = () => setIsPlaying(false);
 
@@ -150,7 +242,7 @@ const AudioPlayer = ({ selectedDocumentId: propDocumentId }: AudioPlayerProps) =
       audio.removeEventListener("loadedmetadata", updateDuration);
       audio.removeEventListener("ended", handleEnded);
     };
-  }, [audioUrl]);
+  }, [audioUrl, checkPausePoints]);
 
   const togglePlay = () => {
     if (!audioRef.current) return;
@@ -203,6 +295,21 @@ const AudioPlayer = ({ selectedDocumentId: propDocumentId }: AudioPlayerProps) =
     return `${minutes}:${seconds.toString().padStart(2, "0")}`;
   };
 
+  const handleContinueListening = () => {
+    setShowExplainPrompt(false);
+    if (audioRef.current) {
+      audioRef.current.play();
+      setIsPlaying(true);
+    }
+  };
+
+  const handleGoToExplainBack = () => {
+    setShowExplainPrompt(false);
+    if (selectedDocument && onExplainBackTrigger) {
+      onExplainBackTrigger(selectedDocument.id, Math.max(0, currentPauseIndex - 1));
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -216,6 +323,42 @@ const AudioPlayer = ({ selectedDocumentId: propDocumentId }: AudioPlayerProps) =
   return (
     <div className="space-y-8">
       {audioUrl && <audio ref={audioRef} src={audioUrl} />}
+
+      {/* Explain-Back Prompt Dialog */}
+      <Dialog open={showExplainPrompt} onOpenChange={setShowExplainPrompt}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Brain className="h-5 w-5 text-primary" />
+              Time to Explain!
+            </DialogTitle>
+            <DialogDescription>
+              The audio has paused at a key concept. Test your understanding!
+            </DialogDescription>
+          </DialogHeader>
+          
+          {currentPromptForPause && (
+            <div className="bg-secondary/50 rounded-lg p-4 my-4">
+              <p className="text-sm text-primary font-medium mb-1">{currentPromptForPause.topic}</p>
+              <p className="text-foreground">{currentPromptForPause.prompt}</p>
+              <div className="flex items-center gap-1 mt-2 text-xs text-muted-foreground">
+                <Lightbulb className="h-3 w-3" />
+                <span>Tip: Explain it like you're teaching a 10-year-old!</span>
+              </div>
+            </div>
+          )}
+          
+          <DialogFooter className="flex gap-2 sm:gap-2">
+            <Button variant="outline" onClick={handleContinueListening}>
+              Continue Listening
+            </Button>
+            <Button onClick={handleGoToExplainBack} className="gap-1">
+              <Brain className="h-4 w-4" />
+              Explain Now
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Document Selection */}
       {documents.length > 0 && (
@@ -241,14 +384,30 @@ const AudioPlayer = ({ selectedDocumentId: propDocumentId }: AudioPlayerProps) =
 
       {/* Language Display */}
       {selectedDocument && (
-        <div className="space-y-3">
-          <label className="flex items-center gap-2 text-sm font-medium text-foreground">
-            <Languages className="h-4 w-4" />
-            Audio Language
-          </label>
-          <p className="text-muted-foreground">
-            {nigerianLanguages.find((l) => l.code === selectedLanguage)?.name || "English"}
-          </p>
+        <div className="flex items-center justify-between">
+          <div className="space-y-1">
+            <label className="flex items-center gap-2 text-sm font-medium text-foreground">
+              <Languages className="h-4 w-4" />
+              Audio Language
+            </label>
+            <p className="text-muted-foreground">
+              {nigerianLanguages.find((l) => l.code === selectedLanguage)?.name || "English"}
+            </p>
+          </div>
+          
+          {/* Auto-pause toggle */}
+          <div className="flex items-center gap-2">
+            <label className="text-sm text-muted-foreground">Auto-pause for learning</label>
+            <Button 
+              variant={autoPauseEnabled ? "default" : "outline"} 
+              size="sm"
+              onClick={() => setAutoPauseEnabled(!autoPauseEnabled)}
+              className="gap-1"
+            >
+              <Brain className="h-3 w-3" />
+              {autoPauseEnabled ? "On" : "Off"}
+            </Button>
+          </div>
         </div>
       )}
 
@@ -276,17 +435,33 @@ const AudioPlayer = ({ selectedDocumentId: propDocumentId }: AudioPlayerProps) =
               <p className="text-sm text-muted-foreground">
                 {nigerianLanguages.find((l) => l.code === selectedLanguage)?.name}
               </p>
+              {autoPauseEnabled && pausePoints.length > 0 && (
+                <p className="text-xs text-primary mt-1">
+                  🎯 {pausePoints.length - currentPauseIndex} explain-back checkpoints remaining
+                </p>
+              )}
             </div>
 
-            {/* Progress Bar */}
+            {/* Progress Bar with pause point markers */}
             <div className="space-y-2 mb-6">
-              <Slider
-                value={[currentTime]}
-                max={duration || 100}
-                step={1}
-                onValueChange={handleSeek}
-                className="cursor-pointer"
-              />
+              <div className="relative">
+                <Slider
+                  value={[currentTime]}
+                  max={duration || 100}
+                  step={1}
+                  onValueChange={handleSeek}
+                  className="cursor-pointer"
+                />
+                {/* Pause point markers */}
+                {autoPauseEnabled && pausePoints.map((point, index) => (
+                  <div
+                    key={index}
+                    className="absolute top-1/2 -translate-y-1/2 w-2 h-2 rounded-full bg-primary"
+                    style={{ left: `${(point / duration) * 100}%` }}
+                    title={`Checkpoint ${index + 1}`}
+                  />
+                ))}
+              </div>
               <div className="flex justify-between text-xs text-muted-foreground">
                 <span>{formatTime(currentTime)}</span>
                 <span>{formatTime(duration)}</span>

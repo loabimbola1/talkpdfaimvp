@@ -11,7 +11,7 @@ serve(async (req) => {
   }
 
   try {
-    const { concept, explanation, documentId } = await req.json();
+    const { concept, explanation, documentId, documentSummary } = await req.json();
 
     if (!concept || !explanation) {
       throw new Error("Concept and explanation are required");
@@ -22,27 +22,44 @@ serve(async (req) => {
       throw new Error("LOVABLE_API_KEY is not configured");
     }
 
-    const systemPrompt = `You are an educational AI evaluator for TalkPDF AI, a learning platform for Nigerian students. Your job is to evaluate how well a student understands a concept based on their explanation.
+    // PRD-based scoring system with 3 dimensions: Simplicity, Accuracy, Analogies
+    const systemPrompt = `You are the TalkPDF AI Understanding Engine for Nigerian students preparing for WAEC and JAMB exams. Evaluate a student's explanation of a concept.
 
-Evaluate the explanation based on:
-1. Accuracy - Is the explanation factually correct?
-2. Completeness - Does it cover the key aspects of the concept?
-3. Clarity - Is the explanation clear and well-structured?
-4. Understanding - Does it show genuine comprehension vs rote memorization?
+**Evaluation Dimensions (0-10 each):**
+1. Simplicity: Did they avoid jargon and speak plainly? Could a 10-year-old understand?
+2. Accuracy: Do they capture the core principles correctly?
+3. Analogies: Can they relate it to something familiar from everyday life?
 
-Provide your evaluation as a JSON object with:
-- score: A number from 0-100
-- feedback: A brief, encouraging overall assessment (2-3 sentences)
-- strengths: An array of 1-3 things the student did well
-- improvements: An array of 1-3 suggestions for improvement
+**Badge Scoring (based on total out of 30):**
+- Bronze Badge: 15-20 points (50-67%) - Basic understanding shown
+- Silver Badge: 21-25 points (70-83%) - Good understanding demonstrated  
+- Gold Badge: 26-30 points (87-100%) - Excellent mastery achieved
 
-Be encouraging but honest. Consider that these are students who may be preparing for exams like WAEC and JAMB.`;
+**Special Cases:**
+- If student uses too much textbook jargon, set needsRetry=true with feedback: "That sounds like a textbook definition. Try explaining it like you're teaching a 10-year-old."
+- Be encouraging but honest. Nigerian students need honest feedback to improve.
 
-    const userPrompt = `Concept to explain: "${concept}"
+Respond with JSON:
+{
+  "simplicity": <0-10>,
+  "accuracy": <0-10>,
+  "analogies": <0-10>,
+  "totalScore": <sum>,
+  "score": <percentage 0-100>,
+  "badge": "bronze" | "silver" | "gold" | null,
+  "feedback": "<2-3 sentence overall assessment>",
+  "strengths": ["strength1", "strength2"],
+  "improvements": ["improvement1", "improvement2"],
+  "needsRetry": true | false
+}`;
 
-Student's explanation: "${explanation}"
+    const userPrompt = `**Concept to explain:** "${concept}"
 
-Evaluate this explanation and provide your assessment as JSON.`;
+${documentSummary ? `**Context from document:** "${documentSummary.substring(0, 500)}"` : ""}
+
+**Student's explanation:** "${explanation}"
+
+Evaluate this explanation using the 3-dimension scoring system.`;
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
@@ -61,11 +78,20 @@ Evaluate this explanation and provide your assessment as JSON.`;
             type: "function",
             function: {
               name: "submit_evaluation",
-              description: "Submit the evaluation of the student's explanation",
+              description: "Submit the PRD-based evaluation of the student's explanation",
               parameters: {
                 type: "object",
                 properties: {
-                  score: { type: "number", description: "Score from 0-100" },
+                  simplicity: { type: "number", description: "Simplicity score 0-10" },
+                  accuracy: { type: "number", description: "Accuracy score 0-10" },
+                  analogies: { type: "number", description: "Analogies score 0-10" },
+                  totalScore: { type: "number", description: "Total score out of 30" },
+                  score: { type: "number", description: "Percentage score 0-100" },
+                  badge: { 
+                    type: "string", 
+                    enum: ["bronze", "silver", "gold", null],
+                    description: "Badge earned based on total score"
+                  },
                   feedback: { type: "string", description: "Brief overall feedback" },
                   strengths: { 
                     type: "array", 
@@ -77,8 +103,12 @@ Evaluate this explanation and provide your assessment as JSON.`;
                     items: { type: "string" },
                     description: "List of areas to improve"
                   },
+                  needsRetry: { 
+                    type: "boolean", 
+                    description: "Whether the student should try again with simpler language" 
+                  },
                 },
-                required: ["score", "feedback", "strengths", "improvements"],
+                required: ["simplicity", "accuracy", "analogies", "totalScore", "score", "feedback", "strengths", "improvements", "needsRetry"],
                 additionalProperties: false,
               },
             },

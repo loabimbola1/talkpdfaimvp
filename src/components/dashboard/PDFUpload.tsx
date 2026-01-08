@@ -105,12 +105,41 @@ const PDFUpload = ({ onDocumentProcessed }: PDFUploadProps) => {
       setFiles((prev) =>
         prev.map((f) =>
           f.name === file.name
-            ? { ...f, id: document.id, progress: 100, status: "complete" as const }
+            ? { ...f, id: document.id, progress: 100, status: "processing" as const }
             : f
         )
       );
 
-      toast.success(`${file.name} uploaded successfully`);
+      toast.success(`${file.name} uploaded. Starting processing...`);
+
+      // Auto-process the PDF immediately after upload
+      setIsProcessing(true);
+      try {
+        const { data, error } = await supabase.functions.invoke("process-pdf", {
+          body: {
+            documentId: document.id,
+            language: selectedLanguage
+          }
+        });
+
+        if (error) throw error;
+
+        toast.success(`${file.name} processed successfully!`);
+        
+        // Remove from list and notify parent
+        setFiles((prev) => prev.filter((f) => f.name !== file.name));
+        onDocumentProcessed?.(document.id);
+      } catch (processError: any) {
+        console.error("Processing error:", processError);
+        setFiles((prev) =>
+          prev.map((f) =>
+            f.name === file.name ? { ...f, status: "error" as const } : f
+          )
+        );
+        toast.error(`Failed to process ${file.name}: ${processError.message}`);
+      } finally {
+        setIsProcessing(false);
+      }
     } catch (error: any) {
       console.error("Upload error:", error);
 
@@ -334,26 +363,11 @@ const PDFUpload = ({ onDocumentProcessed }: PDFUploadProps) => {
         </div>
       )}
 
-      {/* Actions */}
-      {hasCompletedFiles && (
-        <div className="flex justify-end">
-          <Button 
-            className="gap-2" 
-            onClick={processPDFs}
-            disabled={isProcessing}
-          >
-            {isProcessing ? (
-              <>
-                <Loader2 className="h-4 w-4 animate-spin" />
-                Processing...
-              </>
-            ) : (
-              <>
-                Process PDFs
-                <FileText className="h-4 w-4" />
-              </>
-            )}
-          </Button>
+      {/* Processing indicator */}
+      {isProcessing && (
+        <div className="flex items-center justify-center gap-2 p-4 bg-primary/10 rounded-xl">
+          <Loader2 className="h-5 w-5 text-primary animate-spin" />
+          <span className="text-sm font-medium text-primary">Processing PDF automatically...</span>
         </div>
       )}
     </div>

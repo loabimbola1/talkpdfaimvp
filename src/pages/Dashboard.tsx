@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { LogOut, Upload, Headphones, Award, Settings, User, FileText, Brain, Crown } from "lucide-react";
+import { LogOut, Upload, Headphones, Award, Settings, User, FileText, Brain, Crown, Trophy } from "lucide-react";
 import logo from "@/assets/logo.png";
 import PDFUpload from "@/components/dashboard/PDFUpload";
 import AudioPlayer from "@/components/dashboard/AudioPlayer";
@@ -13,15 +13,17 @@ import ExplainBackMode from "@/components/dashboard/ExplainBackMode";
 import UsageLimitsDisplay from "@/components/dashboard/UsageLimitsDisplay";
 import SubscriptionPlans from "@/components/dashboard/SubscriptionPlans";
 import BadgesDisplay from "@/components/dashboard/BadgesDisplay";
+import Leaderboard from "@/components/dashboard/Leaderboard";
 import type { User as SupabaseUser } from "@supabase/supabase-js";
 
-type TabType = "upload" | "documents" | "listen" | "explain" | "badges" | "subscription" | "settings";
+type TabType = "upload" | "documents" | "listen" | "explain" | "badges" | "leaderboard" | "subscription" | "settings";
 
 const Dashboard = () => {
   const [user, setUser] = useState<SupabaseUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<TabType>("upload");
   const [selectedDocumentId, setSelectedDocumentId] = useState<string | null>(null);
+  const [selectedPromptIndex, setSelectedPromptIndex] = useState<number>(0);
   const [badgeRefreshKey, setBadgeRefreshKey] = useState(0);
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -30,12 +32,16 @@ const Dashboard = () => {
   useEffect(() => {
     const tab = searchParams.get("tab");
     const docId = searchParams.get("doc");
+    const promptIndex = searchParams.get("prompt");
     
-    if (tab && ["upload", "documents", "listen", "explain", "badges", "subscription", "settings"].includes(tab)) {
+    if (tab && ["upload", "documents", "listen", "explain", "badges", "leaderboard", "subscription", "settings"].includes(tab)) {
       setActiveTab(tab as TabType);
     }
     if (docId) {
       setSelectedDocumentId(docId);
+    }
+    if (promptIndex) {
+      setSelectedPromptIndex(parseInt(promptIndex, 10));
     }
   }, [searchParams]);
 
@@ -69,6 +75,14 @@ const Dashboard = () => {
     setActiveTab("listen");
   };
 
+  // Handler for AudioPlayer's explain-back trigger
+  const handleExplainBackTrigger = useCallback((documentId: string, promptIndex: number) => {
+    setSelectedDocumentId(documentId);
+    setSelectedPromptIndex(promptIndex);
+    setActiveTab("explain");
+    toast.info("Let's test your understanding of this concept!", { duration: 3000 });
+  }, []);
+
   const handleDocumentProcessed = useCallback((documentId: string) => {
     // Auto-navigate to Explain-Back with the newly processed document
     setSelectedDocumentId(documentId);
@@ -94,6 +108,7 @@ const Dashboard = () => {
     { id: "listen" as TabType, label: "Listen", icon: Headphones },
     { id: "explain" as TabType, label: "Explain-Back", icon: Brain },
     { id: "badges" as TabType, label: "Badges", icon: Award },
+    { id: "leaderboard" as TabType, label: "Leaderboard", icon: Trophy },
     { id: "subscription" as TabType, label: "Upgrade", icon: Crown },
     { id: "settings" as TabType, label: "Settings", icon: Settings },
   ];
@@ -153,14 +168,21 @@ const Dashboard = () => {
               <div className="bg-card rounded-2xl border border-border p-6 md:p-8">
                 {activeTab === "upload" && <PDFUpload onDocumentProcessed={handleDocumentProcessed} />}
                 {activeTab === "documents" && <MyDocuments onSelectDocument={handleSelectDocument} />}
-                {activeTab === "listen" && <AudioPlayer selectedDocumentId={selectedDocumentId} />}
+                {activeTab === "listen" && (
+                  <AudioPlayer 
+                    selectedDocumentId={selectedDocumentId} 
+                    onExplainBackTrigger={handleExplainBackTrigger}
+                  />
+                )}
                 {activeTab === "explain" && (
                   <ExplainBackMode 
                     documentId={selectedDocumentId || undefined} 
+                    promptIndex={selectedPromptIndex}
                     onBadgeEarned={handleBadgeEarned}
                   />
                 )}
                 {activeTab === "badges" && <BadgesDisplay key={badgeRefreshKey} />}
+                {activeTab === "leaderboard" && <Leaderboard />}
                 {activeTab === "subscription" && <SubscriptionPlans />}
                 {activeTab === "settings" && <ProfileSettings user={user} />}
               </div>

@@ -201,74 +201,72 @@ Create 3-5 study prompts that will help students test their understanding.`
       }
     }
 
-    // Generate audio using ElevenLabs (optional - continue even if it fails)
-    console.log("Generating audio...");
+    // Generate audio using Spitch (Nigerian language TTS) - optional
+    console.log("Generating audio with Spitch TTS...");
     
     let audioPath: string | null = null;
     let audioDurationSeconds = 0;
     
-    // Truncate text for TTS (ElevenLabs has character limits)
-    const textForTts = extractedText.substring(0, 3000); // Reduced to avoid quota issues
+    // Truncate text for TTS
+    const textForTts = extractedText.substring(0, 5000);
     
-    // Map language to voice
-    const voiceMap: Record<string, string> = {
-      "en": "JBFqnCBsd6RMkjVDRZzb", // George
-      "yo": "JBFqnCBsd6RMkjVDRZzb", 
-      "ha": "JBFqnCBsd6RMkjVDRZzb",
-      "ig": "JBFqnCBsd6RMkjVDRZzb",
-      "pcm": "JBFqnCBsd6RMkjVDRZzb"
+    // Map language to Spitch voices
+    const spitchVoiceMap: Record<string, string> = {
+      "en": "lucy",
+      "yo": "sade",
+      "ha": "zainab",
+      "ig": "ngozi",
+      "pcm": "lucy"
     };
     
-    const voiceId = voiceMap[language] || voiceMap["en"];
+    const selectedVoice = spitchVoiceMap[language] || spitchVoiceMap["en"];
+    const SPITCH_API_KEY = Deno.env.get("SPITCH_API_KEY");
 
     try {
-      const ttsResponse = await fetch(
-        `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}?output_format=mp3_44100_128`,
-        {
+      if (!SPITCH_API_KEY) {
+        console.warn("SPITCH_API_KEY not configured, skipping TTS");
+      } else {
+        const ttsResponse = await fetch("https://api.spitch.app/api/tts", {
           method: "POST",
           headers: {
-            "xi-api-key": ELEVENLABS_API_KEY!,
+            "Authorization": `Bearer ${SPITCH_API_KEY}`,
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
             text: textForTts,
-            model_id: "eleven_multilingual_v2",
-            voice_settings: {
-              stability: 0.5,
-              similarity_boost: 0.75,
-              speed: 1.0
-            }
+            voice: selectedVoice,
+            format: "mp3",
           })
-        }
-      );
+        });
 
-      if (!ttsResponse.ok) {
-        const errorText = await ttsResponse.text();
-        console.warn("TTS failed (continuing without audio):", errorText);
-      } else {
-        const audioBuffer = await ttsResponse.arrayBuffer();
-        const audioBlob = new Blob([audioBuffer], { type: "audio/mpeg" });
-        
-        // Calculate approximate audio duration
-        const wordCount = textForTts.split(/\s+/).length;
-        audioDurationSeconds = Math.round(wordCount / 2.5); // ~150 words per minute
-
-        // Upload audio to storage
-        audioPath = `${document.user_id}/${documentId}/audio.mp3`;
-        
-        const { error: uploadError } = await supabase
-          .storage
-          .from("talkpdf")
-          .upload(audioPath, audioBlob, {
-            contentType: "audio/mpeg",
-            upsert: true
-          });
-
-        if (uploadError) {
-          console.warn("Failed to upload audio:", uploadError);
-          audioPath = null;
+        if (!ttsResponse.ok) {
+          const errorText = await ttsResponse.text();
+          console.warn("Spitch TTS failed (continuing without audio):", errorText);
         } else {
-          console.log("Audio uploaded successfully:", audioPath);
+          const audioBuffer = await ttsResponse.arrayBuffer();
+          const audioBlob = new Blob([audioBuffer], { type: "audio/mpeg" });
+          
+          // Calculate approximate audio duration
+          const wordCount = textForTts.split(/\s+/).length;
+          audioDurationSeconds = Math.round(wordCount / 2.5); // ~150 words per minute
+
+          // Upload audio to storage
+          audioPath = `${document.user_id}/${documentId}/audio.mp3`;
+          
+          const { error: uploadError } = await supabase
+            .storage
+            .from("talkpdf")
+            .upload(audioPath, audioBlob, {
+              contentType: "audio/mpeg",
+              upsert: true
+            });
+
+          if (uploadError) {
+            console.warn("Failed to upload audio:", uploadError);
+            audioPath = null;
+          } else {
+            console.log("Spitch audio uploaded successfully:", audioPath);
+          }
         }
       }
     } catch (ttsError) {

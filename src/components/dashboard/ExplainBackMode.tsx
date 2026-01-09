@@ -44,6 +44,7 @@ type RawDocument = {
 interface ExplainBackModeProps {
   documentId?: string;
   documentTitle?: string;
+  promptIndex?: number;
   onBadgeEarned?: () => void;
 }
 
@@ -66,7 +67,7 @@ interface Badge {
   description: string;
 }
 
-const ExplainBackMode = ({ documentId: propDocumentId, documentTitle, onBadgeEarned }: ExplainBackModeProps) => {
+const ExplainBackMode = ({ documentId: propDocumentId, documentTitle, promptIndex: propPromptIndex, onBadgeEarned }: ExplainBackModeProps) => {
   const [isRecording, setIsRecording] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [explanation, setExplanation] = useState("");
@@ -74,7 +75,7 @@ const ExplainBackMode = ({ documentId: propDocumentId, documentTitle, onBadgeEar
   const [isLoading, setIsLoading] = useState(true);
   const [documents, setDocuments] = useState<Document[]>([]);
   const [selectedDocumentId, setSelectedDocumentId] = useState<string>(propDocumentId || "");
-  const [currentPromptIndex, setCurrentPromptIndex] = useState(0);
+  const [currentPromptIndex, setCurrentPromptIndex] = useState(propPromptIndex || 0);
   const [showHint, setShowHint] = useState(false);
   const [earnedBadge, setEarnedBadge] = useState<Badge | null>(null);
   const [completedPrompts, setCompletedPrompts] = useState<number>(0);
@@ -88,14 +89,14 @@ const ExplainBackMode = ({ documentId: propDocumentId, documentTitle, onBadgeEar
     fetchDocuments();
   }, []);
 
-  // Handle propDocumentId changes
+  // Handle propDocumentId and propPromptIndex changes
   useEffect(() => {
     if (propDocumentId && documents.length > 0) {
       setSelectedDocumentId(propDocumentId);
-      setCurrentPromptIndex(0);
+      setCurrentPromptIndex(propPromptIndex || 0);
       resetExercise();
     }
-  }, [propDocumentId, documents]);
+  }, [propDocumentId, propPromptIndex, documents]);
 
   const fetchDocuments = async () => {
     try {

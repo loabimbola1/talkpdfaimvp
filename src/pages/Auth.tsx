@@ -1,12 +1,11 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Eye, EyeOff, ArrowLeft } from "lucide-react";
-import logo from "@/assets/logo.png";
 import { z } from "zod";
 
 const emailSchema = z.string().email("Please enter a valid email address");
@@ -110,21 +109,25 @@ const Auth = () => {
     <div className="min-h-screen bg-gradient-hero flex items-center justify-center p-4">
       <div className="w-full max-w-md">
         {/* Back to Home */}
-        <a
-          href="/"
+        <Link
+          to="/"
           className="inline-flex items-center gap-2 text-muted-foreground hover:text-foreground mb-8 transition-colors"
         >
           <ArrowLeft className="h-4 w-4" />
           Back to Home
-        </a>
+        </Link>
 
         <div className="bg-card rounded-2xl shadow-elevated p-8 border border-border">
-          {/* Logo */}
+          {/* Logo - Text only, consistent format */}
           <div className="text-center mb-8">
-            <div className="flex items-center justify-center gap-2 mb-4">
-              <img src={logo} alt="TalkPDF AI" className="h-10" />
-              <span className="font-display text-xl font-bold text-foreground">TalkPDF AI</span>
-            </div>
+            <Link to="/" className="inline-flex items-center gap-1.5 justify-center mb-4">
+              <div className="w-10 h-10 rounded-lg bg-primary flex items-center justify-center">
+                <span className="text-primary-foreground font-bold text-lg">T</span>
+              </div>
+              <span className="font-display text-2xl font-bold text-foreground tracking-tight">
+                TalkPDF
+              </span>
+            </Link>
             <h1 className="font-display text-2xl font-bold text-foreground">
               {isLogin ? "Welcome Back" : "Create Account"}
             </h1>
@@ -146,6 +149,7 @@ const Auth = () => {
                   value={fullName}
                   onChange={(e) => setFullName(e.target.value)}
                   required={!isLogin}
+                  className="h-11"
                 />
               </div>
             )}
@@ -159,6 +163,7 @@ const Auth = () => {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
+                className="h-11"
               />
             </div>
 
@@ -172,6 +177,7 @@ const Auth = () => {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
+                  className="h-11 pr-10"
                 />
                 <button
                   type="button"
@@ -187,7 +193,7 @@ const Auth = () => {
               </div>
             </div>
 
-            <Button type="submit" className="w-full" disabled={loading}>
+            <Button type="submit" className="w-full h-11 rounded-full" disabled={loading}>
               {loading
                 ? "Please wait..."
                 : isLogin

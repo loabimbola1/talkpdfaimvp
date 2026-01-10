@@ -14,16 +14,23 @@ interface PaymentRequest {
   billingCycle: BillingCycle;
 }
 
+// Strict plan/price mapping - single source of truth
 const PRICE_MAP: Record<string, Record<BillingCycle, number>> = {
   student_pro: { monthly: 2000, yearly: 20000 },
   mastery_pass: { monthly: 3500, yearly: 40000 },
 };
+
+// Valid plans list for validation
+const VALID_PLANS = Object.keys(PRICE_MAP);
 
 serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
+
+  const requestId = crypto.randomUUID().slice(0, 8);
+  const logPrefix = `[payment:${requestId}]`;
 
   try {
     const FLUTTERWAVE_CLIENT_SECRET = Deno.env.get("FLUTTERWAVE_CLIENT_SECRET");
@@ -32,7 +39,7 @@ serve(async (req) => {
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 
     if (!FLUTTERWAVE_CLIENT_SECRET) {
-      console.error("Missing Flutterwave API credentials");
+      console.error(logPrefix, "Missing Flutterwave API credentials");
       return new Response(JSON.stringify({ error: "Payment service not configured" }), {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -40,7 +47,7 @@ serve(async (req) => {
     }
 
     if (!SUPABASE_URL || !SUPABASE_ANON_KEY || !SUPABASE_SERVICE_ROLE_KEY) {
-      console.error("Missing backend configuration");
+      console.error(logPrefix, "Missing backend configuration");
       return new Response(JSON.stringify({ error: "Service not configured" }), {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -50,6 +57,7 @@ serve(async (req) => {
     // Require authenticated caller
     const authHeader = req.headers.get("Authorization") ?? "";
     if (!authHeader.startsWith("Bearer ")) {
+      console.warn(logPrefix, "Missing or invalid auth header");
       return new Response(JSON.stringify({ error: "Unauthorized" }), {
         status: 401,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -66,7 +74,7 @@ serve(async (req) => {
     } = await authClient.auth.getUser();
 
     if (userError || !user) {
-      console.error("Auth error:", userError);
+      console.error(logPrefix, "Auth error:", userError?.message);
       return new Response(JSON.stringify({ error: "Unauthorized" }), {
         status: 401,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -77,22 +85,28 @@ serve(async (req) => {
 
     const { plan, billingCycle }: PaymentRequest = await req.json();
 
-    if (!plan || !PRICE_MAP[plan]) {
+    // Security: Strict plan validation
+    if (!plan || !VALID_PLANS.includes(plan)) {
+      console.warn(logPrefix, "Invalid plan attempted", { plan, validPlans: VALID_PLANS });
       return new Response(JSON.stringify({ error: "Invalid plan" }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
+    // Security: Strict billing cycle validation
     if (billingCycle !== "monthly" && billingCycle !== "yearly") {
+      console.warn(logPrefix, "Invalid billing cycle", { billingCycle });
       return new Response(JSON.stringify({ error: "Invalid billing cycle" }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
+    // Get amount from server-side price map only (never trust client)
     const amount = PRICE_MAP[plan][billingCycle];
     if (!amount || amount <= 0) {
+      console.error(logPrefix, "Invalid amount from price map", { plan, billingCycle, amount });
       return new Response(JSON.stringify({ error: "Invalid amount" }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -102,15 +116,24 @@ serve(async (req) => {
     // Ensure we redirect only back to this site
     const origin = req.headers.get("origin") ?? "";
     if (!origin || !origin.startsWith("http")) {
+      console.warn(logPrefix, "Invalid origin", { origin });
       return new Response(JSON.stringify({ error: "Invalid origin" }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
+    // Generate unique transaction reference
     const tx_ref = `TALKPDF_${Date.now()}_${crypto.randomUUID().slice(0, 8)}`;
 
-    console.log("Creating payment", { tx_ref, plan, billingCycle, userId: user.id, amount });
+    console.log(logPrefix, "Creating payment", { 
+      tx_ref, 
+      plan, 
+      billingCycle, 
+      userId: user.id, 
+      amount,
+      currency: "NGN" 
+    });
 
     // Store pending payment in database (server-trusted values only)
     const { error: dbError } = await supabaseAdmin.from("payments").insert({
@@ -124,7 +147,7 @@ serve(async (req) => {
     });
 
     if (dbError) {
-      console.error("Database error:", dbError);
+      console.error(logPrefix, "Database error:", dbError.message);
       return new Response(JSON.stringify({ error: "Failed to create payment record" }), {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -151,8 +174,11 @@ serve(async (req) => {
       meta: {
         plan,
         billing_cycle: billingCycle,
+        user_id: user.id,
       },
     };
+
+    console.log(logPrefix, "Calling Flutterwave API");
 
     const flutterwaveResponse = await fetch("https://api.flutterwave.com/v3/payments", {
       method: "POST",
@@ -166,7 +192,11 @@ serve(async (req) => {
     const flutterwaveData = await flutterwaveResponse.json();
 
     if (flutterwaveData?.status !== "success") {
-      console.error("Flutterwave init failed", { tx_ref, response: flutterwaveData });
+      console.error(logPrefix, "Flutterwave init failed", { 
+        tx_ref, 
+        status: flutterwaveData?.status,
+        message: flutterwaveData?.message 
+      });
 
       await supabaseAdmin
         .from("payments")
@@ -182,6 +212,8 @@ serve(async (req) => {
       );
     }
 
+    console.log(logPrefix, "Payment link generated", { tx_ref });
+
     return new Response(
       JSON.stringify({
         success: true,
@@ -194,7 +226,7 @@ serve(async (req) => {
       }
     );
   } catch (error) {
-    console.error("Payment processing error:", error);
+    console.error(logPrefix, "Payment processing error:", error);
     return new Response(JSON.stringify({ error: "Internal server error" }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },

@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { useLocation } from "react-router-dom";
 import Header from "@/components/landing/Header";
 import Hero from "@/components/landing/Hero";
+import TrustedBy from "@/components/landing/TrustedBy";
 import Features from "@/components/landing/Features";
 import HowItWorks from "@/components/landing/HowItWorks";
 import Pricing from "@/components/landing/Pricing";
@@ -32,6 +33,7 @@ const Index = () => {
       <Header />
       <main>
         <Hero />
+        <TrustedBy />
         <Features />
         <HowItWorks />
         <section id="pricing">

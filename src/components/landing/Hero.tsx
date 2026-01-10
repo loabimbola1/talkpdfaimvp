@@ -1,91 +1,97 @@
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { ArrowRight, Play, Upload, Headphones, Award } from "lucide-react";
+import { ArrowRight, Upload, Headphones, Award } from "lucide-react";
 
 const Hero = () => {
   return (
-    <section className="relative pt-24 pb-16 md:pt-32 md:pb-24 bg-gradient-hero overflow-hidden">
-      {/* Background decoration */}
+    <section className="relative pt-24 pb-16 md:pt-32 md:pb-24 overflow-hidden">
+      {/* Background with hero image overlay effect */}
+      <div className="absolute inset-0 bg-gradient-to-b from-secondary/30 to-background" />
+      
+      {/* Decorative elements */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute -top-40 -right-40 w-80 h-80 rounded-full bg-primary/5 blur-3xl" />
-        <div className="absolute -bottom-40 -left-40 w-80 h-80 rounded-full bg-accent/10 blur-3xl" />
+        <div className="absolute top-20 right-10 w-72 h-72 rounded-full bg-primary/5 blur-3xl" />
+        <div className="absolute bottom-20 left-10 w-96 h-96 rounded-full bg-accent/5 blur-3xl" />
       </div>
 
       <div className="container mx-auto px-4 relative z-10">
         <div className="max-w-4xl mx-auto text-center">
           {/* Badge */}
-          <div className="inline-flex items-center gap-2 bg-secondary/80 text-secondary-foreground rounded-full px-4 py-1.5 text-sm font-medium mb-6 animate-fade-in">
+          <div className="inline-flex items-center gap-2 bg-primary/10 text-primary rounded-full px-4 py-1.5 text-sm font-medium mb-8 animate-fade-in">
             <span className="inline-block w-2 h-2 rounded-full bg-primary animate-pulse" />
-            86% Beta Slots Sold in 14 Days
+            Now with Nigerian language support
           </div>
 
-          {/* Main Headline */}
+          {/* Main Headline - Spitch-inspired */}
           <h1 className="font-display text-4xl md:text-5xl lg:text-6xl font-bold text-foreground mb-6 leading-tight animate-slide-up">
-            Go from confusing PDF to{" "}
-            <span className="text-gradient">clear understanding</span>. Fast.
+            Turn Your PDFs Into
+            <br />
+            <span className="text-gradient">Interactive Audio Tutors.</span>
           </h1>
 
           {/* Subheadline */}
-          <p className="text-lg md:text-xl text-muted-foreground max-w-2xl mx-auto mb-8 animate-slide-up" style={{ animationDelay: "0.1s" }}>
-            TalkPDF AI turns textbooks into interactive tutors in your own language.{" "}
-            <span className="text-foreground font-medium">
-              If you hate memorizing, you'll love TalkPDF AI.
-            </span>
+          <p className="text-lg md:text-xl text-muted-foreground max-w-2xl mx-auto mb-10 animate-slide-up" style={{ animationDelay: "0.1s" }}>
+            Listen to your study materials in Yoruba, Hausa, Igbo, Pidgin, or English.
+            Learn by explaining concepts back and earn badges.
           </p>
 
           {/* CTA Buttons */}
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-12 animate-slide-up" style={{ animationDelay: "0.2s" }}>
-            <Button size="lg" className="w-full sm:w-auto gap-2 text-base" asChild>
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-16 animate-slide-up" style={{ animationDelay: "0.2s" }}>
+            <Button size="lg" className="w-full sm:w-auto gap-2 text-base rounded-full px-8 h-12" asChild>
               <Link to="/auth">
-                Start Learning Free
+                Get Started Free
                 <ArrowRight className="h-4 w-4" />
               </Link>
             </Button>
-            <Button variant="outline" size="lg" className="w-full sm:w-auto gap-2 text-base">
-              <Play className="h-4 w-4" />
-              Watch Demo
+            <Button variant="outline" size="lg" className="w-full sm:w-auto gap-2 text-base rounded-full px-8 h-12">
+              See How It Works
             </Button>
           </div>
 
-          {/* Social Proof */}
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-6 text-sm text-muted-foreground animate-slide-up" style={{ animationDelay: "0.3s" }}>
-            <div className="flex items-center gap-2">
-              <span className="font-display font-bold text-foreground text-xl">300%</span>
-              <span>Retention Lift</span>
+          {/* Stats Row */}
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-8 text-sm animate-slide-up" style={{ animationDelay: "0.3s" }}>
+            <div className="flex flex-col items-center">
+              <span className="font-display font-bold text-foreground text-3xl">300%</span>
+              <span className="text-muted-foreground">Retention Boost</span>
             </div>
-            <div className="hidden sm:block w-px h-6 bg-border" />
-            <div className="flex items-center gap-2">
-              <span className="font-display font-bold text-foreground text-xl">5</span>
-              <span>Languages Supported</span>
+            <div className="hidden sm:block w-px h-12 bg-border" />
+            <div className="flex flex-col items-center">
+              <span className="font-display font-bold text-foreground text-3xl">5+</span>
+              <span className="text-muted-foreground">Languages</span>
             </div>
-            <div className="hidden sm:block w-px h-6 bg-border" />
-            <div className="flex items-center gap-2">
-              <span className="font-display font-bold text-foreground text-xl">10K+</span>
-              <span>Students</span>
+            <div className="hidden sm:block w-px h-12 bg-border" />
+            <div className="flex flex-col items-center">
+              <span className="font-display font-bold text-foreground text-3xl">10K+</span>
+              <span className="text-muted-foreground">Students</span>
             </div>
           </div>
         </div>
 
-        {/* How It Works Preview */}
-        <div className="max-w-3xl mx-auto mt-16 animate-slide-up" style={{ animationDelay: "0.4s" }}>
-          <div className="grid grid-cols-3 gap-4 md:gap-8">
-            <div className="flex flex-col items-center text-center p-4">
-              <div className="w-12 h-12 md:w-16 md:h-16 rounded-2xl bg-primary/10 flex items-center justify-center mb-3">
-                <Upload className="h-5 w-5 md:h-7 md:w-7 text-primary" />
+        {/* How It Works Visual */}
+        <div className="max-w-4xl mx-auto mt-20 animate-slide-up" style={{ animationDelay: "0.4s" }}>
+          <div className="bg-card rounded-3xl border border-border p-8 md:p-12 shadow-elevated">
+            <div className="grid md:grid-cols-3 gap-8">
+              <div className="flex flex-col items-center text-center">
+                <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center mb-4">
+                  <Upload className="h-7 w-7 text-primary" />
+                </div>
+                <h3 className="font-display font-semibold text-foreground mb-2">Upload PDF</h3>
+                <p className="text-sm text-muted-foreground">Drop your textbook, notes, or any study material</p>
               </div>
-              <span className="text-xs md:text-sm font-medium text-foreground">Upload PDF</span>
-            </div>
-            <div className="flex flex-col items-center text-center p-4">
-              <div className="w-12 h-12 md:w-16 md:h-16 rounded-2xl bg-primary/10 flex items-center justify-center mb-3">
-                <Headphones className="h-5 w-5 md:h-7 md:w-7 text-primary" />
+              <div className="flex flex-col items-center text-center">
+                <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center mb-4">
+                  <Headphones className="h-7 w-7 text-primary" />
+                </div>
+                <h3 className="font-display font-semibold text-foreground mb-2">Listen & Learn</h3>
+                <p className="text-sm text-muted-foreground">Hear summaries in your preferred Nigerian language</p>
               </div>
-              <span className="text-xs md:text-sm font-medium text-foreground">Listen in Your Language</span>
-            </div>
-            <div className="flex flex-col items-center text-center p-4">
-              <div className="w-12 h-12 md:w-16 md:h-16 rounded-2xl bg-primary/10 flex items-center justify-center mb-3">
-                <Award className="h-5 w-5 md:h-7 md:w-7 text-primary" />
+              <div className="flex flex-col items-center text-center">
+                <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center mb-4">
+                  <Award className="h-7 w-7 text-primary" />
+                </div>
+                <h3 className="font-display font-semibold text-foreground mb-2">Earn Badges</h3>
+                <p className="text-sm text-muted-foreground">Explain back concepts and unlock achievements</p>
               </div>
-              <span className="text-xs md:text-sm font-medium text-foreground">Earn Badges</span>
             </div>
           </div>
         </div>

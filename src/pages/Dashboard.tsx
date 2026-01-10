@@ -1,10 +1,9 @@
 import { useState, useEffect, useCallback } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams, Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { LogOut, Upload, Headphones, Award, Settings, User, FileText, Brain, Crown, Trophy } from "lucide-react";
-import logo from "@/assets/logo.png";
 import PDFUpload from "@/components/dashboard/PDFUpload";
 import AudioPlayer from "@/components/dashboard/AudioPlayer";
 import MyDocuments from "@/components/dashboard/MyDocuments";
@@ -115,19 +114,26 @@ const Dashboard = () => {
 
   return (
     <div className="min-h-screen bg-background">
-      <header className="border-b border-border bg-card">
+      {/* Header with consistent single logo format */}
+      <header className="border-b border-border bg-card/50 backdrop-blur-sm sticky top-0 z-50">
         <div className="container mx-auto px-4">
           <div className="flex items-center justify-between h-16">
-            <a href="/" className="flex items-center gap-2">
-              <img src={logo} alt="TalkPDF AI" className="h-8 w-auto" />
-              <span className="font-display text-lg font-bold text-foreground">TalkPDF AI</span>
-            </a>
+            {/* Logo - Text only, matching Header.tsx format */}
+            <Link to="/" className="flex items-center gap-1.5">
+              <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
+                <span className="text-primary-foreground font-bold text-sm">T</span>
+              </div>
+              <span className="font-display text-xl font-bold text-foreground tracking-tight">
+                TalkPDF
+              </span>
+            </Link>
+            
             <div className="flex items-center gap-4">
               <div className="hidden sm:flex items-center gap-2 text-sm text-muted-foreground">
                 <User className="h-4 w-4" />
                 <span>{user?.email}</span>
               </div>
-              <Button variant="ghost" size="icon" onClick={handleLogout}>
+              <Button variant="ghost" size="icon" onClick={handleLogout} title="Sign out">
                 <LogOut className="h-4 w-4" />
               </Button>
             </div>
@@ -148,15 +154,16 @@ const Dashboard = () => {
 
           <div className="grid lg:grid-cols-4 gap-6">
             <div className="lg:col-span-3">
-              <div className="flex flex-wrap gap-2 mb-6 p-1 bg-secondary/50 rounded-xl">
+              {/* Tab Navigation */}
+              <div className="flex flex-wrap gap-2 mb-6 p-1.5 bg-secondary/50 rounded-xl border border-border/50">
                 {tabs.map((tab) => (
                   <button
                     key={tab.id}
                     onClick={() => setActiveTab(tab.id)}
-                    className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
+                    className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all ${
                       activeTab === tab.id
-                        ? "bg-primary text-primary-foreground"
-                        : "text-muted-foreground hover:text-foreground"
+                        ? "bg-primary text-primary-foreground shadow-sm"
+                        : "text-muted-foreground hover:text-foreground hover:bg-background"
                     }`}
                   >
                     <tab.icon className="h-4 w-4" />
@@ -165,7 +172,8 @@ const Dashboard = () => {
                 ))}
               </div>
 
-              <div className="bg-card rounded-2xl border border-border p-6 md:p-8">
+              {/* Tab Content */}
+              <div className="bg-card rounded-2xl border border-border p-6 md:p-8 shadow-card">
                 {activeTab === "upload" && <PDFUpload onDocumentProcessed={handleDocumentProcessed} />}
                 {activeTab === "documents" && <MyDocuments onSelectDocument={handleSelectDocument} />}
                 {activeTab === "listen" && (

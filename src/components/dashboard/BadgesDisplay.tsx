@@ -10,7 +10,8 @@ import {
   Facebook,
   Linkedin,
   Copy,
-  Check
+  Check,
+  MessageCircle
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -21,6 +22,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { shareBadgeAchievement } from "@/utils/whatsappShare";
 
 interface Badge {
   id: string;
@@ -215,6 +217,13 @@ const BadgesDisplay = () => {
                             <Copy className="h-4 w-4 mr-2" />
                           )}
                           Copy Link
+                        </DropdownMenuItem>
+                        <DropdownMenuItem 
+                          onClick={() => shareBadgeAchievement(badge.badge_name, badge.score, badge.description || undefined)}
+                          className="text-green-600"
+                        >
+                          <MessageCircle className="h-4 w-4 mr-2" />
+                          WhatsApp
                         </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>

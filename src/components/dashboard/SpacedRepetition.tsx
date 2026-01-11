@@ -3,6 +3,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 import {
   Calendar,
   Brain,
@@ -15,11 +17,13 @@ import {
   Bell,
   CheckCircle2,
   AlertTriangle,
+  BellRing,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { formatDistanceToNow, isToday, isTomorrow, isPast, addDays, format } from "date-fns";
+import { usePushNotifications } from "@/hooks/usePushNotifications";
 
 interface SpacedRepetitionItem {
   id: string;
@@ -68,6 +72,52 @@ const calculateNextReview = (
   }
 
   return { newInterval, newEF, newReps };
+};
+
+// Notification settings sub-component
+const NotificationSettings = ({ dueCount }: { dueCount: number }) => {
+  const { isSupported, isSubscribed, subscribe, unsubscribe, scheduleStudyReminder } = usePushNotifications();
+
+  const handleToggle = async () => {
+    if (isSubscribed) {
+      await unsubscribe();
+    } else {
+      const success = await subscribe();
+      if (success && dueCount > 0) {
+        scheduleStudyReminder(
+          "Time to Review!",
+          `You have ${dueCount} concept${dueCount > 1 ? "s" : ""} due for review.`,
+          0
+        );
+      }
+    }
+  };
+
+  if (!isSupported) return null;
+
+  return (
+    <Card className="border-primary/20 bg-primary/5">
+      <CardContent className="p-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg bg-primary/20 flex items-center justify-center">
+              <BellRing className="h-5 w-5 text-primary" />
+            </div>
+            <div>
+              <p className="font-medium text-foreground">Review Reminders</p>
+              <p className="text-xs text-muted-foreground">Get notified when reviews are due</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <Label htmlFor="notifications" className="text-sm text-muted-foreground">
+              {isSubscribed ? "On" : "Off"}
+            </Label>
+            <Switch id="notifications" checked={isSubscribed} onCheckedChange={handleToggle} />
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
 };
 
 const SpacedRepetition = ({ onStartReview }: SpacedRepetitionProps) => {
@@ -326,6 +376,9 @@ const SpacedRepetition = ({ onStartReview }: SpacedRepetitionProps) => {
           </CardContent>
         </Card>
       </div>
+
+      {/* Push Notifications & Sync */}
+      <NotificationSettings dueCount={dueToday.length} />
 
       {/* Sync Button */}
       <div className="flex justify-center">

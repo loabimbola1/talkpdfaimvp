@@ -255,6 +255,7 @@ export type Database = {
           id: string
           subscription_plan: string | null
           subscription_status: string | null
+          university: string | null
           updated_at: string
           user_id: string
         }
@@ -266,6 +267,7 @@ export type Database = {
           id?: string
           subscription_plan?: string | null
           subscription_status?: string | null
+          university?: string | null
           updated_at?: string
           user_id: string
         }
@@ -277,10 +279,52 @@ export type Database = {
           id?: string
           subscription_plan?: string | null
           subscription_status?: string | null
+          university?: string | null
           updated_at?: string
           user_id?: string
         }
         Relationships: []
+      }
+      quiz_scores: {
+        Row: {
+          completed_at: string
+          created_at: string
+          document_id: string | null
+          id: string
+          quiz_type: string | null
+          score: number
+          total_questions: number
+          user_id: string
+        }
+        Insert: {
+          completed_at?: string
+          created_at?: string
+          document_id?: string | null
+          id?: string
+          quiz_type?: string | null
+          score: number
+          total_questions: number
+          user_id: string
+        }
+        Update: {
+          completed_at?: string
+          created_at?: string
+          document_id?: string | null
+          id?: string
+          quiz_type?: string | null
+          score?: number
+          total_questions?: number
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "quiz_scores_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "documents"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       spaced_repetition: {
         Row: {

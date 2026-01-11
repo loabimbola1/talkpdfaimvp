@@ -276,6 +276,38 @@ serve(async (req) => {
       userId: user.id 
     });
 
+    // Send payment success email notification
+    try {
+      const { data: profile } = await supabaseAdmin
+        .from("profiles")
+        .select("email, full_name")
+        .eq("user_id", user.id)
+        .single();
+
+      if (profile?.email) {
+        await fetch(`${SUPABASE_URL}/functions/v1/send-payment-email`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+          },
+          body: JSON.stringify({
+            userId: user.id,
+            email: profile.email,
+            fullName: profile.full_name,
+            plan: updatedPayment.plan,
+            amount: Number(updatedPayment.amount),
+            status: "success",
+            transactionRef: tx_ref,
+          }),
+        });
+        console.log(logPrefix, "Payment success email sent");
+      }
+    } catch (emailError) {
+      console.error(logPrefix, "Failed to send payment email:", emailError);
+      // Don't fail the request; payment is already confirmed
+    }
+
     return new Response(
       JSON.stringify({
         success: true,

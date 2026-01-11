@@ -25,10 +25,12 @@ import {
   UserPlus,
   Trash2,
   Settings2,
+  MessageCircle,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { shareStudyGroupInvite } from "@/utils/whatsappShare";
 
 interface StudyGroup {
   id: string;
@@ -427,18 +429,32 @@ const StudyGroups = () => {
                     <UserPlus className="h-4 w-4" />
                     <span>{group.member_count || 1} members</span>
                   </div>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      copyInviteCode(group.invite_code);
-                    }}
-                    className="gap-1"
-                  >
-                    <Copy className="h-3 w-3" />
-                    {group.invite_code}
-                  </Button>
+                  <div className="flex items-center gap-1">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        copyInviteCode(group.invite_code);
+                      }}
+                      className="gap-1"
+                    >
+                      <Copy className="h-3 w-3" />
+                      {group.invite_code}
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7 text-green-600"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        shareStudyGroupInvite(group.name, group.invite_code);
+                      }}
+                      title="Share on WhatsApp"
+                    >
+                      <MessageCircle className="h-4 w-4" />
+                    </Button>
+                  </div>
                 </div>
               </CardContent>
             </Card>
@@ -586,7 +602,14 @@ const StudyGroups = () => {
             )}
             <Button variant="outline" onClick={() => selectedGroup && copyInviteCode(selectedGroup.invite_code)}>
               <Copy className="h-4 w-4 mr-2" />
-              Share Code
+              Copy Code
+            </Button>
+            <Button 
+              className="gap-2 bg-green-600 hover:bg-green-700 text-white"
+              onClick={() => selectedGroup && shareStudyGroupInvite(selectedGroup.name, selectedGroup.invite_code)}
+            >
+              <MessageCircle className="h-4 w-4" />
+              Share on WhatsApp
             </Button>
           </DialogFooter>
         </DialogContent>

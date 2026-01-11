@@ -13,6 +13,7 @@ import UsageLimitsDisplay from "@/components/dashboard/UsageLimitsDisplay";
 import SubscriptionPlans from "@/components/dashboard/SubscriptionPlans";
 import BadgesDisplay from "@/components/dashboard/BadgesDisplay";
 import Leaderboard from "@/components/dashboard/Leaderboard";
+import QuizLeaderboard from "@/components/dashboard/QuizLeaderboard";
 import QuizMode from "@/components/dashboard/QuizMode";
 import MicroLessons from "@/components/dashboard/MicroLessons";
 import ProgressDashboard from "@/components/dashboard/ProgressDashboard";
@@ -21,7 +22,7 @@ import SpacedRepetition from "@/components/dashboard/SpacedRepetition";
 import ThemeToggle from "@/components/ThemeToggle";
 import type { User as SupabaseUser } from "@supabase/supabase-js";
 
-type TabType = "upload" | "documents" | "listen" | "explain" | "quiz" | "lessons" | "progress" | "badges" | "leaderboard" | "groups" | "review" | "subscription" | "settings";
+type TabType = "upload" | "documents" | "listen" | "explain" | "quiz" | "lessons" | "progress" | "badges" | "leaderboard" | "quiz-leaders" | "groups" | "review" | "subscription" | "settings";
 
 const Dashboard = () => {
   const [user, setUser] = useState<SupabaseUser | null>(null);
@@ -130,6 +131,7 @@ const Dashboard = () => {
     { id: "badges" as TabType, label: "Badges", icon: Award },
     { id: "groups" as TabType, label: "Groups", icon: Users },
     { id: "leaderboard" as TabType, label: "Leaderboard", icon: Trophy },
+    { id: "quiz-leaders" as TabType, label: "Quiz Leaders", icon: Trophy },
     { id: "subscription" as TabType, label: "Upgrade", icon: Crown },
     { id: "settings" as TabType, label: "Settings", icon: Settings },
   ];
@@ -233,6 +235,7 @@ const Dashboard = () => {
                 {activeTab === "badges" && <BadgesDisplay key={badgeRefreshKey} />}
                 {activeTab === "groups" && <StudyGroups />}
                 {activeTab === "leaderboard" && <Leaderboard />}
+                {activeTab === "quiz-leaders" && <QuizLeaderboard />}
                 {activeTab === "subscription" && <SubscriptionPlans />}
                 {activeTab === "settings" && <ProfileSettings user={user} />}
               </div>

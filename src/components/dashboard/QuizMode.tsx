@@ -142,10 +142,11 @@ const QuizMode = ({ documentId: propDocumentId, onComplete }: QuizModeProps) => 
       return acc + (userAnswer === correctAnswer ? 1 : 0);
     }, 0);
 
-    // Track usage
+    // Track usage and save quiz score
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (session?.user) {
+        // Track usage
         await supabase.from("usage_tracking").insert({
           user_id: session.user.id,
           action_type: "quiz_complete",
@@ -155,6 +156,15 @@ const QuizMode = ({ documentId: propDocumentId, onComplete }: QuizModeProps) => 
             total: questions.length,
             quizType 
           }
+        });
+
+        // Save quiz score for leaderboard
+        await supabase.from("quiz_scores").insert({
+          user_id: session.user.id,
+          document_id: selectedDocumentId || null,
+          score,
+          total_questions: questions.length,
+          quiz_type: quizType,
         });
       }
     } catch (error) {

@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { Check, Sparkles, Loader2 } from "lucide-react";
+import { Check, Sparkles, Loader2, Zap } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -18,6 +18,7 @@ interface PricingPlan {
   description: string;
   monthlyPrice: number;
   yearlyPrice: number;
+  priceLabel: string;
   features: PlanFeature[];
   popular?: boolean;
   ctaText: string;
@@ -31,51 +32,55 @@ const plans: PricingPlan[] = [
     description: "Perfect for trying out TalkPDF AI",
     monthlyPrice: 0,
     yearlyPrice: 0,
+    priceLabel: "forever",
     planId: "free",
     features: [
-      { text: "5 minutes audio/day", included: true },
-      { text: "Standard AI voices", included: true },
-      { text: "English only", included: true },
-      { text: "Basic badge system", included: true },
-      { text: "Explain-Back Mode", included: false },
-      { text: "Offline downloads", included: false },
-      { text: "Priority support", included: false },
+      { text: "5 minutes audio per day", included: true },
+      { text: "2 PDF uploads", included: true },
+      { text: "English language only", included: true },
+      { text: "Basic voice Q&A", included: true },
+      { text: "Bronze badges only", included: true },
     ],
     ctaText: "Start Free",
     ctaVariant: "outline",
   },
   {
     name: "Student Pro",
-    description: "For students who want more learning time",
+    description: "Great value for everyday learners",
     monthlyPrice: 2000,
     yearlyPrice: 20000,
+    priceLabel: "/month",
     planId: "student_pro",
     features: [
-      { text: "60 minutes audio/day", included: true },
-      { text: "Premium AI voices", included: true },
-      { text: "All 5 languages", included: true },
-      { text: "Full badge system", included: true },
-      { text: "Explain-Back Mode", included: true },
-      { text: "Offline downloads", included: false },
-      { text: "Priority support", included: false },
+      { text: "60 minutes audio per day", included: true },
+      { text: "20 PDF uploads per month", included: true },
+      { text: "3 Nigerian languages", included: true },
+      { text: "Voice Q&A with explanations", included: true },
+      { text: "Bronze & Silver badges", included: true },
+      { text: "Basic micro-lessons", included: true },
+      { text: "Email support", included: true },
     ],
     ctaText: "Get Student Pro",
-    ctaVariant: "secondary",
+    ctaVariant: "outline",
   },
   {
     name: "Mastery Pass",
-    description: "Unlimited learning for serious students",
+    description: "For serious students who want to excel",
     monthlyPrice: 3500,
     yearlyPrice: 40000,
+    priceLabel: "/month",
     planId: "mastery_pass",
     popular: true,
     features: [
-      { text: "Unlimited audio", included: true },
-      { text: "Premium AI voices", included: true },
-      { text: "All 5 languages", included: true },
-      { text: "Full badge system", included: true },
-      { text: "Explain-Back Mode", included: true },
-      { text: "Offline downloads", included: true },
+      { text: "Unlimited audio generation", included: true },
+      { text: "Unlimited PDF uploads", included: true },
+      { text: "All 5 Nigerian languages", included: true },
+      { text: "Real-time explanation validation", included: true },
+      { text: "1-Minute Mastery micro-lessons", included: true },
+      { text: "All badge levels (Bronze, Silver, Gold)", included: true },
+      { text: "Campus leaderboard access", included: true },
+      { text: "WhatsApp integration", included: true },
+      { text: "Offline mode", included: true },
       { text: "Priority support", included: true },
     ],
     ctaText: "Get Mastery Pass",
@@ -100,7 +105,7 @@ const calculateSavings = (monthly: number, yearly: number) => {
 };
 
 const Pricing = () => {
-  const [isAnnual, setIsAnnual] = useState(true);
+  const [isAnnual, setIsAnnual] = useState(false);
   const [loadingPlan, setLoadingPlan] = useState<string | null>(null);
   const navigate = useNavigate();
 
@@ -156,7 +161,7 @@ const Pricing = () => {
   };
 
   return (
-    <section id="pricing" className="py-16 md:py-24 bg-secondary/30">
+    <section id="pricing" className="py-16 md:py-24 bg-background">
       <div className="container mx-auto px-4">
         <div className="text-center max-w-2xl mx-auto mb-10 md:mb-14">
           <h2 className="font-display text-3xl md:text-4xl font-bold text-foreground mb-4">
@@ -200,7 +205,7 @@ const Pricing = () => {
             )}
           >
             Annually
-            <span className="inline-flex items-center gap-1 bg-accent/20 text-accent-foreground px-2 py-0.5 rounded-full text-xs font-semibold">
+            <span className="inline-flex items-center gap-1 bg-primary/10 text-primary px-2 py-0.5 rounded-full text-xs font-semibold">
               <Sparkles className="h-3 w-3" />
               Save up to 17%
             </span>
@@ -208,7 +213,7 @@ const Pricing = () => {
         </div>
 
         {/* Pricing Cards */}
-        <div className="grid md:grid-cols-3 gap-6 md:gap-8 max-w-6xl mx-auto">
+        <div className="grid md:grid-cols-3 gap-6 md:gap-8 max-w-6xl mx-auto items-start">
           {plans.map((plan) => {
             const price = isAnnual ? plan.yearlyPrice : plan.monthlyPrice;
             const savings = calculateSavings(plan.monthlyPrice, plan.yearlyPrice);
@@ -218,16 +223,16 @@ const Pricing = () => {
               <div
                 key={plan.name}
                 className={cn(
-                  "relative rounded-2xl p-6 md:p-8 transition-all duration-300",
+                  "relative rounded-2xl p-6 md:p-8 transition-all duration-300 flex flex-col",
                   plan.popular
-                    ? "bg-primary text-primary-foreground shadow-elevated scale-[1.02] md:scale-105 z-10"
+                    ? "bg-foreground text-background shadow-elevated md:scale-105 z-10"
                     : "bg-card border border-border shadow-card hover:shadow-elevated"
                 )}
               >
                 {/* Popular Badge */}
                 {plan.popular && (
                   <div className="absolute -top-3 left-1/2 -translate-x-1/2">
-                    <span className="inline-flex items-center gap-1 bg-accent text-accent-foreground px-3 py-1 rounded-full text-xs font-semibold shadow-lg">
+                    <span className="inline-flex items-center gap-1 bg-primary text-primary-foreground px-3 py-1 rounded-full text-xs font-semibold shadow-lg">
                       <Sparkles className="h-3 w-3" />
                       Most Popular
                     </span>
@@ -239,7 +244,7 @@ const Pricing = () => {
                   <h3
                     className={cn(
                       "font-display text-xl font-bold mb-1",
-                      plan.popular ? "text-primary-foreground" : "text-foreground"
+                      plan.popular ? "text-background" : "text-foreground"
                     )}
                   >
                     {plan.name}
@@ -247,7 +252,7 @@ const Pricing = () => {
                   <p
                     className={cn(
                       "text-sm",
-                      plan.popular ? "text-primary-foreground/80" : "text-muted-foreground"
+                      plan.popular ? "text-background/70" : "text-muted-foreground"
                     )}
                   >
                     {plan.description}
@@ -260,27 +265,25 @@ const Pricing = () => {
                     <span
                       className={cn(
                         "font-display text-4xl md:text-5xl font-bold",
-                        plan.popular ? "text-primary-foreground" : "text-foreground"
+                        plan.popular ? "text-background" : "text-foreground"
                       )}
                     >
                       {price === 0 ? "₦0" : formatPrice(price)}
                     </span>
-                    {price > 0 && (
-                      <span
-                        className={cn(
-                          "text-sm",
-                          plan.popular ? "text-primary-foreground/70" : "text-muted-foreground"
-                        )}
-                      >
-                        /{isAnnual ? "year" : "month"}
-                      </span>
-                    )}
+                    <span
+                      className={cn(
+                        "text-sm",
+                        plan.popular ? "text-background/60" : "text-muted-foreground"
+                      )}
+                    >
+                      {price === 0 ? plan.priceLabel : (isAnnual ? "/year" : "/month")}
+                    </span>
                   </div>
                   {isAnnual && savings > 0 && (
                     <p
                       className={cn(
                         "text-sm mt-1",
-                        plan.popular ? "text-primary-foreground/80" : "text-primary"
+                        plan.popular ? "text-primary" : "text-primary"
                       )}
                     >
                       Save {savings}% compared to monthly
@@ -289,36 +292,25 @@ const Pricing = () => {
                 </div>
 
                 {/* Features */}
-                <ul className="space-y-3 mb-8">
+                <ul className="space-y-3 mb-8 flex-1">
                   {plan.features.map((feature, index) => (
                     <li
                       key={index}
-                      className={cn(
-                        "flex items-start gap-3 text-sm",
-                        !feature.included && (plan.popular ? "opacity-50" : "text-muted-foreground/60")
-                      )}
+                      className="flex items-start gap-3 text-sm"
                     >
                       <Check
                         className={cn(
                           "h-4 w-4 mt-0.5 flex-shrink-0",
-                          feature.included
-                            ? plan.popular
-                              ? "text-primary-foreground"
-                              : "text-primary"
-                            : plan.popular
-                            ? "text-primary-foreground/40"
-                            : "text-muted-foreground/40"
+                          plan.popular
+                            ? "text-primary"
+                            : "text-primary"
                         )}
                       />
                       <span
                         className={cn(
-                          feature.included
-                            ? plan.popular
-                              ? "text-primary-foreground"
-                              : "text-foreground"
-                            : plan.popular
-                            ? "text-primary-foreground/50 line-through"
-                            : "text-muted-foreground line-through"
+                          plan.popular
+                            ? "text-background/90"
+                            : "text-foreground"
                         )}
                       >
                         {feature.text}
@@ -331,10 +323,13 @@ const Pricing = () => {
                 <Button
                   className={cn(
                     "w-full",
-                    plan.popular &&
-                      "bg-primary-foreground text-primary hover:bg-primary-foreground/90"
+                    plan.popular
+                      ? "bg-primary text-primary-foreground hover:bg-primary/90"
+                      : plan.ctaVariant === "outline" 
+                        ? "border-primary text-primary hover:bg-primary/10"
+                        : ""
                   )}
-                  variant={plan.popular ? "secondary" : plan.ctaVariant}
+                  variant={plan.popular ? "default" : plan.ctaVariant}
                   size="lg"
                   onClick={() => handleSubscribe(plan)}
                   disabled={isLoading}
@@ -345,7 +340,10 @@ const Pricing = () => {
                       Processing...
                     </>
                   ) : (
-                    plan.ctaText
+                    <>
+                      {plan.popular && <Zap className="h-4 w-4 mr-2" />}
+                      {plan.ctaText}
+                    </>
                   )}
                 </Button>
               </div>

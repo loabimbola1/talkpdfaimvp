@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Check, Sparkles, Loader2 } from "lucide-react";
+import { Check, Sparkles, Loader2, Zap } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -17,6 +17,7 @@ interface PricingPlan {
   description: string;
   monthlyPrice: number;
   yearlyPrice: number;
+  priceLabel: string;
   features: PlanFeature[];
   popular?: boolean;
   ctaText: string;
@@ -30,49 +31,56 @@ const plans: PricingPlan[] = [
     description: "Perfect for trying out TalkPDF AI",
     monthlyPrice: 0,
     yearlyPrice: 0,
+    priceLabel: "forever",
     planId: "free",
     features: [
-      { text: "5 minutes audio/day", included: true },
-      { text: "Standard AI voices", included: true },
-      { text: "English only", included: true },
-      { text: "Basic badge system", included: true },
-      { text: "Explain-Back Mode", included: false },
-      { text: "Offline downloads", included: false },
+      { text: "5 minutes audio per day", included: true },
+      { text: "2 PDF uploads", included: true },
+      { text: "English language only", included: true },
+      { text: "Basic voice Q&A", included: true },
+      { text: "Bronze badges only", included: true },
     ],
     ctaText: "Current Plan",
     ctaVariant: "outline",
   },
   {
     name: "Student Pro",
-    description: "For students who want more learning time",
+    description: "Great value for everyday learners",
     monthlyPrice: 2000,
     yearlyPrice: 20000,
+    priceLabel: "/month",
     planId: "student_pro",
     features: [
-      { text: "60 minutes audio/day", included: true },
-      { text: "Premium AI voices", included: true },
-      { text: "All 5 languages", included: true },
-      { text: "Full badge system", included: true },
-      { text: "Explain-Back Mode", included: true },
-      { text: "Offline downloads", included: false },
+      { text: "60 minutes audio per day", included: true },
+      { text: "20 PDF uploads per month", included: true },
+      { text: "3 Nigerian languages", included: true },
+      { text: "Voice Q&A with explanations", included: true },
+      { text: "Bronze & Silver badges", included: true },
+      { text: "Basic micro-lessons", included: true },
+      { text: "Email support", included: true },
     ],
     ctaText: "Get Student Pro",
-    ctaVariant: "secondary",
+    ctaVariant: "outline",
   },
   {
     name: "Mastery Pass",
-    description: "Unlimited learning for serious students",
+    description: "For serious students who want to excel",
     monthlyPrice: 3500,
     yearlyPrice: 40000,
+    priceLabel: "/month",
     planId: "mastery_pass",
     popular: true,
     features: [
-      { text: "Unlimited audio", included: true },
-      { text: "Premium AI voices", included: true },
-      { text: "All 5 languages", included: true },
-      { text: "Full badge system", included: true },
-      { text: "Explain-Back Mode", included: true },
-      { text: "Offline downloads", included: true },
+      { text: "Unlimited audio generation", included: true },
+      { text: "Unlimited PDF uploads", included: true },
+      { text: "All 5 Nigerian languages", included: true },
+      { text: "Real-time explanation validation", included: true },
+      { text: "1-Minute Mastery micro-lessons", included: true },
+      { text: "All badge levels (Bronze, Silver, Gold)", included: true },
+      { text: "Campus leaderboard access", included: true },
+      { text: "WhatsApp integration", included: true },
+      { text: "Offline mode", included: true },
+      { text: "Priority support", included: true },
     ],
     ctaText: "Get Mastery Pass",
     ctaVariant: "default",
@@ -100,7 +108,7 @@ interface SubscriptionPlansProps {
 }
 
 const SubscriptionPlans = ({ currentPlan = "free" }: SubscriptionPlansProps) => {
-  const [isAnnual, setIsAnnual] = useState(true);
+  const [isAnnual, setIsAnnual] = useState(false);
   const [loadingPlan, setLoadingPlan] = useState<string | null>(null);
 
   const handleSubscribe = async (plan: PricingPlan) => {
@@ -118,10 +126,12 @@ const SubscriptionPlans = ({ currentPlan = "free" }: SubscriptionPlansProps) => 
         return;
       }
 
+      const price = isAnnual ? plan.yearlyPrice : plan.monthlyPrice;
       const billingCycle = isAnnual ? "yearly" : "monthly";
 
       const { data, error } = await supabase.functions.invoke("flutterwave-payment", {
         body: {
+          amount: price,
           plan: plan.planId,
           billingCycle,
         },
@@ -190,7 +200,7 @@ const SubscriptionPlans = ({ currentPlan = "free" }: SubscriptionPlansProps) => 
           )}
         >
           Annually
-          <span className="inline-flex items-center gap-1 bg-accent/20 text-accent-foreground px-2 py-0.5 rounded-full text-xs font-semibold">
+          <span className="inline-flex items-center gap-1 bg-primary/10 text-primary px-2 py-0.5 rounded-full text-xs font-semibold">
             <Sparkles className="h-3 w-3" />
             Save 17%
           </span>
@@ -209,16 +219,16 @@ const SubscriptionPlans = ({ currentPlan = "free" }: SubscriptionPlansProps) => 
             <div
               key={plan.name}
               className={cn(
-                "relative rounded-xl p-5 transition-all duration-300",
+                "relative rounded-xl p-5 transition-all duration-300 flex flex-col",
                 plan.popular
-                  ? "bg-primary text-primary-foreground shadow-elevated"
+                  ? "bg-foreground text-background shadow-elevated"
                   : "bg-secondary/50 border border-border"
               )}
             >
               {/* Popular Badge */}
               {plan.popular && (
                 <div className="absolute -top-2 left-1/2 -translate-x-1/2">
-                  <span className="inline-flex items-center gap-1 bg-accent text-accent-foreground px-2 py-0.5 rounded-full text-xs font-semibold">
+                  <span className="inline-flex items-center gap-1 bg-primary text-primary-foreground px-2 py-0.5 rounded-full text-xs font-semibold">
                     <Sparkles className="h-3 w-3" />
                     Popular
                   </span>
@@ -230,7 +240,7 @@ const SubscriptionPlans = ({ currentPlan = "free" }: SubscriptionPlansProps) => 
                 <h3
                   className={cn(
                     "font-display text-lg font-bold mb-1",
-                    plan.popular ? "text-primary-foreground" : "text-foreground"
+                    plan.popular ? "text-background" : "text-foreground"
                   )}
                 >
                   {plan.name}
@@ -238,7 +248,7 @@ const SubscriptionPlans = ({ currentPlan = "free" }: SubscriptionPlansProps) => 
                 <p
                   className={cn(
                     "text-xs",
-                    plan.popular ? "text-primary-foreground/80" : "text-muted-foreground"
+                    plan.popular ? "text-background/70" : "text-muted-foreground"
                   )}
                 >
                   {plan.description}
@@ -251,27 +261,25 @@ const SubscriptionPlans = ({ currentPlan = "free" }: SubscriptionPlansProps) => 
                   <span
                     className={cn(
                       "font-display text-2xl font-bold",
-                      plan.popular ? "text-primary-foreground" : "text-foreground"
+                      plan.popular ? "text-background" : "text-foreground"
                     )}
                   >
                     {price === 0 ? "₦0" : formatPrice(price)}
                   </span>
-                  {price > 0 && (
-                    <span
-                      className={cn(
-                        "text-xs",
-                        plan.popular ? "text-primary-foreground/70" : "text-muted-foreground"
-                      )}
-                    >
-                      /{isAnnual ? "year" : "month"}
-                    </span>
-                  )}
+                  <span
+                    className={cn(
+                      "text-xs",
+                      plan.popular ? "text-background/60" : "text-muted-foreground"
+                    )}
+                  >
+                    {price === 0 ? plan.priceLabel : (isAnnual ? "/year" : "/month")}
+                  </span>
                 </div>
                 {isAnnual && savings > 0 && (
                   <p
                     className={cn(
                       "text-xs mt-1",
-                      plan.popular ? "text-primary-foreground/80" : "text-primary"
+                      plan.popular ? "text-primary" : "text-primary"
                     )}
                   >
                     Save {savings}%
@@ -280,36 +288,25 @@ const SubscriptionPlans = ({ currentPlan = "free" }: SubscriptionPlansProps) => 
               </div>
 
               {/* Features */}
-              <ul className="space-y-2 mb-4">
+              <ul className="space-y-2 mb-4 flex-1">
                 {plan.features.map((feature, index) => (
                   <li
                     key={index}
-                    className={cn(
-                      "flex items-start gap-2 text-xs",
-                      !feature.included && (plan.popular ? "opacity-50" : "text-muted-foreground/60")
-                    )}
+                    className="flex items-start gap-2 text-xs"
                   >
                     <Check
                       className={cn(
                         "h-3 w-3 mt-0.5 flex-shrink-0",
-                        feature.included
-                          ? plan.popular
-                            ? "text-primary-foreground"
-                            : "text-primary"
-                          : plan.popular
-                          ? "text-primary-foreground/40"
-                          : "text-muted-foreground/40"
+                        plan.popular
+                          ? "text-primary"
+                          : "text-primary"
                       )}
                     />
                     <span
                       className={cn(
-                        feature.included
-                          ? plan.popular
-                            ? "text-primary-foreground"
-                            : "text-foreground"
-                          : plan.popular
-                          ? "text-primary-foreground/50 line-through"
-                          : "text-muted-foreground line-through"
+                        plan.popular
+                          ? "text-background/90"
+                          : "text-foreground"
                       )}
                     >
                       {feature.text}
@@ -323,9 +320,9 @@ const SubscriptionPlans = ({ currentPlan = "free" }: SubscriptionPlansProps) => 
                 className={cn(
                   "w-full",
                   plan.popular &&
-                    "bg-primary-foreground text-primary hover:bg-primary-foreground/90"
+                    "bg-primary text-primary-foreground hover:bg-primary/90"
                 )}
-                variant={plan.popular ? "secondary" : plan.ctaVariant}
+                variant={plan.popular ? "default" : plan.ctaVariant}
                 size="sm"
                 onClick={() => handleSubscribe(plan)}
                 disabled={isLoading || isCurrentPlan}
@@ -338,7 +335,10 @@ const SubscriptionPlans = ({ currentPlan = "free" }: SubscriptionPlansProps) => 
                 ) : isCurrentPlan ? (
                   "Current Plan"
                 ) : (
-                  plan.ctaText
+                  <>
+                    {plan.popular && <Zap className="h-4 w-4 mr-2" />}
+                    {plan.ctaText}
+                  </>
                 )}
               </Button>
             </div>

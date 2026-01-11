@@ -154,6 +154,56 @@ export type Database = {
         }
         Relationships: []
       }
+      micro_lesson_progress: {
+        Row: {
+          ai_explanation: string | null
+          audio_url: string | null
+          completed_at: string | null
+          concept_index: number
+          created_at: string
+          document_id: string
+          id: string
+          score: number | null
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          ai_explanation?: string | null
+          audio_url?: string | null
+          completed_at?: string | null
+          concept_index?: number
+          created_at?: string
+          document_id: string
+          id?: string
+          score?: number | null
+          status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          ai_explanation?: string | null
+          audio_url?: string | null
+          completed_at?: string | null
+          concept_index?: number
+          created_at?: string
+          document_id?: string
+          id?: string
+          score?: number | null
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "micro_lesson_progress_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "documents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       payments: {
         Row: {
           amount: number
@@ -229,6 +279,124 @@ export type Database = {
           subscription_status?: string | null
           updated_at?: string
           user_id?: string
+        }
+        Relationships: []
+      }
+      spaced_repetition: {
+        Row: {
+          concept_index: number
+          concept_title: string
+          created_at: string
+          document_id: string
+          easiness_factor: number
+          id: string
+          interval_days: number
+          last_review_date: string | null
+          last_score: number | null
+          next_review_date: string
+          repetitions: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          concept_index?: number
+          concept_title: string
+          created_at?: string
+          document_id: string
+          easiness_factor?: number
+          id?: string
+          interval_days?: number
+          last_review_date?: string | null
+          last_score?: number | null
+          next_review_date?: string
+          repetitions?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          concept_index?: number
+          concept_title?: string
+          created_at?: string
+          document_id?: string
+          easiness_factor?: number
+          id?: string
+          interval_days?: number
+          last_review_date?: string | null
+          last_score?: number | null
+          next_review_date?: string
+          repetitions?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "spaced_repetition_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "documents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      study_group_members: {
+        Row: {
+          group_id: string
+          id: string
+          joined_at: string
+          role: string
+          user_id: string
+        }
+        Insert: {
+          group_id: string
+          id?: string
+          joined_at?: string
+          role?: string
+          user_id: string
+        }
+        Update: {
+          group_id?: string
+          id?: string
+          joined_at?: string
+          role?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "study_group_members_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "study_groups"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      study_groups: {
+        Row: {
+          created_at: string
+          created_by: string
+          description: string | null
+          id: string
+          invite_code: string
+          name: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by: string
+          description?: string | null
+          id?: string
+          invite_code?: string
+          name: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          description?: string | null
+          id?: string
+          invite_code?: string
+          name?: string
+          updated_at?: string
         }
         Relationships: []
       }

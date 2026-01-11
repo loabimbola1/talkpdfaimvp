@@ -6,9 +6,11 @@ import { Label } from "@/components/ui/label";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
-import { User, Mail, Save, Loader2, Crown, Calendar } from "lucide-react";
+import { User, Mail, Save, Loader2, Crown, Calendar, Bell } from "lucide-react";
 import { toast } from "sonner";
 import type { User as SupabaseUser } from "@supabase/supabase-js";
+import NotificationSettings from "./NotificationSettings";
+import SubscriptionStatus from "./SubscriptionStatus";
 
 interface Profile {
   full_name: string | null;
@@ -95,15 +97,6 @@ const ProfileSettings = ({ user }: ProfileSettingsProps) => {
       .join("")
       .toUpperCase()
       .slice(0, 2);
-  };
-
-  const getPlanLabel = (plan: string | null) => {
-    const labels: Record<string, string> = {
-      free: "Free Plan",
-      student_pro: "Student Pro",
-      mastery_pass: "Mastery Pass",
-    };
-    return labels[plan || "free"] || "Free Plan";
   };
 
   if (loading) {
@@ -193,31 +186,35 @@ const ProfileSettings = ({ user }: ProfileSettingsProps) => {
         </CardContent>
       </Card>
 
-      {/* Subscription Card */}
+      {/* Subscription Status Card */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Crown className="h-5 w-5" />
-            Subscription
+            Subscription Status
           </CardTitle>
           <CardDescription>
-            Manage your subscription plan
+            View and manage your subscription
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="flex items-center justify-between p-4 bg-secondary/30 rounded-xl">
-            <div>
-              <p className="font-medium text-foreground">
-                {getPlanLabel(profile?.subscription_plan)}
-              </p>
-              <p className="text-sm text-muted-foreground">
-                Status: {profile?.subscription_status || "active"}
-              </p>
-            </div>
-            <Button variant="outline" asChild>
-              <a href="/#pricing">Upgrade Plan</a>
-            </Button>
-          </div>
+          <SubscriptionStatus onUpgrade={() => window.location.href = "/?scrollTo=pricing"} />
+        </CardContent>
+      </Card>
+
+      {/* Notifications Card */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Bell className="h-5 w-5" />
+            Notifications
+          </CardTitle>
+          <CardDescription>
+            Manage study reminders and notifications
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <NotificationSettings />
         </CardContent>
       </Card>
 

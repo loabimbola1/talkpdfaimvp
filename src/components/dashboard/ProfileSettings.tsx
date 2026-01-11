@@ -198,7 +198,11 @@ const ProfileSettings = ({ user }: ProfileSettingsProps) => {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <SubscriptionStatus onUpgrade={() => window.location.href = "/?scrollTo=pricing"} />
+          <SubscriptionStatus onUpgrade={() => {
+            // Navigate to subscription tab in dashboard
+            const event = new CustomEvent("navigateToTab", { detail: { tab: "subscription" } });
+            window.dispatchEvent(event);
+          }} />
         </CardContent>
       </Card>
 

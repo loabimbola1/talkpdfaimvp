@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams, Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { LogOut, Upload, Headphones, Award, Settings, User, FileText, Brain, Crown, Trophy, HelpCircle } from "lucide-react";
+import { LogOut, Upload, Headphones, Award, Settings, User, FileText, Brain, Crown, Trophy, HelpCircle, BookOpen, BarChart3 } from "lucide-react";
 import PDFUpload from "@/components/dashboard/PDFUpload";
 import AudioPlayer from "@/components/dashboard/AudioPlayer";
 import MyDocuments from "@/components/dashboard/MyDocuments";
@@ -14,10 +14,12 @@ import SubscriptionPlans from "@/components/dashboard/SubscriptionPlans";
 import BadgesDisplay from "@/components/dashboard/BadgesDisplay";
 import Leaderboard from "@/components/dashboard/Leaderboard";
 import QuizMode from "@/components/dashboard/QuizMode";
+import MicroLessons from "@/components/dashboard/MicroLessons";
+import ProgressDashboard from "@/components/dashboard/ProgressDashboard";
 import ThemeToggle from "@/components/ThemeToggle";
 import type { User as SupabaseUser } from "@supabase/supabase-js";
 
-type TabType = "upload" | "documents" | "listen" | "explain" | "quiz" | "badges" | "leaderboard" | "subscription" | "settings";
+type TabType = "upload" | "documents" | "listen" | "explain" | "quiz" | "lessons" | "progress" | "badges" | "leaderboard" | "subscription" | "settings";
 
 const Dashboard = () => {
   const [user, setUser] = useState<SupabaseUser | null>(null);
@@ -35,7 +37,7 @@ const Dashboard = () => {
     const docId = searchParams.get("doc");
     const promptIndex = searchParams.get("prompt");
     
-    if (tab && ["upload", "documents", "listen", "explain", "quiz", "badges", "leaderboard", "subscription", "settings"].includes(tab)) {
+    if (tab && ["upload", "documents", "listen", "explain", "quiz", "lessons", "progress", "badges", "leaderboard", "subscription", "settings"].includes(tab)) {
       setActiveTab(tab as TabType);
     }
     if (docId) {
@@ -45,6 +47,17 @@ const Dashboard = () => {
       setSelectedPromptIndex(parseInt(promptIndex, 10));
     }
   }, [searchParams]);
+
+  // Listen for navigation events from settings
+  useEffect(() => {
+    const handleNavigateToTab = (event: CustomEvent<{ tab: string }>) => {
+      if (event.detail?.tab) {
+        setActiveTab(event.detail.tab as TabType);
+      }
+    };
+    window.addEventListener("navigateToTab", handleNavigateToTab as EventListener);
+    return () => window.removeEventListener("navigateToTab", handleNavigateToTab as EventListener);
+  }, []);
 
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
@@ -109,6 +122,8 @@ const Dashboard = () => {
     { id: "listen" as TabType, label: "Listen", icon: Headphones },
     { id: "explain" as TabType, label: "Explain-Back", icon: Brain },
     { id: "quiz" as TabType, label: "Quiz", icon: HelpCircle },
+    { id: "lessons" as TabType, label: "Lessons", icon: BookOpen },
+    { id: "progress" as TabType, label: "Progress", icon: BarChart3 },
     { id: "badges" as TabType, label: "Badges", icon: Award },
     { id: "leaderboard" as TabType, label: "Leaderboard", icon: Trophy },
     { id: "subscription" as TabType, label: "Upgrade", icon: Crown },
@@ -197,6 +212,12 @@ const Dashboard = () => {
                       if (score >= total * 0.8) handleBadgeEarned();
                     }}
                   />
+                )}
+                {activeTab === "lessons" && (
+                  <MicroLessons onLessonComplete={() => handleBadgeEarned()} />
+                )}
+                {activeTab === "progress" && (
+                  <ProgressDashboard onNavigate={(tab) => setActiveTab(tab as TabType)} />
                 )}
                 {activeTab === "badges" && <BadgesDisplay key={badgeRefreshKey} />}
                 {activeTab === "leaderboard" && <Leaderboard />}

@@ -135,19 +135,9 @@ const BadgesDisplay = () => {
         <h3 className="font-display text-xl font-semibold text-foreground mb-2">
           No Badges Yet
         </h3>
-        <p className="text-muted-foreground text-sm max-w-md mx-auto mb-4">
+        <p className="text-muted-foreground text-sm max-w-md mx-auto">
           Complete the Explain-Back exercises to earn badges! Score well on concepts to unlock achievements.
         </p>
-        <div className="text-xs text-muted-foreground bg-secondary/50 rounded-lg p-4 max-w-sm mx-auto">
-          <p className="font-medium mb-2">How to earn badges:</p>
-          <ul className="text-left space-y-1">
-            <li>⭐ First Concept - Complete your first explanation</li>
-            <li>🌟 Rising Star - Score 70%+ on an explanation</li>
-            <li>🏆 Quick Learner - Score 80%+ on an explanation</li>
-            <li>🎖️ Master Explainer - Score 90%+ on an explanation</li>
-            <li>🏅 Perfect Score - Achieve 100% on any concept</li>
-          </ul>
-        </div>
       </div>
     );
   }

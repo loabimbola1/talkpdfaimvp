@@ -1,29 +1,29 @@
-import { Upload, Headphones, MessageCircle, Award } from "lucide-react";
+import { Upload, Mic, Brain, Award } from "lucide-react";
 
 const steps = [
   {
     number: "01",
     icon: Upload,
     title: "Upload Your PDF",
-    description: "Drop any textbook, lecture notes, or study material. We support up to 500 pages per document.",
+    description: "Drop your textbook, lecture notes, or any PDF. We extract the content instantly.",
   },
   {
     number: "02",
-    icon: Headphones,
-    title: "Listen in Your Language",
-    description: "Choose from English, Yoruba, Hausa, Igbo, or Pidgin. Natural AI voices make learning feel conversational.",
+    icon: Mic,
+    title: "Ask by Voice",
+    description: "Speak your question naturally. Ask in any of our 5 supported languages.",
   },
   {
     number: "03",
-    icon: MessageCircle,
-    title: "Explain Back to AI",
-    description: "After each section, explain what you learned. Our AI validates your understanding in real-time.",
+    icon: Brain,
+    title: "Get Instant Explanation",
+    description: "AI finds the answer in your PDF and explains like a patient tutor.",
   },
   {
     number: "04",
     icon: Award,
-    title: "Earn Your Badges",
-    description: "Progress from Bronze to Silver to Gold. Share your achievements and prove your mastery.",
+    title: "Explain Back & Earn Badges",
+    description: "Prove you understand by explaining in your own words. Earn badges you can share.",
   },
 ];
 
@@ -33,42 +33,47 @@ const HowItWorks = () => {
       <div className="container mx-auto px-4">
         <div className="text-center max-w-2xl mx-auto mb-12 md:mb-16">
           <h2 className="font-display text-3xl md:text-4xl font-bold text-foreground mb-4">
-            How TalkPDF AI Works
+            How it works
           </h2>
           <p className="text-muted-foreground text-lg">
-            From confused to confident in four simple steps.
+            From confused to confident in 4 simple steps
           </p>
         </div>
 
-        <div className="max-w-4xl mx-auto">
-          <div className="space-y-8 md:space-y-0 md:grid md:grid-cols-2 md:gap-8 lg:gap-12">
-            {steps.map((step, index) => (
-              <div
-                key={step.number}
-                className="relative flex gap-4 md:gap-6 p-6 rounded-2xl bg-card border border-border shadow-card"
-              >
-                {/* Step Number */}
-                <div className="flex-shrink-0">
-                  <div className="w-12 h-12 rounded-full bg-primary flex items-center justify-center">
-                    <step.icon className="h-5 w-5 text-primary-foreground" />
+        <div className="max-w-5xl mx-auto">
+          {/* Steps with connected line */}
+          <div className="relative">
+            {/* Connection line - hidden on mobile */}
+            <div className="hidden md:block absolute top-12 left-[12.5%] right-[12.5%] h-0.5 bg-gradient-to-r from-primary/20 via-primary to-primary/20" />
+            
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-8 md:gap-4">
+              {steps.map((step, index) => (
+                <div
+                  key={step.number}
+                  className="relative flex flex-col items-center text-center"
+                >
+                  {/* Step Number Badge */}
+                  <div className="absolute -top-2 right-4 md:right-0 md:top-8 md:left-16 z-10">
+                    <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-foreground text-background text-xs font-bold">
+                      {step.number}
+                    </span>
                   </div>
-                </div>
 
-                <div>
-                  <span className="text-xs font-semibold text-primary tracking-wider uppercase mb-1 block">
-                    Step {step.number}
-                  </span>
+                  {/* Icon Circle */}
+                  <div className="relative w-24 h-24 rounded-full bg-primary flex items-center justify-center mb-6 shadow-lg">
+                    <step.icon className="h-10 w-10 text-primary-foreground" />
+                  </div>
+
+                  {/* Content */}
                   <h3 className="font-display text-lg font-semibold text-foreground mb-2">
                     {step.title}
                   </h3>
-                  <p className="text-muted-foreground text-sm leading-relaxed">
+                  <p className="text-muted-foreground text-sm leading-relaxed max-w-[200px]">
                     {step.description}
                   </p>
                 </div>
-
-                {/* Removed connector line that was causing visual issues */}
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
         </div>
       </div>

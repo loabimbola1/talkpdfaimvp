@@ -1,16 +1,20 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { 
   Clock, 
   Play, 
+  Pause,
   CheckCircle2, 
   Trophy,
   Loader2,
   RotateCcw,
   ChevronRight,
-  BookOpen
+  BookOpen,
+  Volume2,
+  VolumeX,
+  Sparkles,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -20,11 +24,13 @@ interface MicroLesson {
   id: string;
   title: string;
   subject: string;
-  duration: number; // in seconds (60s for micro-lessons)
+  duration: number;
   status: "new" | "in_progress" | "completed";
   documentId?: string;
   conceptIndex?: number;
   score?: number;
+  aiExplanation?: string;
+  audioUrl?: string;
 }
 
 interface MicroLessonsProps {
@@ -38,6 +44,12 @@ const MicroLessons = ({ onLessonComplete }: MicroLessonsProps) => {
   const [timeRemaining, setTimeRemaining] = useState(60);
   const [isRunning, setIsRunning] = useState(false);
   const [filter, setFilter] = useState<"all" | "new" | "in_progress" | "completed">("all");
+  const [generatingExplanation, setGeneratingExplanation] = useState(false);
+  const [explanation, setExplanation] = useState<string>("");
+  const [isPlayingAudio, setIsPlayingAudio] = useState(false);
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  
+  const speechRef = useRef<SpeechSynthesisUtterance | null>(null);
 
   useEffect(() => {
     fetchLessons();
@@ -61,38 +73,65 @@ const MicroLessons = ({ onLessonComplete }: MicroLessonsProps) => {
     };
   }, [isRunning, timeRemaining]);
 
+  // Cleanup speech on unmount
+  useEffect(() => {
+    return () => {
+      if (speechSynthesis.speaking) {
+        speechSynthesis.cancel();
+      }
+    };
+  }, []);
+
   const fetchLessons = async () => {
     try {
-      // Fetch documents with study_prompts to generate micro-lessons
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      // Fetch documents with study_prompts
       const { data: documents, error } = await supabase
         .from("documents")
-        .select("id, title, study_prompts, status")
+        .select("id, title, study_prompts, summary, status")
         .eq("status", "ready")
         .order("created_at", { ascending: false });
 
       if (error) throw error;
+
+      // Fetch existing lesson progress
+      const { data: progress } = await supabase
+        .from("micro_lesson_progress")
+        .select("*")
+        .eq("user_id", user.id);
+
+      const progressMap = new Map(
+        (progress || []).map((p) => [`${p.document_id}-${p.concept_index}`, p])
+      );
 
       // Generate micro-lessons from document concepts
       const generatedLessons: MicroLesson[] = [];
       
       documents?.forEach((doc) => {
         if (doc.study_prompts && Array.isArray(doc.study_prompts)) {
-          const prompts = doc.study_prompts as Array<{ concept: string; prompt: string }>;
+          const prompts = doc.study_prompts as Array<{ topic?: string; concept?: string; prompt: string }>;
           prompts.slice(0, 3).forEach((prompt, index) => {
+            const lessonId = `${doc.id}-${index}`;
+            const existingProgress = progressMap.get(lessonId);
+            
             generatedLessons.push({
-              id: `${doc.id}-${index}`,
-              title: prompt.concept || `Concept ${index + 1}`,
+              id: lessonId,
+              title: prompt.topic || prompt.concept || `Concept ${index + 1}`,
               subject: doc.title,
               duration: 60,
-              status: "new",
+              status: existingProgress?.status as "new" | "in_progress" | "completed" || "new",
               documentId: doc.id,
               conceptIndex: index,
+              score: existingProgress?.score || undefined,
+              aiExplanation: existingProgress?.ai_explanation || undefined,
             });
           });
         }
       });
 
-      // Add some sample lessons if no documents exist
+      // If no lessons, show demo lessons
       if (generatedLessons.length === 0) {
         generatedLessons.push(
           {
@@ -116,29 +155,6 @@ const MicroLessons = ({ onLessonComplete }: MicroLessonsProps) => {
             subject: "Chemistry",
             duration: 60,
             status: "new",
-          },
-          {
-            id: "sample-4",
-            title: "Newton's Laws of Motion",
-            subject: "Physics",
-            duration: 60,
-            status: "completed",
-            score: 88,
-          },
-          {
-            id: "sample-5",
-            title: "Introduction to Derivatives",
-            subject: "Calculus",
-            duration: 60,
-            status: "new",
-          },
-          {
-            id: "sample-6",
-            title: "Cell Membrane Structure",
-            subject: "Biology",
-            duration: 60,
-            status: "completed",
-            score: 92,
           }
         );
       }
@@ -152,10 +168,76 @@ const MicroLessons = ({ onLessonComplete }: MicroLessonsProps) => {
     }
   };
 
-  const startLesson = (lesson: MicroLesson) => {
+  const generateAIExplanation = async (lesson: MicroLesson) => {
+    setGeneratingExplanation(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("generate-lesson-audio", {
+        body: {
+          concept: lesson.title,
+          language: "en",
+        },
+      });
+
+      if (error) throw error;
+
+      setExplanation(data.explanation || "");
+      
+      // Save to database
+      if (lesson.documentId) {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          await supabase.from("micro_lesson_progress").upsert({
+            user_id: user.id,
+            document_id: lesson.documentId,
+            concept_index: lesson.conceptIndex || 0,
+            status: "in_progress",
+            ai_explanation: data.explanation,
+          }, { onConflict: "user_id,document_id,concept_index" });
+        }
+      }
+
+      return data.explanation;
+    } catch (error) {
+      console.error("Error generating explanation:", error);
+      // Fallback to a generic explanation
+      const fallback = `Let's learn about ${lesson.title}. This concept is fundamental to understanding ${lesson.subject}. Take your time to absorb this information and try to explain it back in your own words.`;
+      setExplanation(fallback);
+      return fallback;
+    } finally {
+      setGeneratingExplanation(false);
+    }
+  };
+
+  const speakExplanation = (text: string) => {
+    if (speechSynthesis.speaking) {
+      speechSynthesis.cancel();
+      setIsSpeaking(false);
+      return;
+    }
+
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.rate = 0.9;
+    utterance.pitch = 1;
+    
+    // Try to use a natural voice
+    const voices = speechSynthesis.getVoices();
+    const englishVoice = voices.find((v) => v.lang.startsWith("en"));
+    if (englishVoice) {
+      utterance.voice = englishVoice;
+    }
+
+    utterance.onend = () => setIsSpeaking(false);
+    utterance.onerror = () => setIsSpeaking(false);
+
+    speechRef.current = utterance;
+    speechSynthesis.speak(utterance);
+    setIsSpeaking(true);
+  };
+
+  const startLesson = async (lesson: MicroLesson) => {
     setActiveLesson(lesson);
     setTimeRemaining(60);
-    setIsRunning(true);
+    setExplanation("");
     
     // Update lesson status
     setLessons((prev) =>
@@ -163,10 +245,25 @@ const MicroLessons = ({ onLessonComplete }: MicroLessonsProps) => {
         l.id === lesson.id ? { ...l, status: "in_progress" as const } : l
       )
     );
+
+    // Generate AI explanation
+    const explanationText = await generateAIExplanation(lesson);
+    
+    // Auto-start timer and audio
+    setIsRunning(true);
+    if (explanationText) {
+      setTimeout(() => speakExplanation(explanationText), 500);
+    }
   };
 
-  const handleLessonComplete = () => {
+  const handleLessonComplete = async () => {
     if (!activeLesson) return;
+    
+    // Stop any ongoing speech
+    if (speechSynthesis.speaking) {
+      speechSynthesis.cancel();
+      setIsSpeaking(false);
+    }
     
     const score = Math.floor(Math.random() * 20) + 80; // Random score 80-100 for demo
     
@@ -177,16 +274,37 @@ const MicroLessons = ({ onLessonComplete }: MicroLessonsProps) => {
           : l
       )
     );
+
+    // Save completion to database
+    if (activeLesson.documentId) {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        await supabase.from("micro_lesson_progress").upsert({
+          user_id: user.id,
+          document_id: activeLesson.documentId,
+          concept_index: activeLesson.conceptIndex || 0,
+          status: "completed",
+          score,
+          completed_at: new Date().toISOString(),
+        }, { onConflict: "user_id,document_id,concept_index" });
+      }
+    }
     
     toast.success(`Lesson completed! Score: ${score}%`);
     onLessonComplete?.(activeLesson.id, score);
     setActiveLesson(null);
+    setExplanation("");
   };
 
   const resetLesson = () => {
+    if (speechSynthesis.speaking) {
+      speechSynthesis.cancel();
+      setIsSpeaking(false);
+    }
     setTimeRemaining(60);
     setIsRunning(false);
     setActiveLesson(null);
+    setExplanation("");
   };
 
   const formatTime = (seconds: number) => {
@@ -284,12 +402,49 @@ const MicroLessons = ({ onLessonComplete }: MicroLessonsProps) => {
           <Progress value={progress} className="w-full max-w-md" />
         </div>
 
-        {/* Lesson Content Placeholder */}
-        <div className="bg-secondary/30 rounded-xl p-6 text-center">
-          <BookOpen className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-          <p className="text-muted-foreground">
-            Listen to the AI explanation and prepare to explain it back in your own words.
-          </p>
+        {/* AI Explanation */}
+        <div className="bg-secondary/30 rounded-xl p-6">
+          {generatingExplanation ? (
+            <div className="flex items-center justify-center gap-3">
+              <Loader2 className="h-5 w-5 animate-spin text-primary" />
+              <span className="text-muted-foreground">AI is generating your explanation...</span>
+            </div>
+          ) : explanation ? (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="h-5 w-5 text-primary" />
+                  <span className="font-medium text-foreground">AI Explanation</span>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => speakExplanation(explanation)}
+                  className="gap-1"
+                >
+                  {isSpeaking ? (
+                    <>
+                      <VolumeX className="h-4 w-4" />
+                      Stop
+                    </>
+                  ) : (
+                    <>
+                      <Volume2 className="h-4 w-4" />
+                      Listen
+                    </>
+                  )}
+                </Button>
+              </div>
+              <p className="text-foreground leading-relaxed">{explanation}</p>
+            </div>
+          ) : (
+            <div className="text-center">
+              <BookOpen className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+              <p className="text-muted-foreground">
+                Listen to the AI explanation and prepare to explain it back in your own words.
+              </p>
+            </div>
+          )}
         </div>
 
         {/* Controls */}
@@ -297,6 +452,13 @@ const MicroLessons = ({ onLessonComplete }: MicroLessonsProps) => {
           <Button variant="outline" onClick={resetLesson}>
             <RotateCcw className="h-4 w-4 mr-2" />
             Reset
+          </Button>
+          <Button 
+            variant={isRunning ? "secondary" : "default"} 
+            onClick={() => setIsRunning(!isRunning)}
+          >
+            {isRunning ? <Pause className="h-4 w-4 mr-2" /> : <Play className="h-4 w-4 mr-2" />}
+            {isRunning ? "Pause" : "Resume"}
           </Button>
           <Button onClick={handleLessonComplete}>
             Complete Lesson
@@ -311,10 +473,10 @@ const MicroLessons = ({ onLessonComplete }: MicroLessonsProps) => {
     <div className="space-y-6">
       <div className="text-center">
         <h2 className="font-display text-2xl font-bold text-foreground mb-2">
-          Micro-Lessons
+          1-Minute Mastery
         </h2>
         <p className="text-muted-foreground">
-          60-second lessons designed for quick mastery
+          60-second micro-lessons with AI-powered explanations
         </p>
       </div>
 
@@ -354,6 +516,7 @@ const MicroLessons = ({ onLessonComplete }: MicroLessonsProps) => {
                 {lesson.status === "completed" && lesson.score && (
                   <div className="flex items-center gap-1">
                     <Trophy className="h-4 w-4 text-yellow-500" />
+                    <span className="text-sm font-medium">{lesson.score}%</span>
                   </div>
                 )}
               </div>

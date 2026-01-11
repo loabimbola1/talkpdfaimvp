@@ -1,29 +1,35 @@
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { 
   Flame, 
   Award, 
   BookOpen, 
   TrendingUp,
   Loader2,
-  Calendar
+  Calendar,
+  FileText,
+  Brain,
+  Clock,
+  Target,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
 import {
-  LineChart,
-  Line,
+  BarChart,
+  Bar,
   XAxis,
   YAxis,
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
-  BarChart,
-  Bar,
   PieChart,
   Pie,
   Cell,
+  LineChart,
+  Line,
 } from "recharts";
+import { formatDistanceToNow } from "date-fns";
 
 interface ProgressDashboardProps {
   onNavigate?: (tab: string) => void;
@@ -45,14 +51,24 @@ interface SubjectMastery {
   mastery: number;
 }
 
+interface DocumentProgress {
+  id: string;
+  title: string;
+  score: number | null;
+  lastStudied: string | null;
+  status: string;
+}
+
 const ProgressDashboard = ({ onNavigate }: ProgressDashboardProps) => {
   const [loading, setLoading] = useState(true);
   const [streakDays, setStreakDays] = useState(0);
   const [totalBadges, setTotalBadges] = useState(0);
   const [lessonsCompleted, setLessonsCompleted] = useState(0);
+  const [totalDocuments, setTotalDocuments] = useState(0);
   const [studyData, setStudyData] = useState<StudyStreak[]>([]);
   const [badgeStats, setBadgeStats] = useState<BadgeStats[]>([]);
   const [subjectMastery, setSubjectMastery] = useState<SubjectMastery[]>([]);
+  const [recentDocuments, setRecentDocuments] = useState<DocumentProgress[]>([]);
 
   useEffect(() => {
     fetchProgressData();
@@ -60,10 +76,14 @@ const ProgressDashboard = ({ onNavigate }: ProgressDashboardProps) => {
 
   const fetchProgressData = async () => {
     try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
       // Fetch badges
       const { data: badges, error: badgesError } = await supabase
         .from("badges")
         .select("*")
+        .eq("user_id", user.id)
         .order("earned_at", { ascending: false });
 
       if (badgesError) throw badgesError;
@@ -96,15 +116,29 @@ const ProgressDashboard = ({ onNavigate }: ProgressDashboardProps) => {
         }))
       );
 
-      // Fetch documents for subject mastery
+      // Fetch documents for progress tracking
       const { data: documents, error: docsError } = await supabase
         .from("documents")
-        .select("title, explain_back_score")
-        .not("explain_back_score", "is", null);
+        .select("id, title, explain_back_score, last_studied_at, status")
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: false });
 
       if (docsError) throw docsError;
 
-      // Group by inferred subject (first word of title or generic)
+      setTotalDocuments(documents?.length || 0);
+      
+      // Recent documents with progress
+      setRecentDocuments(
+        (documents || []).slice(0, 5).map((doc) => ({
+          id: doc.id,
+          title: doc.title,
+          score: doc.explain_back_score,
+          lastStudied: doc.last_studied_at,
+          status: doc.status,
+        }))
+      );
+
+      // Calculate subject mastery from document scores
       const subjectScores: Record<string, number[]> = {};
       documents?.forEach((doc) => {
         const subject = doc.title?.split(" ")[0] || "General";
@@ -122,21 +156,31 @@ const ProgressDashboard = ({ onNavigate }: ProgressDashboardProps) => {
         .slice(0, 5);
 
       // Add sample data if empty
-      if (masteryData.length === 0) {
+      if (masteryData.length === 0 && documents && documents.length > 0) {
         masteryData.push(
-          { subject: "Biology", mastery: 85 },
-          { subject: "Chemistry", mastery: 72 },
-          { subject: "Physics", mastery: 68 },
-          { subject: "Calculus", mastery: 55 }
+          ...documents.slice(0, 4).map((doc, i) => ({
+            subject: doc.title.slice(0, 15),
+            mastery: doc.explain_back_score || (70 + i * 5),
+          }))
         );
       }
 
       setSubjectMastery(masteryData);
 
+      // Fetch micro lesson progress
+      const { data: lessonProgress } = await supabase
+        .from("micro_lesson_progress")
+        .select("*")
+        .eq("user_id", user.id)
+        .eq("status", "completed");
+
+      setLessonsCompleted(lessonProgress?.length || 0);
+
       // Fetch usage data for study streak
       const { data: usage, error: usageError } = await supabase
         .from("daily_usage_summary")
         .select("*")
+        .eq("user_id", user.id)
         .order("date", { ascending: true })
         .limit(7);
 
@@ -152,7 +196,7 @@ const ProgressDashboard = ({ onNavigate }: ProgressDashboardProps) => {
         
         last7Days.push({
           date: date.toLocaleDateString("en-US", { weekday: "short" }),
-          minutes: dayUsage?.audio_minutes_used || Math.floor(Math.random() * 30) + 5,
+          minutes: dayUsage ? Number(dayUsage.audio_minutes_used) : 0,
         });
       }
 
@@ -165,13 +209,19 @@ const ProgressDashboard = ({ onNavigate }: ProgressDashboardProps) => {
         else break;
       }
       setStreakDays(streak);
-      setLessonsCompleted(12); // Sample data
 
     } catch (error) {
       console.error("Error fetching progress data:", error);
     } finally {
       setLoading(false);
     }
+  };
+
+  const getScoreColor = (score: number | null) => {
+    if (!score) return "bg-muted";
+    if (score >= 80) return "bg-green-500";
+    if (score >= 60) return "bg-yellow-500";
+    return "bg-orange-500";
   };
 
   if (loading) {
@@ -242,20 +292,62 @@ const ProgressDashboard = ({ onNavigate }: ProgressDashboardProps) => {
           <CardContent className="p-4">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-lg bg-blue-500/20 flex items-center justify-center">
-                <TrendingUp className="h-5 w-5 text-blue-500" />
+                <FileText className="h-5 w-5 text-blue-500" />
               </div>
               <div>
-                <p className="text-2xl font-bold text-foreground">
-                  {subjectMastery.length > 0 
-                    ? Math.round(subjectMastery.reduce((a, b) => a + b.mastery, 0) / subjectMastery.length)
-                    : 0}%
-                </p>
-                <p className="text-xs text-muted-foreground">Avg Mastery</p>
+                <p className="text-2xl font-bold text-foreground">{totalDocuments}</p>
+                <p className="text-xs text-muted-foreground">Documents</p>
               </div>
             </div>
           </CardContent>
         </Card>
       </div>
+
+      {/* Recent Documents Progress */}
+      {recentDocuments.length > 0 && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base font-semibold flex items-center gap-2">
+              <Target className="h-4 w-4 text-primary" />
+              Document Progress
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {recentDocuments.map((doc) => (
+              <div key={doc.id} className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded bg-secondary flex items-center justify-center">
+                  <FileText className="h-4 w-4 text-muted-foreground" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-foreground truncate">{doc.title}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {doc.lastStudied
+                      ? `Studied ${formatDistanceToNow(new Date(doc.lastStudied), { addSuffix: true })}`
+                      : "Not studied yet"}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  {doc.score !== null ? (
+                    <>
+                      <div className={cn("w-2 h-2 rounded-full", getScoreColor(doc.score))} />
+                      <span className="text-sm font-medium">{doc.score}%</span>
+                    </>
+                  ) : (
+                    <span className="text-xs text-muted-foreground">—</span>
+                  )}
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => onNavigate?.("explain")}
+                >
+                  <Brain className="h-4 w-4" />
+                </Button>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Charts Grid */}
       <div className="grid md:grid-cols-2 gap-6">
@@ -359,39 +451,57 @@ const ProgressDashboard = ({ onNavigate }: ProgressDashboardProps) => {
       </div>
 
       {/* Subject Mastery */}
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-base font-semibold flex items-center gap-2">
-            <TrendingUp className="h-4 w-4 text-primary" />
-            Subject Mastery
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            {subjectMastery.map((subject) => (
-              <div key={subject.subject}>
-                <div className="flex justify-between text-sm mb-1">
-                  <span className="font-medium text-foreground">{subject.subject}</span>
-                  <span className="text-muted-foreground">{subject.mastery}%</span>
+      {subjectMastery.length > 0 && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base font-semibold flex items-center gap-2">
+              <TrendingUp className="h-4 w-4 text-primary" />
+              Subject Mastery
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              {subjectMastery.map((subject) => (
+                <div key={subject.subject}>
+                  <div className="flex justify-between text-sm mb-1">
+                    <span className="font-medium text-foreground">{subject.subject}</span>
+                    <span className="text-muted-foreground">{subject.mastery}%</span>
+                  </div>
+                  <div className="h-2 bg-secondary rounded-full overflow-hidden">
+                    <div
+                      className={cn(
+                        "h-full rounded-full transition-all",
+                        subject.mastery >= 80
+                          ? "bg-green-500"
+                          : subject.mastery >= 60
+                          ? "bg-yellow-500"
+                          : "bg-orange-500"
+                      )}
+                      style={{ width: `${subject.mastery}%` }}
+                    />
+                  </div>
                 </div>
-                <div className="h-2 bg-secondary rounded-full overflow-hidden">
-                  <div
-                    className={cn(
-                      "h-full rounded-full transition-all",
-                      subject.mastery >= 80
-                        ? "bg-green-500"
-                        : subject.mastery >= 60
-                        ? "bg-yellow-500"
-                        : "bg-orange-500"
-                    )}
-                    style={{ width: `${subject.mastery}%` }}
-                  />
-                </div>
-              </div>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Quick Actions */}
+      <div className="flex flex-wrap gap-3 justify-center">
+        <Button variant="outline" onClick={() => onNavigate?.("lessons")} className="gap-2">
+          <BookOpen className="h-4 w-4" />
+          Start Micro-Lesson
+        </Button>
+        <Button variant="outline" onClick={() => onNavigate?.("badges")} className="gap-2">
+          <Award className="h-4 w-4" />
+          View All Badges
+        </Button>
+        <Button variant="outline" onClick={() => onNavigate?.("leaderboard")} className="gap-2">
+          <TrendingUp className="h-4 w-4" />
+          Check Leaderboard
+        </Button>
+      </div>
     </div>
   );
 };

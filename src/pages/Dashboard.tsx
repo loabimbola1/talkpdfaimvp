@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams, Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { LogOut, Upload, Headphones, Award, Settings, User, FileText, Brain, Crown, Trophy, HelpCircle, BookOpen, BarChart3 } from "lucide-react";
+import { LogOut, Upload, Headphones, Award, Settings, User, FileText, Brain, Crown, Trophy, HelpCircle, BookOpen, BarChart3, Users, Calendar } from "lucide-react";
 import PDFUpload from "@/components/dashboard/PDFUpload";
 import AudioPlayer from "@/components/dashboard/AudioPlayer";
 import MyDocuments from "@/components/dashboard/MyDocuments";
@@ -16,10 +16,12 @@ import Leaderboard from "@/components/dashboard/Leaderboard";
 import QuizMode from "@/components/dashboard/QuizMode";
 import MicroLessons from "@/components/dashboard/MicroLessons";
 import ProgressDashboard from "@/components/dashboard/ProgressDashboard";
+import StudyGroups from "@/components/dashboard/StudyGroups";
+import SpacedRepetition from "@/components/dashboard/SpacedRepetition";
 import ThemeToggle from "@/components/ThemeToggle";
 import type { User as SupabaseUser } from "@supabase/supabase-js";
 
-type TabType = "upload" | "documents" | "listen" | "explain" | "quiz" | "lessons" | "progress" | "badges" | "leaderboard" | "subscription" | "settings";
+type TabType = "upload" | "documents" | "listen" | "explain" | "quiz" | "lessons" | "progress" | "badges" | "leaderboard" | "groups" | "review" | "subscription" | "settings";
 
 const Dashboard = () => {
   const [user, setUser] = useState<SupabaseUser | null>(null);
@@ -123,8 +125,10 @@ const Dashboard = () => {
     { id: "explain" as TabType, label: "Explain-Back", icon: Brain },
     { id: "quiz" as TabType, label: "Quiz", icon: HelpCircle },
     { id: "lessons" as TabType, label: "Lessons", icon: BookOpen },
+    { id: "review" as TabType, label: "Review", icon: Calendar },
     { id: "progress" as TabType, label: "Progress", icon: BarChart3 },
     { id: "badges" as TabType, label: "Badges", icon: Award },
+    { id: "groups" as TabType, label: "Groups", icon: Users },
     { id: "leaderboard" as TabType, label: "Leaderboard", icon: Trophy },
     { id: "subscription" as TabType, label: "Upgrade", icon: Crown },
     { id: "settings" as TabType, label: "Settings", icon: Settings },
@@ -219,7 +223,15 @@ const Dashboard = () => {
                 {activeTab === "progress" && (
                   <ProgressDashboard onNavigate={(tab) => setActiveTab(tab as TabType)} />
                 )}
+                {activeTab === "review" && (
+                  <SpacedRepetition onStartReview={(docId, idx) => {
+                    setSelectedDocumentId(docId);
+                    setSelectedPromptIndex(idx);
+                    setActiveTab("explain");
+                  }} />
+                )}
                 {activeTab === "badges" && <BadgesDisplay key={badgeRefreshKey} />}
+                {activeTab === "groups" && <StudyGroups />}
                 {activeTab === "leaderboard" && <Leaderboard />}
                 {activeTab === "subscription" && <SubscriptionPlans />}
                 {activeTab === "settings" && <ProfileSettings user={user} />}

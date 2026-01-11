@@ -19,6 +19,7 @@ import MicroLessons from "@/components/dashboard/MicroLessons";
 import ProgressDashboard from "@/components/dashboard/ProgressDashboard";
 import StudyGroups from "@/components/dashboard/StudyGroups";
 import SpacedRepetition from "@/components/dashboard/SpacedRepetition";
+import OnboardingGuide from "@/components/dashboard/OnboardingGuide";
 import ThemeToggle from "@/components/ThemeToggle";
 import type { User as SupabaseUser } from "@supabase/supabase-js";
 
@@ -31,6 +32,7 @@ const Dashboard = () => {
   const [selectedDocumentId, setSelectedDocumentId] = useState<string | null>(null);
   const [selectedPromptIndex, setSelectedPromptIndex] = useState<number>(0);
   const [badgeRefreshKey, setBadgeRefreshKey] = useState(0);
+  const [showOnboarding, setShowOnboarding] = useState(false);
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -111,6 +113,14 @@ const Dashboard = () => {
     setBadgeRefreshKey((prev) => prev + 1);
   }, []);
 
+  const handleOnboardingComplete = useCallback(() => {
+    toast.success("Welcome to TalkPDF AI! Upload your first PDF to get started.");
+  }, []);
+
+  const handleOnboardingNavigate = useCallback((tab: string) => {
+    setActiveTab(tab as TabType);
+  }, []);
+
   if (loading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -138,6 +148,12 @@ const Dashboard = () => {
 
   return (
     <div className="min-h-screen bg-background">
+      {/* Onboarding Guide */}
+      <OnboardingGuide 
+        onComplete={handleOnboardingComplete} 
+        onNavigate={handleOnboardingNavigate}
+      />
+      
       {/* Header with consistent single logo format */}
       <header className="border-b border-border bg-card/50 backdrop-blur-sm sticky top-0 z-50">
         <div className="container mx-auto px-4">

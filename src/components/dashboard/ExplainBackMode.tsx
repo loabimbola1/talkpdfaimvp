@@ -80,9 +80,34 @@ const ExplainBackMode = ({ documentId: propDocumentId, documentTitle, promptInde
   const [earnedBadge, setEarnedBadge] = useState<Badge | null>(null);
   const [completedPrompts, setCompletedPrompts] = useState<number>(0);
   const [result, setResult] = useState<EvaluationResult | null>(null);
+  const [userPlan, setUserPlan] = useState<string>("free");
+  const [isCheckingPlan, setIsCheckingPlan] = useState(true);
   
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
+
+  // Check user's subscription plan
+  useEffect(() => {
+    const checkPlan = async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
+        
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("subscription_plan")
+          .eq("user_id", user.id)
+          .single();
+        
+        setUserPlan(profile?.subscription_plan || "free");
+      } catch (error) {
+        console.error("Error checking plan:", error);
+      } finally {
+        setIsCheckingPlan(false);
+      }
+    };
+    checkPlan();
+  }, []);
 
   // Fetch user's documents with study prompts
   useEffect(() => {
@@ -396,11 +421,45 @@ const ExplainBackMode = ({ documentId: propDocumentId, documentTitle, promptInde
     return `💡 Hint: Think about ${currentPrompt.topic.toLowerCase()}. Here's a clue from the document: "${summaryWords}..."`;
   };
 
-  if (isLoading) {
+  const isPaidPlan = userPlan === "student_pro" || userPlan === "mastery_pass";
+
+  if (isLoading || isCheckingPlan) {
     return (
       <div className="flex flex-col items-center justify-center py-12">
         <Loader2 className="h-8 w-8 text-primary animate-spin mb-4" />
-        <p className="text-muted-foreground">Loading your documents...</p>
+        <p className="text-muted-foreground">Loading...</p>
+      </div>
+    );
+  }
+
+  // Show upgrade prompt for free users
+  if (!isPaidPlan) {
+    return (
+      <div className="text-center py-12">
+        <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto mb-4">
+          <Brain className="h-8 w-8 text-primary" />
+        </div>
+        <h3 className="font-display text-xl font-semibold text-foreground mb-2">
+          Explain-Back Mode
+        </h3>
+        <p className="text-muted-foreground text-sm max-w-md mx-auto mb-6">
+          Explain-Back Mode is available on Student Pro and Mastery Pass plans. Test your understanding by explaining concepts in your own words and earn badges!
+        </p>
+        <div className="bg-secondary/30 rounded-xl p-4 max-w-sm mx-auto mb-6">
+          <p className="text-sm text-foreground font-medium mb-2">What you get:</p>
+          <ul className="text-sm text-muted-foreground space-y-1 text-left">
+            <li>✅ Voice and text explanations</li>
+            <li>✅ AI-powered evaluation</li>
+            <li>✅ Bronze, Silver & Gold badges</li>
+            <li>✅ Share achievements on social media</li>
+          </ul>
+        </div>
+        <Button onClick={() => {
+          const event = new CustomEvent("navigateToTab", { detail: { tab: "subscription" } });
+          window.dispatchEvent(event);
+        }}>
+          Upgrade to Student Pro
+        </Button>
       </div>
     );
   }

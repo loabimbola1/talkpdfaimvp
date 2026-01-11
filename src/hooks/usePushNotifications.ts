@@ -1,24 +1,32 @@
 import { useState, useEffect, useCallback } from "react";
-import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
+// For local development, we'll use a placeholder VAPID key
+// In production, you'd generate real VAPID keys
 const VAPID_PUBLIC_KEY = "BEl62iUYgUivxIkv69yViEuiBIa-Ib9-SkvMeAtA3LFgDzkrxZJjSgSnfckjBJuBkr3qBUYIHBQFLXYp5Nksh8U";
 
 export function usePushNotifications() {
   const [isSupported, setIsSupported] = useState(false);
   const [isSubscribed, setIsSubscribed] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [permissionState, setPermissionState] = useState<NotificationPermission>("default");
 
   useEffect(() => {
     const checkSupport = async () => {
-      const supported = "Notification" in window && "serviceWorker" in navigator && "PushManager" in window;
-      setIsSupported(supported);
+      // Check if notifications are supported
+      const notificationSupported = "Notification" in window;
+      const serviceWorkerSupported = "serviceWorker" in navigator;
+      
+      setIsSupported(notificationSupported);
 
-      if (supported) {
-        const registration = await navigator.serviceWorker.ready;
-        const subscription = await registration.pushManager.getSubscription();
-        setIsSubscribed(!!subscription);
+      if (notificationSupported) {
+        setPermissionState(Notification.permission);
+        
+        // Check if already subscribed (from localStorage)
+        const savedSubscription = localStorage.getItem("talkpdf-notifications-enabled");
+        setIsSubscribed(savedSubscription === "true" && Notification.permission === "granted");
       }
+      
       setIsLoading(false);
     };
 
@@ -43,42 +51,60 @@ export function usePushNotifications() {
     }
 
     try {
+      // Request permission
       const permission = await Notification.requestPermission();
+      setPermissionState(permission);
+      
       if (permission !== "granted") {
         toast.error("Please allow notifications to receive study reminders");
         return false;
       }
 
-      const registration = await navigator.serviceWorker.ready;
-      const subscription = await registration.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
-      });
-
-      // Save subscription to user's profile (for now just store locally)
-      localStorage.setItem("talkpdf-push-subscription", JSON.stringify(subscription.toJSON()));
+      // Try to subscribe via service worker if available
+      if ("serviceWorker" in navigator && "PushManager" in window) {
+        try {
+          const registration = await navigator.serviceWorker.ready;
+          const subscription = await registration.pushManager.subscribe({
+            userVisibleOnly: true,
+            applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
+          });
+          localStorage.setItem("talkpdf-push-subscription", JSON.stringify(subscription.toJSON()));
+        } catch (pushError) {
+          console.log("Push subscription not available, using local notifications only");
+        }
+      }
       
+      // Mark as subscribed (for local notifications at minimum)
+      localStorage.setItem("talkpdf-notifications-enabled", "true");
       setIsSubscribed(true);
-      toast.success("Push notifications enabled! You'll receive study reminders.");
+      toast.success("Notifications enabled! You'll receive study reminders.");
       return true;
     } catch (error) {
-      console.error("Error subscribing to push:", error);
-      toast.error("Failed to enable notifications");
+      console.error("Error subscribing to notifications:", error);
+      toast.error("Failed to enable notifications. Please try again.");
       return false;
     }
   }, [isSupported]);
 
   const unsubscribe = useCallback(async () => {
     try {
-      const registration = await navigator.serviceWorker.ready;
-      const subscription = await registration.pushManager.getSubscription();
-      
-      if (subscription) {
-        await subscription.unsubscribe();
-        localStorage.removeItem("talkpdf-push-subscription");
-        setIsSubscribed(false);
-        toast.success("Push notifications disabled");
+      // Try to unsubscribe from push if available
+      if ("serviceWorker" in navigator && "PushManager" in window) {
+        try {
+          const registration = await navigator.serviceWorker.ready;
+          const subscription = await registration.pushManager.getSubscription();
+          if (subscription) {
+            await subscription.unsubscribe();
+          }
+        } catch (error) {
+          console.log("Push unsubscribe error (continuing):", error);
+        }
       }
+      
+      localStorage.removeItem("talkpdf-notifications-enabled");
+      localStorage.removeItem("talkpdf-push-subscription");
+      setIsSubscribed(false);
+      toast.success("Notifications disabled");
     } catch (error) {
       console.error("Error unsubscribing:", error);
       toast.error("Failed to disable notifications");
@@ -87,10 +113,18 @@ export function usePushNotifications() {
 
   // Schedule local notification reminder
   const scheduleStudyReminder = useCallback(async (title: string, body: string, delay: number = 0) => {
-    if (!isSupported || !isSubscribed) return;
+    if (!isSupported || !isSubscribed) {
+      console.log("Cannot schedule reminder: not supported or not subscribed");
+      return;
+    }
 
-    if (Notification.permission === "granted") {
-      setTimeout(() => {
+    if (Notification.permission !== "granted") {
+      console.log("Cannot schedule reminder: permission not granted");
+      return;
+    }
+
+    setTimeout(() => {
+      try {
         new Notification(title, {
           body,
           icon: "/favicon.png",
@@ -98,14 +132,17 @@ export function usePushNotifications() {
           tag: "study-reminder",
           requireInteraction: true,
         });
-      }, delay);
-    }
+      } catch (error) {
+        console.error("Error showing notification:", error);
+      }
+    }, delay);
   }, [isSupported, isSubscribed]);
 
   return {
     isSupported,
     isSubscribed,
     isLoading,
+    permissionState,
     subscribe,
     unsubscribe,
     scheduleStudyReminder,

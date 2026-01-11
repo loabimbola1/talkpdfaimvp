@@ -6,11 +6,40 @@ import { Label } from "@/components/ui/label";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
-import { User, Mail, Save, Loader2, Crown, Calendar, Bell } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { User, Mail, Save, Loader2, Crown, Calendar, Bell, GraduationCap } from "lucide-react";
 import { toast } from "sonner";
 import type { User as SupabaseUser } from "@supabase/supabase-js";
 import NotificationSettings from "./NotificationSettings";
 import SubscriptionStatus from "./SubscriptionStatus";
+
+// Nigerian universities list
+const nigerianUniversities = [
+  { value: "lautech", label: "Ladoke Akintola University of Technology (LAUTECH)" },
+  { value: "fountain", label: "Fountain University, Osogbo" },
+  { value: "unilag", label: "University of Lagos (UNILAG)" },
+  { value: "ui", label: "University of Ibadan (UI)" },
+  { value: "oau", label: "Obafemi Awolowo University (OAU)" },
+  { value: "unn", label: "University of Nigeria, Nsukka (UNN)" },
+  { value: "abu", label: "Ahmadu Bello University (ABU)" },
+  { value: "uniben", label: "University of Benin (UNIBEN)" },
+  { value: "unilorin", label: "University of Ilorin (UNILORIN)" },
+  { value: "futa", label: "Federal University of Technology, Akure (FUTA)" },
+  { value: "covenant", label: "Covenant University" },
+  { value: "babcock", label: "Babcock University" },
+  { value: "lasu", label: "Lagos State University (LASU)" },
+  { value: "uniosun", label: "Osun State University (UNIOSUN)" },
+  { value: "bowen", label: "Bowen University" },
+  { value: "eksu", label: "Ekiti State University" },
+  { value: "fupre", label: "Federal University of Petroleum Resources" },
+  { value: "uniport", label: "University of Port Harcourt (UNIPORT)" },
+  { value: "unical", label: "University of Calabar (UNICAL)" },
+  { value: "buk", label: "Bayero University Kano (BUK)" },
+  { value: "unimaid", label: "University of Maiduguri (UNIMAID)" },
+  { value: "udusok", label: "Usman Danfodiyo University Sokoto" },
+  { value: "nau", label: "Nnamdi Azikiwe University (NAU)" },
+  { value: "other", label: "Other University" },
+];
 
 interface Profile {
   full_name: string | null;
@@ -18,6 +47,7 @@ interface Profile {
   avatar_url: string | null;
   subscription_plan: string | null;
   subscription_status: string | null;
+  university: string | null;
 }
 
 interface ProfileSettingsProps {
@@ -30,6 +60,7 @@ const ProfileSettings = ({ user }: ProfileSettingsProps) => {
   const [saving, setSaving] = useState(false);
   const [formData, setFormData] = useState({
     full_name: "",
+    university: "",
   });
 
   useEffect(() => {
@@ -52,6 +83,7 @@ const ProfileSettings = ({ user }: ProfileSettingsProps) => {
         setProfile(data);
         setFormData({
           full_name: data.full_name || "",
+          university: data.university || "",
         });
       }
     } catch (error) {
@@ -70,6 +102,7 @@ const ProfileSettings = ({ user }: ProfileSettingsProps) => {
         .from("profiles")
         .update({
           full_name: formData.full_name,
+          university: formData.university || null,
           updated_at: new Date().toISOString(),
         })
         .eq("user_id", user.id);
@@ -166,6 +199,31 @@ const ProfileSettings = ({ user }: ProfileSettingsProps) => {
               </div>
               <p className="text-xs text-muted-foreground">
                 Email cannot be changed
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="university" className="flex items-center gap-2">
+                <GraduationCap className="h-4 w-4" />
+                University
+              </Label>
+              <Select 
+                value={formData.university} 
+                onValueChange={(value) => setFormData((prev) => ({ ...prev, university: value }))}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select your university" />
+                </SelectTrigger>
+                <SelectContent>
+                  {nigerianUniversities.map((uni) => (
+                    <SelectItem key={uni.value} value={uni.value}>
+                      {uni.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Join campus leaderboards by selecting your university
               </p>
             </div>
           </div>

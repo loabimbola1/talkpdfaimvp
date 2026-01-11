@@ -355,6 +355,35 @@ Create 3-5 study prompts that will help students test their understanding.`
       metadata: { document_id: documentId, language }
     });
 
+    // Update daily usage summary
+    const today = new Date().toISOString().split('T')[0];
+    const { data: existingUsage } = await supabase
+      .from("daily_usage_summary")
+      .select("*")
+      .eq("user_id", document.user_id)
+      .eq("date", today)
+      .maybeSingle();
+
+    if (existingUsage) {
+      await supabase
+        .from("daily_usage_summary")
+        .update({
+          pdfs_uploaded: (existingUsage.pdfs_uploaded || 0) + 1,
+          audio_minutes_used: (parseFloat(existingUsage.audio_minutes_used?.toString() || "0")) + (audioDurationSeconds / 60),
+          updated_at: new Date().toISOString()
+        })
+        .eq("id", existingUsage.id);
+    } else {
+      await supabase
+        .from("daily_usage_summary")
+        .insert({
+          user_id: document.user_id,
+          date: today,
+          pdfs_uploaded: 1,
+          audio_minutes_used: audioDurationSeconds / 60
+        });
+    }
+
     console.log("Document processed successfully:", documentId);
 
     return new Response(

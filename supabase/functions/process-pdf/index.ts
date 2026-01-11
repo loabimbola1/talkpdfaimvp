@@ -19,11 +19,11 @@ serve(async (req) => {
 
   try {
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
+    const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY");
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    const ELEVENLABS_API_KEY = Deno.env.get("ELEVENLABS_API_KEY");
 
-    if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+    if (!SUPABASE_URL || !SUPABASE_ANON_KEY || !SUPABASE_SERVICE_ROLE_KEY) {
       console.error("Missing Supabase configuration");
       return new Response(
         JSON.stringify({ error: "Service not configured" }),
@@ -31,21 +31,55 @@ serve(async (req) => {
       );
     }
 
+    // Authentication check - require valid JWT
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader?.startsWith("Bearer ")) {
+      return new Response(
+        JSON.stringify({ error: "Unauthorized" }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const authClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      global: { headers: { Authorization: authHeader } }
+    });
+
+    const token = authHeader.replace("Bearer ", "");
+    const { data: claimsData, error: claimsError } = await authClient.auth.getClaims(token);
+    
+    if (claimsError || !claimsData?.claims) {
+      console.error("Auth error:", claimsError?.message);
+      return new Response(
+        JSON.stringify({ error: "Unauthorized" }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const userId = claimsData.claims.sub;
+    if (!userId) {
+      return new Response(
+        JSON.stringify({ error: "Unauthorized" }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Use service role for privileged operations
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
     const { documentId, language = "en" }: ProcessRequest = await req.json();
 
-    console.log("Processing document:", documentId, "Language:", language);
+    console.log("Processing document:", documentId, "Language:", language, "User:", userId);
 
-    // Get document details
+    // Get document details and verify ownership
     const { data: document, error: docError } = await supabase
       .from("documents")
       .select("*")
       .eq("id", documentId)
+      .eq("user_id", userId) // Verify document belongs to authenticated user
       .maybeSingle();
 
     if (docError || !document) {
-      console.error("Document not found:", docError);
+      console.error("Document not found or access denied:", docError);
       return new Response(
         JSON.stringify({ error: "Document not found" }),
         { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }

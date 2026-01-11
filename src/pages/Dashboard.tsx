@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams, Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { LogOut, Upload, Headphones, Award, Settings, User, FileText, Brain, Crown, Trophy } from "lucide-react";
+import { LogOut, Upload, Headphones, Award, Settings, User, FileText, Brain, Crown, Trophy, HelpCircle } from "lucide-react";
 import PDFUpload from "@/components/dashboard/PDFUpload";
 import AudioPlayer from "@/components/dashboard/AudioPlayer";
 import MyDocuments from "@/components/dashboard/MyDocuments";
@@ -13,9 +13,11 @@ import UsageLimitsDisplay from "@/components/dashboard/UsageLimitsDisplay";
 import SubscriptionPlans from "@/components/dashboard/SubscriptionPlans";
 import BadgesDisplay from "@/components/dashboard/BadgesDisplay";
 import Leaderboard from "@/components/dashboard/Leaderboard";
+import QuizMode from "@/components/dashboard/QuizMode";
+import ThemeToggle from "@/components/ThemeToggle";
 import type { User as SupabaseUser } from "@supabase/supabase-js";
 
-type TabType = "upload" | "documents" | "listen" | "explain" | "badges" | "leaderboard" | "subscription" | "settings";
+type TabType = "upload" | "documents" | "listen" | "explain" | "quiz" | "badges" | "leaderboard" | "subscription" | "settings";
 
 const Dashboard = () => {
   const [user, setUser] = useState<SupabaseUser | null>(null);
@@ -33,7 +35,7 @@ const Dashboard = () => {
     const docId = searchParams.get("doc");
     const promptIndex = searchParams.get("prompt");
     
-    if (tab && ["upload", "documents", "listen", "explain", "badges", "leaderboard", "subscription", "settings"].includes(tab)) {
+    if (tab && ["upload", "documents", "listen", "explain", "quiz", "badges", "leaderboard", "subscription", "settings"].includes(tab)) {
       setActiveTab(tab as TabType);
     }
     if (docId) {
@@ -106,6 +108,7 @@ const Dashboard = () => {
     { id: "documents" as TabType, label: "My Documents", icon: FileText },
     { id: "listen" as TabType, label: "Listen", icon: Headphones },
     { id: "explain" as TabType, label: "Explain-Back", icon: Brain },
+    { id: "quiz" as TabType, label: "Quiz", icon: HelpCircle },
     { id: "badges" as TabType, label: "Badges", icon: Award },
     { id: "leaderboard" as TabType, label: "Leaderboard", icon: Trophy },
     { id: "subscription" as TabType, label: "Upgrade", icon: Crown },
@@ -133,6 +136,7 @@ const Dashboard = () => {
                 <User className="h-4 w-4" />
                 <span>{user?.email}</span>
               </div>
+              <ThemeToggle />
               <Button variant="ghost" size="icon" onClick={handleLogout} title="Sign out">
                 <LogOut className="h-4 w-4" />
               </Button>
@@ -187,6 +191,14 @@ const Dashboard = () => {
                     documentId={selectedDocumentId || undefined} 
                     promptIndex={selectedPromptIndex}
                     onBadgeEarned={handleBadgeEarned}
+                  />
+                )}
+                {activeTab === "quiz" && (
+                  <QuizMode 
+                    documentId={selectedDocumentId || undefined}
+                    onComplete={(score, total) => {
+                      if (score >= total * 0.8) handleBadgeEarned();
+                    }}
                   />
                 )}
                 {activeTab === "badges" && <BadgesDisplay key={badgeRefreshKey} />}

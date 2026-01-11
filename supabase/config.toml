@@ -20,3 +20,6 @@ verify_jwt = false
 
 [functions.spitch-tts]
 verify_jwt = false
+
+[functions.generate-quiz]
+verify_jwt = false

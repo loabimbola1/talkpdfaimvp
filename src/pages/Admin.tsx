@@ -32,14 +32,10 @@ const Admin = () => {
         return;
       }
 
-      const { data: roleData } = await supabase
-        .from("user_roles")
-        .select("role")
-        .eq("user_id", session.user.id)
-        .eq("role", "admin")
-        .single();
-
-      if (!roleData) {
+      // Server-side admin verification via edge function
+      const { data, error } = await supabase.functions.invoke('verify-admin');
+      
+      if (error || !data?.isAdmin) {
         toast.error("Access denied. Admin privileges required.");
         navigate("/dashboard");
         return;

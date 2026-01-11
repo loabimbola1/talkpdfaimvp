@@ -1,5 +1,4 @@
 import { Link } from "react-router-dom";
-import logo from "@/assets/logo.png";
 
 const Footer = () => {
   const currentYear = new Date().getFullYear();
@@ -29,11 +28,9 @@ const Footer = () => {
           {/* Brand */}
           <div className="md:col-span-1">
             <Link to="/" className="inline-block mb-4">
-              <img 
-                src={logo} 
-                alt="TalkPDF AI" 
-                className="h-8 w-auto"
-              />
+              <span className="font-display text-xl font-bold text-foreground tracking-tight">
+                TalkPDF AI
+              </span>
             </Link>
             <p className="text-muted-foreground text-sm leading-relaxed">
               AI-powered learning assistant that converts PDFs into interactive audio tutors in local Nigerian languages.

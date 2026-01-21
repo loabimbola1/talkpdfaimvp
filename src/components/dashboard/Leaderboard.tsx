@@ -5,7 +5,6 @@ import { cn } from "@/lib/utils";
 
 interface LeaderboardEntry {
   user_id: string;
-  email: string;
   full_name: string | null;
   total_badges: number;
   gold_badges: number;
@@ -32,7 +31,7 @@ const Leaderboard = () => {
       // Get badges from secure leaderboard view (only shows opted-in users)
       const { data: badges, error: badgesError } = await supabase
         .from("leaderboard_badges")
-        .select("user_id, badge_type, score, full_name, email");
+        .select("user_id, badge_type, score, full_name");
 
       if (badgesError) throw badgesError;
 
@@ -43,7 +42,6 @@ const Leaderboard = () => {
         if (!userStats[badge.user_id]) {
           userStats[badge.user_id] = {
             user_id: badge.user_id,
-            email: badge.email || "Anonymous",
             full_name: badge.full_name,
             total_badges: 0,
             gold_badges: 0,
@@ -100,10 +98,6 @@ const Leaderboard = () => {
 
   const getDisplayName = (entry: LeaderboardEntry) => {
     if (entry.full_name) return entry.full_name;
-    if (entry.email) {
-      const [local] = entry.email.split("@");
-      return local.charAt(0).toUpperCase() + local.slice(1);
-    }
     return "Anonymous";
   };
 

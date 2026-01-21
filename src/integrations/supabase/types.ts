@@ -503,7 +503,6 @@ export type Database = {
       leaderboard_badges: {
         Row: {
           badge_type: string | null
-          email: string | null
           full_name: string | null
           score: number | null
           university: string | null

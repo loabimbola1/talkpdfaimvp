@@ -170,8 +170,11 @@ const AudioPlayer = ({ selectedDocumentId: propDocumentId, onExplainBackTrigger 
       
       if (selectedDoc) {
         setSelectedDocument(selectedDoc);
+         setSelectedLanguage(selectedDoc.audio_language || "en");
         if (selectedDoc.audio_url) {
           loadAudioForDocument(selectedDoc);
+         } else {
+           setAudioUrl(null);
         }
       }
     } catch (error) {
@@ -182,6 +185,9 @@ const AudioPlayer = ({ selectedDocumentId: propDocumentId, onExplainBackTrigger 
   };
 
   const loadAudioForDocument = async (doc: Document) => {
+    // Always sync language to the document (even if audio isn't available yet)
+    setSelectedLanguage(doc.audio_language || "en");
+
     if (!doc.audio_url) {
       setAudioUrl(null);
       return;
@@ -192,7 +198,6 @@ const AudioPlayer = ({ selectedDocumentId: propDocumentId, onExplainBackTrigger 
       const offlineUrl = await getOfflineAudioUrl(doc.id);
       if (offlineUrl) {
         setAudioUrl(offlineUrl);
-        setSelectedLanguage(doc.audio_language || "en");
         setCurrentPauseIndex(0);
         return;
       }
@@ -204,7 +209,6 @@ const AudioPlayer = ({ selectedDocumentId: propDocumentId, onExplainBackTrigger 
       
       if (data?.signedUrl) {
         setAudioUrl(data.signedUrl);
-        setSelectedLanguage(doc.audio_language || "en");
         setCurrentPauseIndex(0);
       }
     } catch (error) {
@@ -256,6 +260,7 @@ const AudioPlayer = ({ selectedDocumentId: propDocumentId, onExplainBackTrigger 
     const doc = documents.find(d => d.id === docId);
     if (doc) {
       setSelectedDocument(doc);
+      setSelectedLanguage(doc.audio_language || "en");
       loadAudioForDocument(doc);
       setIsPlaying(false);
       setCurrentTime(0);

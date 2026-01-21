@@ -12,6 +12,14 @@ interface ProcessRequest {
   language?: string;
 }
 
+const languageLabelMap: Record<string, string> = {
+  en: "English",
+  yo: "Yoruba",
+  ha: "Hausa",
+  ig: "Igbo",
+  pcm: "Nigerian Pidgin",
+};
+
 // Rate limit config: 5 PDF processes per minute per user
 const RATE_LIMIT_CONFIG = {
   windowMs: 60 * 1000,
@@ -258,8 +266,57 @@ Create 3-5 study prompts that will help students test their understanding.`
     let audioPath: string | null = null;
     let audioDurationSeconds = 0;
     
-    // Truncate text for TTS (limit for API constraints)
-    const textForTts = extractedText.substring(0, 5000);
+    // Build a short, spoken-friendly script (keeps ElevenLabs within quota)
+    // - Use the generated summary (already compact)
+    // - Translate it to the requested language for better language sync
+    let ttsText = (summary || extractedText.substring(0, 1000)).trim();
+
+    if (language !== "en" && LOVABLE_API_KEY) {
+      try {
+        console.log(`Translating TTS script to ${language}...`);
+        const targetLabel = languageLabelMap[language] || "English";
+        const translateResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${LOVABLE_API_KEY}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            model: "google/gemini-2.5-flash",
+            messages: [
+              {
+                role: "system",
+                content:
+                  "You translate text for spoken audio. Output ONLY the translation (no quotes, no extra notes). Keep it natural and easy to listen to.",
+              },
+              {
+                role: "user",
+                content: `Translate this into ${targetLabel}. Keep it under 1200 characters.\n\n${ttsText}`,
+              },
+            ],
+            max_tokens: 1200,
+          }),
+        });
+
+        if (translateResponse.ok) {
+          const translateData = await translateResponse.json();
+          const translated = (translateData.choices?.[0]?.message?.content || "").trim();
+          if (translated) ttsText = translated;
+        } else {
+          const errorText = await translateResponse.text();
+          console.warn("Translation failed, falling back to English summary:", errorText);
+        }
+      } catch (e) {
+        console.warn("Translation error, falling back to English summary:", e);
+      }
+    }
+
+    // Hard cap to avoid provider quota/limits
+    ttsText = ttsText.replace(/\s+/g, " ").trim();
+    const MAX_TTS_CHARS = 1400;
+    if (ttsText.length > MAX_TTS_CHARS) {
+      ttsText = ttsText.substring(0, MAX_TTS_CHARS);
+    }
     
     // Map language to Spitch voices
     const spitchVoiceMap: Record<string, string> = {
@@ -297,7 +354,7 @@ Create 3-5 study prompts that will help students test their understanding.`
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            text: textForTts,
+            text: ttsText,
             voice: selectedVoice,
             format: "mp3",
           })
@@ -321,27 +378,47 @@ Create 3-5 study prompts that will help students test their understanding.`
       try {
         console.log("Falling back to ElevenLabs TTS...");
         const elevenVoice = elevenLabsVoiceMap[language] || elevenLabsVoiceMap["en"];
-        
-        const ttsResponse = await fetch(
-          `https://api.elevenlabs.io/v1/text-to-speech/${elevenVoice}?output_format=mp3_44100_128`,
-          {
-            method: "POST",
-            headers: {
-              "xi-api-key": ELEVENLABS_API_KEY,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              text: textForTts,
-              model_id: "eleven_multilingual_v2",
-              voice_settings: {
-                stability: 0.5,
-                similarity_boost: 0.75,
-                style: 0.3,
-                use_speaker_boost: true,
+
+        const requestElevenLabs = async (text: string) => {
+          return await fetch(
+            `https://api.elevenlabs.io/v1/text-to-speech/${elevenVoice}?output_format=mp3_44100_128`,
+            {
+              method: "POST",
+              headers: {
+                "xi-api-key": ELEVENLABS_API_KEY,
+                "Content-Type": "application/json",
               },
-            }),
+              body: JSON.stringify({
+                text,
+                model_id: "eleven_multilingual_v2",
+                voice_settings: {
+                  stability: 0.5,
+                  similarity_boost: 0.75,
+                  style: 0.3,
+                  use_speaker_boost: true,
+                },
+              }),
+            }
+          );
+        };
+        
+        let ttsAttemptText = ttsText;
+        let ttsResponse = await requestElevenLabs(ttsAttemptText);
+
+        // If quota is tight, retry with a shorter script based on remaining credits
+        if (!ttsResponse.ok) {
+          const errorText = await ttsResponse.text();
+          console.warn("ElevenLabs first attempt failed:", errorText);
+
+          const remainingMatch = errorText.match(/You have (\d+) credits remaining/i);
+          const remaining = remainingMatch ? Number(remainingMatch[1]) : null;
+          if (remaining && remaining > 200) {
+            const safeChars = Math.max(200, remaining - 50);
+            ttsAttemptText = ttsAttemptText.substring(0, Math.min(ttsAttemptText.length, safeChars));
+            console.log(`Retrying ElevenLabs with shorter text (${ttsAttemptText.length} chars)...`);
+            ttsResponse = await requestElevenLabs(ttsAttemptText);
           }
-        );
+        }
 
         if (ttsResponse.ok) {
           audioBuffer = await ttsResponse.arrayBuffer();
@@ -362,7 +439,7 @@ Create 3-5 study prompts that will help students test their understanding.`
         const audioBlob = new Blob([audioBuffer], { type: "audio/mpeg" });
         
         // Calculate approximate audio duration (~150 words per minute)
-        const wordCount = textForTts.split(/\s+/).length;
+        const wordCount = ttsText.split(/\s+/).length;
         audioDurationSeconds = Math.round(wordCount / 2.5);
 
         // Upload audio to storage
@@ -406,47 +483,71 @@ Create 3-5 study prompts that will help students test their understanding.`
       console.error("Failed to update document:", updateError);
     }
 
-    // Track usage
-    await supabase.from("usage_tracking").insert({
-      user_id: document.user_id,
-      action_type: "pdf_upload",
-      metadata: { document_id: documentId }
-    });
-
-    await supabase.from("usage_tracking").insert({
-      user_id: document.user_id,
-      action_type: "audio_conversion",
-      audio_minutes_used: audioDurationSeconds / 60,
-      metadata: { document_id: documentId, language }
-    });
-
-    // Update daily usage summary
-    const today = new Date().toISOString().split('T')[0];
-    const { data: existingUsage } = await supabase
-      .from("daily_usage_summary")
-      .select("*")
+    // Track usage (idempotent):
+    // - pdf_upload should only be counted once per document
+    // - audio_conversion only when audio was actually generated
+    const { data: existingPdfUpload } = await supabase
+      .from("usage_tracking")
+      .select("id")
       .eq("user_id", document.user_id)
-      .eq("date", today)
+      .eq("action_type", "pdf_upload")
+      .contains("metadata", { document_id: documentId })
       .maybeSingle();
 
-    if (existingUsage) {
-      await supabase
-        .from("daily_usage_summary")
-        .update({
-          pdfs_uploaded: (existingUsage.pdfs_uploaded || 0) + 1,
-          audio_minutes_used: (parseFloat(existingUsage.audio_minutes_used?.toString() || "0")) + (audioDurationSeconds / 60),
-          updated_at: new Date().toISOString()
-        })
-        .eq("id", existingUsage.id);
+    if (!existingPdfUpload) {
+      await supabase.from("usage_tracking").insert({
+        user_id: document.user_id,
+        action_type: "pdf_upload",
+        metadata: { document_id: documentId }
+      });
+    }
+
+    if (audioPath && audioDurationSeconds > 0) {
+      await supabase.from("usage_tracking").insert({
+        user_id: document.user_id,
+        action_type: "audio_conversion",
+        audio_minutes_used: audioDurationSeconds / 60,
+        metadata: { document_id: documentId, language }
+      });
+    }
+
+    // Sync daily usage summary from usage_tracking (prevents drift/double-counting)
+    const startOfToday = new Date();
+    startOfToday.setUTCHours(0, 0, 0, 0);
+    const startOfTomorrow = new Date(startOfToday);
+    startOfTomorrow.setUTCDate(startOfToday.getUTCDate() + 1);
+    const today = startOfToday.toISOString().split("T")[0];
+
+    const { data: todayUsageRows, error: todayUsageError } = await supabase
+      .from("usage_tracking")
+      .select("action_type, audio_minutes_used")
+      .eq("user_id", document.user_id)
+      .gte("created_at", startOfToday.toISOString())
+      .lt("created_at", startOfTomorrow.toISOString());
+
+    if (todayUsageError) {
+      console.warn("Failed to fetch usage rows for daily summary sync:", todayUsageError);
     } else {
+      const rows = todayUsageRows || [];
+      const pdfs_uploaded = rows.filter((r) => r.action_type === "pdf_upload").length;
+      const explain_back_count = rows.filter((r) => r.action_type === "explain_back").length;
+      const audio_minutes_used = rows
+        .filter((r) => r.action_type === "audio_conversion")
+        .reduce((acc, r) => acc + Number(r.audio_minutes_used || 0), 0);
+
       await supabase
         .from("daily_usage_summary")
-        .insert({
-          user_id: document.user_id,
-          date: today,
-          pdfs_uploaded: 1,
-          audio_minutes_used: audioDurationSeconds / 60
-        });
+        .upsert(
+          {
+            user_id: document.user_id,
+            date: today,
+            pdfs_uploaded,
+            audio_minutes_used,
+            explain_back_count,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: "user_id,date" }
+        );
     }
 
     console.log("Document processed successfully:", documentId);

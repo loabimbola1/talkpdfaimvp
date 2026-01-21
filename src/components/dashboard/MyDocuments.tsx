@@ -4,12 +4,14 @@ import { Button } from "@/components/ui/button";
 import { FileText, Play, Clock, Trash2, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
+import AudioStatusIndicator, { getAudioStatus, AudioStatus } from "./AudioStatusIndicator";
 
 interface Document {
   id: string;
   title: string;
   file_name: string;
   status: string;
+  audio_url: string | null;
   audio_language: string | null;
   audio_duration_seconds: number | null;
   explain_back_score: number | null;
@@ -44,6 +46,13 @@ const MyDocuments = ({ onSelectDocument }: MyDocumentsProps) => {
       toast.error("Failed to load documents");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleAudioStatusChange = (docId: string, newStatus: AudioStatus) => {
+    if (newStatus === "processing") {
+      // Refetch documents after a delay to get updated status
+      setTimeout(fetchDocuments, 3000);
     }
   };
 
@@ -131,7 +140,7 @@ const MyDocuments = ({ onSelectDocument }: MyDocumentsProps) => {
                   {doc.status}
                 </span>
               </div>
-              <div className="flex items-center gap-4 text-sm text-muted-foreground">
+              <div className="flex items-center gap-4 text-sm text-muted-foreground flex-wrap">
                 <span className="flex items-center gap-1">
                   <Clock className="h-3 w-3" />
                   {formatDistanceToNow(new Date(doc.created_at), {
@@ -141,14 +150,19 @@ const MyDocuments = ({ onSelectDocument }: MyDocumentsProps) => {
                 {doc.audio_duration_seconds && (
                   <span>{formatDuration(doc.audio_duration_seconds)}</span>
                 )}
-                {doc.audio_language && (
-                  <span className="capitalize">{doc.audio_language}</span>
-                )}
                 {doc.explain_back_score !== null && (
                   <span className="text-primary font-medium">
                     Score: {doc.explain_back_score}%
                   </span>
                 )}
+                <AudioStatusIndicator
+                  documentId={doc.id}
+                  status={getAudioStatus(doc)}
+                  audioUrl={doc.audio_url}
+                  audioLanguage={doc.audio_language}
+                  onRetry={fetchDocuments}
+                  onStatusChange={(status) => handleAudioStatusChange(doc.id, status)}
+                />
               </div>
             </div>
 

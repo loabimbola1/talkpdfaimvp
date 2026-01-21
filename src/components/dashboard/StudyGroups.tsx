@@ -31,6 +31,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { shareStudyGroupInvite } from "@/utils/whatsappShare";
+import { getStudyGroupErrorMessage } from "@/utils/supabaseErrorParser";
 
 interface StudyGroup {
   id: string;
@@ -181,9 +182,9 @@ const StudyGroups = () => {
       setNewGroupName("");
       setNewGroupDescription("");
       toast.success("Study group created! Share the invite code with friends.");
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error creating group:", error);
-      toast.error("Failed to create group");
+      toast.error(getStudyGroupErrorMessage(error, "create"));
     } finally {
       setCreating(false);
     }
@@ -243,9 +244,9 @@ const StudyGroups = () => {
       setInviteCode("");
       toast.success(`Joined "${group.name}" successfully!`);
       fetchGroups();
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error joining group:", error);
-      toast.error("Failed to join group");
+      toast.error(getStudyGroupErrorMessage(error, "join"));
     } finally {
       setJoining(false);
     }
@@ -328,9 +329,9 @@ const StudyGroups = () => {
       setGroups((prev) => prev.filter((g) => g.id !== groupId));
       setSelectedGroup(null);
       toast.success("Left the group");
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error leaving group:", error);
-      toast.error("Failed to leave group");
+      toast.error(getStudyGroupErrorMessage(error, "leave"));
     }
   };
 

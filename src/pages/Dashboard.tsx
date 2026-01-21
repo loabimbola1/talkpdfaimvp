@@ -212,7 +212,7 @@ const Dashboard = () => {
 
               {/* Tab Content */}
               <div className="bg-card rounded-2xl border border-border p-6 md:p-8 shadow-card">
-                {activeTab === "upload" && <PDFUpload onDocumentProcessed={handleDocumentProcessed} />}
+                {activeTab === "upload" && <PDFUpload onDocumentProcessed={handleDocumentProcessed} onUpgrade={() => setActiveTab("subscription")} />}
                 {activeTab === "documents" && <MyDocuments onSelectDocument={handleSelectDocument} />}
                 {activeTab === "listen" && (
                   <AudioPlayer 

@@ -252,13 +252,13 @@ Create 3-5 study prompts that will help students test their understanding.`
       }
     }
 
-    // Generate audio using Spitch (Nigerian language TTS) - optional
-    console.log("Generating audio with Spitch TTS...");
+    // Generate audio using TTS - try Spitch first, fallback to ElevenLabs
+    console.log("Generating audio with TTS...");
     
     let audioPath: string | null = null;
     let audioDurationSeconds = 0;
     
-    // Truncate text for TTS
+    // Truncate text for TTS (limit for API constraints)
     const textForTts = extractedText.substring(0, 5000);
     
     // Map language to Spitch voices
@@ -270,13 +270,26 @@ Create 3-5 study prompts that will help students test their understanding.`
       "pcm": "lucy"
     };
     
+    // Map language to ElevenLabs voice (fallback)
+    const elevenLabsVoiceMap: Record<string, string> = {
+      "en": "EXAVITQu4vr4xnSDxMaL", // Sarah
+      "yo": "EXAVITQu4vr4xnSDxMaL",
+      "ha": "EXAVITQu4vr4xnSDxMaL",
+      "ig": "EXAVITQu4vr4xnSDxMaL",
+      "pcm": "EXAVITQu4vr4xnSDxMaL"
+    };
+    
     const selectedVoice = spitchVoiceMap[language] || spitchVoiceMap["en"];
     const SPITCH_API_KEY = Deno.env.get("SPITCH_API_KEY");
+    const ELEVENLABS_API_KEY = Deno.env.get("ELEVENLABS_API_KEY");
 
+    let audioBuffer: ArrayBuffer | null = null;
+    let ttsProvider = "none";
+
+    // Try Spitch first (Nigerian language TTS)
     try {
-      if (!SPITCH_API_KEY) {
-        console.warn("SPITCH_API_KEY not configured, skipping TTS");
-      } else {
+      if (SPITCH_API_KEY) {
+        console.log("Attempting Spitch TTS...");
         const ttsResponse = await fetch("https://api.spitch.app/api/tts", {
           method: "POST",
           headers: {
@@ -290,38 +303,90 @@ Create 3-5 study prompts that will help students test their understanding.`
           })
         });
 
-        if (!ttsResponse.ok) {
-          const errorText = await ttsResponse.text();
-          console.warn("Spitch TTS failed (continuing without audio):", errorText);
+        if (ttsResponse.ok) {
+          audioBuffer = await ttsResponse.arrayBuffer();
+          ttsProvider = "spitch";
+          console.log("Spitch TTS successful");
         } else {
-          const audioBuffer = await ttsResponse.arrayBuffer();
-          const audioBlob = new Blob([audioBuffer], { type: "audio/mpeg" });
-          
-          // Calculate approximate audio duration
-          const wordCount = textForTts.split(/\s+/).length;
-          audioDurationSeconds = Math.round(wordCount / 2.5); // ~150 words per minute
-
-          // Upload audio to storage
-          audioPath = `${document.user_id}/${documentId}/audio.mp3`;
-          
-          const { error: uploadError } = await supabase
-            .storage
-            .from("talkpdf")
-            .upload(audioPath, audioBlob, {
-              contentType: "audio/mpeg",
-              upsert: true
-            });
-
-          if (uploadError) {
-            console.warn("Failed to upload audio:", uploadError);
-            audioPath = null;
-          } else {
-            console.log("Spitch audio uploaded successfully:", audioPath);
-          }
+          const errorText = await ttsResponse.text();
+          console.warn("Spitch TTS failed:", errorText);
         }
       }
-    } catch (ttsError) {
-      console.warn("TTS error (continuing without audio):", ttsError);
+    } catch (spitchError) {
+      console.warn("Spitch TTS error:", spitchError);
+    }
+
+    // Fallback to ElevenLabs if Spitch failed
+    if (!audioBuffer && ELEVENLABS_API_KEY) {
+      try {
+        console.log("Falling back to ElevenLabs TTS...");
+        const elevenVoice = elevenLabsVoiceMap[language] || elevenLabsVoiceMap["en"];
+        
+        const ttsResponse = await fetch(
+          `https://api.elevenlabs.io/v1/text-to-speech/${elevenVoice}?output_format=mp3_44100_128`,
+          {
+            method: "POST",
+            headers: {
+              "xi-api-key": ELEVENLABS_API_KEY,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              text: textForTts,
+              model_id: "eleven_multilingual_v2",
+              voice_settings: {
+                stability: 0.5,
+                similarity_boost: 0.75,
+                style: 0.3,
+                use_speaker_boost: true,
+              },
+            }),
+          }
+        );
+
+        if (ttsResponse.ok) {
+          audioBuffer = await ttsResponse.arrayBuffer();
+          ttsProvider = "elevenlabs";
+          console.log("ElevenLabs TTS successful");
+        } else {
+          const errorText = await ttsResponse.text();
+          console.warn("ElevenLabs TTS failed:", errorText);
+        }
+      } catch (elevenLabsError) {
+        console.warn("ElevenLabs TTS error:", elevenLabsError);
+      }
+    }
+
+    // Upload audio if we got any
+    if (audioBuffer) {
+      try {
+        const audioBlob = new Blob([audioBuffer], { type: "audio/mpeg" });
+        
+        // Calculate approximate audio duration (~150 words per minute)
+        const wordCount = textForTts.split(/\s+/).length;
+        audioDurationSeconds = Math.round(wordCount / 2.5);
+
+        // Upload audio to storage
+        audioPath = `${document.user_id}/${documentId}/audio.mp3`;
+        
+        const { error: uploadError } = await supabase
+          .storage
+          .from("talkpdf")
+          .upload(audioPath, audioBlob, {
+            contentType: "audio/mpeg",
+            upsert: true
+          });
+
+        if (uploadError) {
+          console.warn("Failed to upload audio:", uploadError);
+          audioPath = null;
+        } else {
+          console.log(`Audio uploaded successfully (provider: ${ttsProvider}):`, audioPath);
+        }
+      } catch (uploadError) {
+        console.warn("Audio upload error:", uploadError);
+      }
+    } else {
+      console.warn("No TTS provider available or all failed - document will be ready without audio");
     }
 
     // Update document with all the generated content (audio may be null if TTS failed)

@@ -9,7 +9,15 @@ import { Eye, EyeOff, ArrowLeft } from "lucide-react";
 import { z } from "zod";
 
 const emailSchema = z.string().email("Please enter a valid email address");
-const passwordSchema = z.string().min(6, "Password must be at least 6 characters");
+const passwordSchema = z
+  .string()
+  .min(8, "Password must be at least 8 characters")
+  .regex(/[A-Z]/, "Password must contain at least one uppercase letter")
+  .regex(/[a-z]/, "Password must contain at least one lowercase letter")
+  .regex(/[0-9]/, "Password must contain at least one number")
+  .regex(/[^A-Za-z0-9]/, "Password must contain at least one special character");
+
+const loginPasswordSchema = z.string().min(1, "Please enter your password");
 
 const Auth = () => {
   const [isLogin, setIsLogin] = useState(true);
@@ -39,7 +47,12 @@ const Auth = () => {
   const validateInputs = () => {
     try {
       emailSchema.parse(email);
-      passwordSchema.parse(password);
+      // Use simpler validation for login, stricter for signup
+      if (isLogin) {
+        loginPasswordSchema.parse(password);
+      } else {
+        passwordSchema.parse(password);
+      }
       return true;
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -170,7 +183,7 @@ const Auth = () => {
                 <Input
                   id="password"
                   type={showPassword ? "text" : "password"}
-                  placeholder="Enter your password"
+                  placeholder={isLogin ? "Enter your password" : "Create a strong password"}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
@@ -188,6 +201,11 @@ const Auth = () => {
                   )}
                 </button>
               </div>
+              {!isLogin && (
+                <p className="text-xs text-muted-foreground">
+                  Password must be at least 8 characters with uppercase, lowercase, number, and special character.
+                </p>
+              )}
             </div>
 
             <Button type="submit" className="w-full h-11 rounded-full" disabled={loading}>

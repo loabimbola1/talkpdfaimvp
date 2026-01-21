@@ -20,6 +20,11 @@ import {
   FileText,
   Brain,
   Lightbulb,
+  Download,
+  Trash2,
+  Wifi,
+  WifiOff,
+  Loader2,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -31,6 +36,8 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
+import { Badge } from "@/components/ui/badge";
+import { useOfflineAudio } from "@/hooks/useOfflineAudio";
 
 interface NigerianLanguage {
   code: string;
@@ -53,6 +60,7 @@ interface Document {
   audio_language: string | null;
   audio_duration_seconds: number | null;
   study_prompts?: Array<{ topic: string; prompt: string }> | null;
+  status: string | null;
 }
 
 interface AudioPlayerProps {
@@ -71,6 +79,16 @@ const AudioPlayer = ({ selectedDocumentId: propDocumentId, onExplainBackTrigger 
   const [selectedDocument, setSelectedDocument] = useState<Document | null>(null);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [generatingAudio, setGeneratingAudio] = useState(false);
+  
+  // Offline audio hook
+  const {
+    isDownloading,
+    downloadForOffline,
+    removeOfflineAudio,
+    isAudioCached,
+    getOfflineAudioUrl,
+  } = useOfflineAudio();
   
   // Auto-pause state
   const [autoPauseEnabled, setAutoPauseEnabled] = useState(true);
@@ -129,11 +147,11 @@ const AudioPlayer = ({ selectedDocumentId: propDocumentId, onExplainBackTrigger 
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
+      // Fetch ALL documents (not just those with audio)
       const { data, error } = await supabase
         .from("documents")
-        .select("id, title, audio_url, audio_language, audio_duration_seconds, study_prompts")
+        .select("id, title, audio_url, audio_language, audio_duration_seconds, study_prompts, status")
         .eq("user_id", user.id)
-        .not("audio_url", "is", null)
         .order("created_at", { ascending: false });
 
       if (error) throw error;
@@ -146,9 +164,15 @@ const AudioPlayer = ({ selectedDocumentId: propDocumentId, onExplainBackTrigger 
       
       setDocuments(typedDocs);
       
-      if (typedDocs.length > 0) {
-        setSelectedDocument(typedDocs[0]);
-        loadAudioForDocument(typedDocs[0]);
+      // Select first document with audio, or first document if none have audio
+      const docWithAudio = typedDocs.find(d => d.audio_url);
+      const selectedDoc = docWithAudio || typedDocs[0];
+      
+      if (selectedDoc) {
+        setSelectedDocument(selectedDoc);
+        if (selectedDoc.audio_url) {
+          loadAudioForDocument(selectedDoc);
+        }
       }
     } catch (error) {
       console.error("Error fetching documents:", error);
@@ -158,9 +182,22 @@ const AudioPlayer = ({ selectedDocumentId: propDocumentId, onExplainBackTrigger 
   };
 
   const loadAudioForDocument = async (doc: Document) => {
-    if (!doc.audio_url) return;
+    if (!doc.audio_url) {
+      setAudioUrl(null);
+      return;
+    }
     
     try {
+      // First check if we have offline version
+      const offlineUrl = await getOfflineAudioUrl(doc.id);
+      if (offlineUrl) {
+        setAudioUrl(offlineUrl);
+        setSelectedLanguage(doc.audio_language || "en");
+        setCurrentPauseIndex(0);
+        return;
+      }
+      
+      // Otherwise get from storage
       const { data } = await supabase.storage
         .from("talkpdf")
         .createSignedUrl(doc.audio_url, 3600);
@@ -174,6 +211,45 @@ const AudioPlayer = ({ selectedDocumentId: propDocumentId, onExplainBackTrigger 
       console.error("Error loading audio:", error);
       toast.error("Failed to load audio");
     }
+  };
+
+  const generateAudioForDocument = async (doc: Document) => {
+    setGeneratingAudio(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("process-pdf", {
+        body: {
+          documentId: doc.id,
+          language: selectedLanguage
+        }
+      });
+
+      if (error) throw error;
+
+      toast.success("Audio generated successfully!");
+      
+      // Refresh documents to get updated audio_url
+      await fetchDocumentsWithAudio();
+    } catch (error: any) {
+      console.error("Error generating audio:", error);
+      toast.error(`Failed to generate audio: ${error.message}`);
+    } finally {
+      setGeneratingAudio(false);
+    }
+  };
+
+  const handleDownloadOffline = async () => {
+    if (!selectedDocument?.audio_url) return;
+    
+    await downloadForOffline(
+      selectedDocument.id,
+      selectedDocument.title,
+      selectedDocument.audio_url
+    );
+  };
+
+  const handleRemoveOffline = async () => {
+    if (!selectedDocument) return;
+    await removeOfflineAudio(selectedDocument.id);
   };
 
   const handleDocumentChange = (docId: string) => {
@@ -374,7 +450,14 @@ const AudioPlayer = ({ selectedDocumentId: propDocumentId, onExplainBackTrigger 
             <SelectContent>
               {documents.map((doc) => (
                 <SelectItem key={doc.id} value={doc.id}>
-                  {doc.title}
+                  <div className="flex items-center gap-2">
+                    <span>{doc.title}</span>
+                    {doc.audio_url ? (
+                      <Badge variant="secondary" className="text-xs">Audio</Badge>
+                    ) : (
+                      <Badge variant="outline" className="text-xs">No Audio</Badge>
+                    )}
+                  </div>
                 </SelectItem>
               ))}
             </SelectContent>
@@ -382,9 +465,9 @@ const AudioPlayer = ({ selectedDocumentId: propDocumentId, onExplainBackTrigger 
         </div>
       )}
 
-      {/* Language Display */}
+      {/* Language Display and Offline Controls */}
       {selectedDocument && (
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div className="space-y-1">
             <label className="flex items-center gap-2 text-sm font-medium text-foreground">
               <Languages className="h-4 w-4" />
@@ -395,9 +478,40 @@ const AudioPlayer = ({ selectedDocumentId: propDocumentId, onExplainBackTrigger 
             </p>
           </div>
           
-          {/* Auto-pause toggle */}
-          <div className="flex items-center gap-2">
-            <label className="text-sm text-muted-foreground">Auto-pause for learning</label>
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Offline Download/Remove buttons */}
+            {selectedDocument.audio_url && (
+              <>
+                {isAudioCached(selectedDocument.id) ? (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleRemoveOffline}
+                    className="gap-1"
+                  >
+                    <WifiOff className="h-3 w-3" />
+                    Remove Offline
+                  </Button>
+                ) : (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleDownloadOffline}
+                    disabled={isDownloading === selectedDocument.id}
+                    className="gap-1"
+                  >
+                    {isDownloading === selectedDocument.id ? (
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                    ) : (
+                      <Download className="h-3 w-3" />
+                    )}
+                    Save Offline
+                  </Button>
+                )}
+              </>
+            )}
+            
+            {/* Auto-pause toggle */}
             <Button 
               variant={autoPauseEnabled ? "default" : "outline"} 
               size="sm"
@@ -413,17 +527,47 @@ const AudioPlayer = ({ selectedDocumentId: propDocumentId, onExplainBackTrigger 
 
       {/* Player Card */}
       <div className="bg-secondary/30 rounded-2xl p-6 md:p-8">
-        {!hasAudio ? (
+        {/* Show different states based on document and audio availability */}
+        {documents.length === 0 ? (
           <div className="text-center py-8">
             <div className="w-20 h-20 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-4">
               <Headphones className="h-10 w-10 text-primary" />
             </div>
             <h3 className="font-display text-xl font-semibold text-foreground mb-2">
-              No Audio Available
+              No Documents Yet
             </h3>
             <p className="text-muted-foreground mb-6">
-              Upload and process a PDF first, then your audio will appear here.
+              Upload a PDF first to generate audio for listening.
             </p>
+          </div>
+        ) : !selectedDocument?.audio_url ? (
+          <div className="text-center py-8">
+            <div className="w-20 h-20 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-4">
+              <Headphones className="h-10 w-10 text-primary" />
+            </div>
+            <h3 className="font-display text-xl font-semibold text-foreground mb-2">
+              No Audio for "{selectedDocument?.title}"
+            </h3>
+            <p className="text-muted-foreground mb-6">
+              This document doesn't have audio yet. Generate audio to start listening.
+            </p>
+            <Button 
+              onClick={() => selectedDocument && generateAudioForDocument(selectedDocument)}
+              disabled={generatingAudio}
+              className="gap-2"
+            >
+              {generatingAudio ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Generating Audio...
+                </>
+              ) : (
+                <>
+                  <Headphones className="h-4 w-4" />
+                  Generate Audio
+                </>
+              )}
+            </Button>
           </div>
         ) : (
           <>

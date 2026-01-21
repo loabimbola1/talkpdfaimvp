@@ -55,10 +55,10 @@ const QuizLeaderboard = () => {
       const weekStart = startOfWeek(now, { weekStartsOn: 1 });
       const weekEnd = endOfWeek(now, { weekStartsOn: 1 });
 
-      // Fetch quiz scores
+      // Fetch quiz scores from secure leaderboard view (only shows opted-in users)
       let query = supabase
-        .from("quiz_scores")
-        .select("user_id, score, total_questions");
+        .from("leaderboard_quiz_scores")
+        .select("user_id, score, total_questions, completed_at, full_name, university");
 
       if (timeRange === "weekly") {
         query = query
@@ -66,38 +66,23 @@ const QuizLeaderboard = () => {
           .lte("completed_at", weekEnd.toISOString());
       }
 
+      if (selectedUniversity !== "all") {
+        query = query.eq("university", selectedUniversity);
+      }
+
       const { data: scores, error: scoresError } = await query;
       if (scoresError) throw scoresError;
 
-      // Get all profiles
-      let profilesQuery = supabase.from("profiles").select("user_id, email, full_name, university");
-      
-      if (selectedUniversity !== "all") {
-        profilesQuery = profilesQuery.eq("university", selectedUniversity);
-      }
-
-      const { data: profiles, error: profilesError } = await profilesQuery;
-      if (profilesError) throw profilesError;
-
-      // Create a set of valid user IDs based on university filter
-      const validUserIds = new Set(profiles?.map(p => p.user_id) || []);
-
-      // Aggregate scores by user
+      // Aggregate scores by user from the secure view data
       const userStats: Record<string, LeaderboardEntry> = {};
 
-      (scores || []).forEach((score) => {
-        // Skip if user doesn't match university filter
-        if (selectedUniversity !== "all" && !validUserIds.has(score.user_id)) {
-          return;
-        }
-
+      (scores || []).forEach((score: any) => {
         if (!userStats[score.user_id]) {
-          const profile = profiles?.find(p => p.user_id === score.user_id);
           userStats[score.user_id] = {
             user_id: score.user_id,
-            email: profile?.email || "Anonymous",
-            full_name: profile?.full_name,
-            university: profile?.university,
+            email: "Anonymous", // Email not exposed in leaderboard view for privacy
+            full_name: score.full_name,
+            university: score.university,
             total_quizzes: 0,
             avg_score: 0,
             total_score: 0,

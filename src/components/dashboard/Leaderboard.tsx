@@ -29,30 +29,22 @@ const Leaderboard = () => {
       const { data: { user } } = await supabase.auth.getUser();
       setCurrentUserId(user?.id || null);
 
-      // Get all badges with user info
+      // Get badges from secure leaderboard view (only shows opted-in users)
       const { data: badges, error: badgesError } = await supabase
-        .from("badges")
-        .select("user_id, badge_type, score");
+        .from("leaderboard_badges")
+        .select("user_id, badge_type, score, full_name, email");
 
       if (badgesError) throw badgesError;
 
-      // Get all profiles
-      const { data: profiles, error: profilesError } = await supabase
-        .from("profiles")
-        .select("user_id, email, full_name");
-
-      if (profilesError) throw profilesError;
-
-      // Aggregate badges by user
+      // Aggregate badges by user from secure view data
       const userStats: Record<string, LeaderboardEntry> = {};
 
-      (badges || []).forEach((badge) => {
+      (badges || []).forEach((badge: any) => {
         if (!userStats[badge.user_id]) {
-          const profile = profiles?.find(p => p.user_id === badge.user_id);
           userStats[badge.user_id] = {
             user_id: badge.user_id,
-            email: profile?.email || "Anonymous",
-            full_name: profile?.full_name,
+            email: badge.email || "Anonymous",
+            full_name: badge.full_name,
             total_badges: 0,
             gold_badges: 0,
             silver_badges: 0,

@@ -1,12 +1,14 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useDropzone } from "react-dropzone";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Upload, FileText, X, CheckCircle, AlertCircle, Loader2 } from "lucide-react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Upload, FileText, X, CheckCircle, AlertCircle, Loader2, Crown, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
+import { useUsageLimits } from "@/hooks/useUsageLimits";
 
 interface UploadedFile {
   id?: string;
@@ -27,13 +29,24 @@ const languages = [
 
 interface PDFUploadProps {
   onDocumentProcessed?: (documentId: string) => void;
+  onUpgrade?: () => void;
 }
 
-const PDFUpload = ({ onDocumentProcessed }: PDFUploadProps) => {
+const PDFUpload = ({ onDocumentProcessed, onUpgrade }: PDFUploadProps) => {
   const [files, setFiles] = useState<UploadedFile[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [selectedLanguage, setSelectedLanguage] = useState("en");
+  
+  const { 
+    plan, 
+    limits, 
+    usage, 
+    loading: usageLoading, 
+    canUploadPdf, 
+    getRemainingPdfs,
+    refetch: refetchUsage 
+  } = useUsageLimits();
 
   // Sanitize filename to remove special characters that cause storage issues
   const sanitizeFileName = (name: string): string => {
@@ -157,6 +170,26 @@ const PDFUpload = ({ onDocumentProcessed }: PDFUploadProps) => {
   };
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
+    // Check usage limits before allowing upload
+    if (!canUploadPdf()) {
+      toast.error(
+        `Daily PDF limit reached (${limits.pdfs_per_day} PDFs). Upgrade your plan to upload more.`,
+        {
+          action: onUpgrade ? {
+            label: "Upgrade",
+            onClick: onUpgrade,
+          } : undefined,
+        }
+      );
+      return;
+    }
+
+    const remaining = getRemainingPdfs();
+    if (acceptedFiles.length > remaining && remaining !== Infinity) {
+      toast.warning(`You can only upload ${remaining} more PDF(s) today.`);
+      acceptedFiles = acceptedFiles.slice(0, remaining);
+    }
+
     acceptedFiles.forEach((file) => {
       if (file.type !== "application/pdf") {
         toast.error("Only PDF files are allowed");
@@ -168,7 +201,14 @@ const PDFUpload = ({ onDocumentProcessed }: PDFUploadProps) => {
       }
       uploadFile(file);
     });
-  }, []);
+  }, [canUploadPdf, getRemainingPdfs, limits.pdfs_per_day, onUpgrade]);
+
+  // Refetch usage after processing completes
+  useEffect(() => {
+    if (!isProcessing && files.length === 0) {
+      refetchUsage();
+    }
+  }, [isProcessing, files.length, refetchUsage]);
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
@@ -250,8 +290,37 @@ const PDFUpload = ({ onDocumentProcessed }: PDFUploadProps) => {
 
   const hasCompletedFiles = files.some((f) => f.status === "complete");
 
+  const remainingPdfs = getRemainingPdfs();
+  const canUpload = canUploadPdf();
+
   return (
     <div className="space-y-6">
+      {/* Usage Limit Warning */}
+      {!usageLoading && !canUpload && (
+        <Alert className="border-yellow-500/50 bg-yellow-500/10">
+          <AlertTriangle className="h-4 w-4 text-yellow-600" />
+          <AlertDescription className="flex items-center justify-between">
+            <span className="text-yellow-700 dark:text-yellow-400">
+              You've reached your daily limit of {limits.pdfs_per_day} PDFs. 
+              {plan === "free" && " Upgrade to upload more."}
+            </span>
+            {plan !== "mastery_pass" && onUpgrade && (
+              <Button size="sm" variant="outline" className="ml-4 gap-1" onClick={onUpgrade}>
+                <Crown className="h-3 w-3" />
+                Upgrade
+              </Button>
+            )}
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {/* Remaining uploads indicator */}
+      {!usageLoading && canUpload && remainingPdfs !== Infinity && (
+        <div className="text-sm text-muted-foreground text-center">
+          <span className="font-medium text-foreground">{remainingPdfs}</span> PDF upload{remainingPdfs !== 1 ? "s" : ""} remaining today
+        </div>
+      )}
+
       {/* Language Selection */}
       <div className="flex items-center gap-4">
         <label className="text-sm font-medium text-foreground">Audio Language:</label>
@@ -273,13 +342,15 @@ const PDFUpload = ({ onDocumentProcessed }: PDFUploadProps) => {
       <div
         {...getRootProps()}
         className={cn(
-          "border-2 border-dashed rounded-xl p-8 md:p-12 text-center cursor-pointer transition-all duration-200",
+          "border-2 border-dashed rounded-xl p-8 md:p-12 text-center transition-all duration-200",
+          !canUpload && "opacity-50 pointer-events-none",
           isDragActive
             ? "border-primary bg-primary/5"
-            : "border-border hover:border-primary/50 hover:bg-secondary/30"
+            : "border-border hover:border-primary/50 hover:bg-secondary/30",
+          canUpload && "cursor-pointer"
         )}
       >
-        <input {...getInputProps()} />
+        <input {...getInputProps()} disabled={!canUpload} />
         <div className="flex flex-col items-center gap-4">
           <div
             className={cn(
@@ -296,13 +367,17 @@ const PDFUpload = ({ onDocumentProcessed }: PDFUploadProps) => {
           </div>
           <div>
             <p className="font-medium text-foreground mb-1">
-              {isDragActive ? "Drop your PDF here" : "Drag & drop your PDF here"}
+              {!canUpload 
+                ? "Daily limit reached" 
+                : isDragActive 
+                  ? "Drop your PDF here" 
+                  : "Drag & drop your PDF here"}
             </p>
             <p className="text-sm text-muted-foreground">
-              or click to browse (max 20MB)
+              {canUpload ? "or click to browse (max 20MB)" : "Upgrade to continue uploading"}
             </p>
           </div>
-          <Button variant="outline" size="sm" type="button">
+          <Button variant="outline" size="sm" type="button" disabled={!canUpload}>
             Browse Files
           </Button>
         </div>

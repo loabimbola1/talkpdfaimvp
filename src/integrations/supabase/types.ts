@@ -253,6 +253,7 @@ export type Database = {
           email: string | null
           full_name: string | null
           id: string
+          leaderboard_opt_in: boolean | null
           subscription_plan: string | null
           subscription_status: string | null
           university: string | null
@@ -265,6 +266,7 @@ export type Database = {
           email?: string | null
           full_name?: string | null
           id?: string
+          leaderboard_opt_in?: boolean | null
           subscription_plan?: string | null
           subscription_status?: string | null
           university?: string | null
@@ -277,6 +279,7 @@ export type Database = {
           email?: string | null
           full_name?: string | null
           id?: string
+          leaderboard_opt_in?: boolean | null
           subscription_plan?: string | null
           subscription_status?: string | null
           university?: string | null
@@ -497,7 +500,29 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      leaderboard_badges: {
+        Row: {
+          badge_type: string | null
+          email: string | null
+          full_name: string | null
+          score: number | null
+          university: string | null
+          user_id: string | null
+        }
+        Relationships: []
+      }
+      leaderboard_quiz_scores: {
+        Row: {
+          completed_at: string | null
+          full_name: string | null
+          quiz_type: string | null
+          score: number | null
+          total_questions: number | null
+          university: string | null
+          user_id: string | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
       has_role: {

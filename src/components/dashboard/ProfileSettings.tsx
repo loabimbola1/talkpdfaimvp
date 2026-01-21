@@ -7,7 +7,8 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { User, Mail, Save, Loader2, Crown, Calendar, Bell, GraduationCap } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
+import { User, Mail, Save, Loader2, Crown, Calendar, Bell, GraduationCap, Trophy } from "lucide-react";
 import { toast } from "sonner";
 import type { User as SupabaseUser } from "@supabase/supabase-js";
 import NotificationSettings from "./NotificationSettings";
@@ -48,6 +49,7 @@ interface Profile {
   subscription_plan: string | null;
   subscription_status: string | null;
   university: string | null;
+  leaderboard_opt_in: boolean | null;
 }
 
 interface ProfileSettingsProps {
@@ -61,6 +63,7 @@ const ProfileSettings = ({ user }: ProfileSettingsProps) => {
   const [formData, setFormData] = useState({
     full_name: "",
     university: "",
+    leaderboard_opt_in: true,
   });
 
   useEffect(() => {
@@ -84,6 +87,7 @@ const ProfileSettings = ({ user }: ProfileSettingsProps) => {
         setFormData({
           full_name: data.full_name || "",
           university: data.university || "",
+          leaderboard_opt_in: data.leaderboard_opt_in ?? true,
         });
       }
     } catch (error) {
@@ -103,6 +107,7 @@ const ProfileSettings = ({ user }: ProfileSettingsProps) => {
         .update({
           full_name: formData.full_name,
           university: formData.university || null,
+          leaderboard_opt_in: formData.leaderboard_opt_in,
           updated_at: new Date().toISOString(),
         })
         .eq("user_id", user.id);
@@ -225,6 +230,27 @@ const ProfileSettings = ({ user }: ProfileSettingsProps) => {
               <p className="text-xs text-muted-foreground">
                 Join campus leaderboards by selecting your university
               </p>
+            </div>
+
+            <Separator />
+
+            {/* Leaderboard Privacy Toggle */}
+            <div className="flex items-center justify-between">
+              <div className="space-y-0.5">
+                <Label className="flex items-center gap-2">
+                  <Trophy className="h-4 w-4" />
+                  Appear on Leaderboards
+                </Label>
+                <p className="text-xs text-muted-foreground">
+                  Allow your quiz scores and badges to be visible on public leaderboards
+                </p>
+              </div>
+              <Switch
+                checked={formData.leaderboard_opt_in}
+                onCheckedChange={(checked) => 
+                  setFormData((prev) => ({ ...prev, leaderboard_opt_in: checked }))
+                }
+              />
             </div>
           </div>
 

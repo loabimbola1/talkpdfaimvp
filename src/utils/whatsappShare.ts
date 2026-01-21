@@ -14,7 +14,7 @@ export const shareToWhatsApp = ({ text, url }: WhatsAppShareOptions) => {
 
 export const shareStudyGroupInvite = (groupName: string, inviteCode: string) => {
   const text = `🎓 Join my study group "${groupName}" on TalkPDF AI!\n\n📚 We're learning together and competing on leaderboards.\n\n🔑 Use invite code: ${inviteCode}`;
-  const url = `https://talkpdf.com.ng/dashboard?tab=groups`;
+  const url = `https://talkpdfaimvp.lovable.app/dashboard?tab=groups`;
   
   shareToWhatsApp({ text, url });
   toast.success("Opening WhatsApp to share invite!");
@@ -37,7 +37,7 @@ export const shareBadgeAchievement = (
   
   text += `\n\n📱 Start learning smarter at TalkPDF AI!`;
   
-  const url = `https://talkpdf.com.ng`;
+  const url = `https://talkpdfaimvp.lovable.app`;
   
   shareToWhatsApp({ text, url });
   toast.success("Opening WhatsApp to share your achievement!");
@@ -55,7 +55,7 @@ export const shareQuizScore = (
   else if (percentage >= 50) emoji = "💪";
 
   const text = `${emoji} I scored ${score}/${totalQuestions} (${percentage}%) on a quiz about "${documentTitle}" on TalkPDF AI!\n\n📚 Test your knowledge too!`;
-  const url = `https://talkpdf.com.ng`;
+  const url = `https://talkpdfaimvp.lovable.app`;
   
   shareToWhatsApp({ text, url });
   toast.success("Opening WhatsApp to share your score!");

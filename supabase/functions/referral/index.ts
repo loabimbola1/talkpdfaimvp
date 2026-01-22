@@ -178,6 +178,35 @@ serve(async (req) => {
         .update({ referred_by: referrer.user_id })
         .eq("user_id", userId);
 
+      // Get referred user's name for email notification
+      const { data: referredProfile } = await supabase
+        .from("profiles")
+        .select("full_name")
+        .eq("user_id", userId)
+        .single();
+
+      const referredName = referredProfile?.full_name || "A new user";
+
+      // Send email notification to referrer (fire and forget)
+      try {
+        await fetch(`${SUPABASE_URL}/functions/v1/referral-notification`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
+          },
+          body: JSON.stringify({
+            referrerId: referrer.user_id,
+            referredName,
+            creditsAwarded: REFERRAL_CREDITS,
+          }),
+        });
+        console.log("Referral notification sent");
+      } catch (emailError) {
+        console.error("Failed to send referral notification email:", emailError);
+        // Don't fail the main request if email fails
+      }
+
       console.log(`Referral applied: ${userId} referred by ${referrer.user_id}`);
 
       return new Response(

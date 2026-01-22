@@ -23,8 +23,10 @@ import SpacedRepetition from "@/components/dashboard/SpacedRepetition";
 import OnboardingGuide from "@/components/dashboard/OnboardingGuide";
 import OfflineAudioManager from "@/components/dashboard/OfflineAudioManager";
 import { ReferralProgram } from "@/components/dashboard/ReferralProgram";
+import FeatureGate from "@/components/dashboard/FeatureGate";
 import ThemeToggle from "@/components/ThemeToggle";
 import { usePdfCompleteNotification } from "@/hooks/usePdfCompleteNotification";
+import { useFeatureAccess } from "@/hooks/useFeatureAccess";
 import type { User as SupabaseUser } from "@supabase/supabase-js";
 
 type TabType = "upload" | "documents" | "listen" | "explain" | "quiz" | "lessons" | "progress" | "badges" | "leaderboard" | "quiz-leaders" | "campus" | "groups" | "review" | "subscription" | "offline" | "referral" | "settings";
@@ -248,11 +250,17 @@ const Dashboard = () => {
                   />
                 )}
                 {activeTab === "explain" && (
-                  <ExplainBackMode 
-                    documentId={selectedDocumentId || undefined} 
-                    promptIndex={selectedPromptIndex}
-                    onBadgeEarned={handleBadgeEarned}
-                  />
+                  <FeatureGate 
+                    feature="explainBack" 
+                    onUpgrade={() => setActiveTab("subscription")}
+                    featureName="Explain-Back Mode"
+                  >
+                    <ExplainBackMode 
+                      documentId={selectedDocumentId || undefined} 
+                      promptIndex={selectedPromptIndex}
+                      onBadgeEarned={handleBadgeEarned}
+                    />
+                  </FeatureGate>
                 )}
                 {activeTab === "quiz" && (
                   <QuizMode 
@@ -263,7 +271,13 @@ const Dashboard = () => {
                   />
                 )}
                 {activeTab === "lessons" && (
-                  <MicroLessons onLessonComplete={() => handleBadgeEarned()} />
+                  <FeatureGate 
+                    feature="microLessons" 
+                    onUpgrade={() => setActiveTab("subscription")}
+                    featureName="Micro-Lessons"
+                  >
+                    <MicroLessons onLessonComplete={() => handleBadgeEarned()} />
+                  </FeatureGate>
                 )}
                 {activeTab === "progress" && (
                   <ProgressDashboard onNavigate={(tab) => setActiveTab(tab as TabType)} />
@@ -279,8 +293,24 @@ const Dashboard = () => {
                 {activeTab === "groups" && <StudyGroups />}
                 {activeTab === "leaderboard" && <Leaderboard />}
                 {activeTab === "quiz-leaders" && <QuizLeaderboard />}
-                {activeTab === "campus" && <CampusTab />}
-                {activeTab === "offline" && <OfflineAudioManager />}
+                {activeTab === "campus" && (
+                  <FeatureGate 
+                    feature="campusLeaderboard" 
+                    onUpgrade={() => setActiveTab("subscription")}
+                    featureName="Campus Leaderboard"
+                  >
+                    <CampusTab />
+                  </FeatureGate>
+                )}
+                {activeTab === "offline" && (
+                  <FeatureGate 
+                    feature="offlineMode" 
+                    onUpgrade={() => setActiveTab("subscription")}
+                    featureName="Offline Mode"
+                  >
+                    <OfflineAudioManager />
+                  </FeatureGate>
+                )}
                 {activeTab === "referral" && <ReferralProgram />}
                 {activeTab === "subscription" && <SubscriptionPlans />}
                 {activeTab === "settings" && <ProfileSettings user={user} />}

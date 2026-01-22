@@ -38,3 +38,12 @@ verify_jwt = false
 
 [functions.referral]
 verify_jwt = false
+
+[functions.referral-notification]
+verify_jwt = false
+
+[functions.generate-lesson-audio]
+verify_jwt = false
+
+[functions.verify-admin]
+verify_jwt = false

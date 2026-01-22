@@ -449,6 +449,44 @@ Create 3-5 study prompts that will help students test their understanding.`
       }
     }
 
+    // Fallback to OpenRouter TTS (via their TTS models) if both Spitch and ElevenLabs failed
+    const OPENROUTER_API_KEY = Deno.env.get("OPENROUTER_API_KEY");
+    if (!audioBuffer && OPENROUTER_API_KEY) {
+      try {
+        console.log("Falling back to OpenRouter TTS...");
+        
+        // OpenRouter supports text-to-speech via specific models
+        // Using openai/tts-1 model through OpenRouter
+        const openRouterResponse = await fetch("https://openrouter.ai/api/v1/audio/speech", {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${OPENROUTER_API_KEY}`,
+            "Content-Type": "application/json",
+            "HTTP-Referer": "https://talkpdfaimvp.lovable.app",
+            "X-Title": "TalkPDF"
+          },
+          body: JSON.stringify({
+            model: "openai/tts-1",
+            input: ttsText.substring(0, 4000), // TTS-1 has 4000 char limit
+            voice: "nova", // Available: alloy, echo, fable, onyx, nova, shimmer
+            response_format: "mp3",
+            speed: 1.0
+          }),
+        });
+
+        if (openRouterResponse.ok) {
+          audioBuffer = await openRouterResponse.arrayBuffer();
+          ttsProvider = "openrouter";
+          console.log("OpenRouter TTS successful");
+        } else {
+          const errorText = await openRouterResponse.text();
+          console.warn("OpenRouter TTS failed:", openRouterResponse.status, errorText.substring(0, 200));
+        }
+      } catch (openRouterError) {
+        console.warn("OpenRouter TTS error:", openRouterError instanceof Error ? openRouterError.message : String(openRouterError));
+      }
+    }
+
     // Upload audio if we got any
     if (audioBuffer) {
       try {

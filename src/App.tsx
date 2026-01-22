@@ -15,6 +15,7 @@ import Terms from "./pages/Terms";
 import Cookies from "./pages/Cookies";
 import Admin from "./pages/Admin";
 import NotFound from "./pages/NotFound";
+import { SupportChatbot } from "./components/SupportChatbot";
 
 const queryClient = new QueryClient();
 
@@ -38,6 +39,7 @@ const App = () => (
           <Route path="/admin" element={<Admin />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
+        <SupportChatbot />
       </BrowserRouter>
     </TooltipProvider>
   </QueryClientProvider>

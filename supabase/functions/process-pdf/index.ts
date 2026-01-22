@@ -455,42 +455,43 @@ Create 3-5 study prompts that will help students test their understanding.`
       try {
         console.log("Falling back to OpenRouter Gemini TTS...");
         
-        // Use Gemini 2.5 Flash with audio generation via chat completions API
+        // Use Gemini 2.5 Flash Preview TTS with proper audio output configuration
         const openRouterResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
           method: "POST",
           headers: {
             "Authorization": `Bearer ${OPENROUTER_API_KEY}`,
             "Content-Type": "application/json",
             "HTTP-Referer": "https://talkpdfaimvp.lovable.app",
-            "X-Title": "TalkPDF"
+            "X-Title": "TalkPDF AI"
           },
           body: JSON.stringify({
             model: "google/gemini-2.5-flash-preview-tts",
-            modalities: ["audio"],
-            audio: {
-              voice: "Kore", // Available: Aoede, Charon, Fenrir, Kore, Puck
-              format: "mp3"
-            },
             messages: [
               {
-                role: "system",
-                content: "You are a professional audiobook narrator. Read the following text naturally and clearly with good pacing for educational content."
-              },
-              {
                 role: "user",
-                content: ttsText.substring(0, 8000) // Gemini supports longer inputs
+                content: `Read this text naturally as an audiobook narrator: ${ttsText.substring(0, 8000)}`
               }
-            ]
+            ],
+            modalities: ["text", "audio"],
+            audio: {
+              voice: "Kore",
+              format: "mp3"
+            }
           }),
         });
 
         if (openRouterResponse.ok) {
           const responseData = await openRouterResponse.json();
-          // Extract audio from Gemini response (base64 encoded in message content)
-          const audioContent = responseData.choices?.[0]?.message?.audio?.data;
-          if (audioContent) {
+          console.log("OpenRouter response structure:", JSON.stringify(responseData, null, 2).substring(0, 500));
+          
+          // Check multiple possible locations for audio data
+          const audioData = responseData.choices?.[0]?.message?.audio?.data 
+            || responseData.choices?.[0]?.message?.content?.audio?.data
+            || responseData.audio?.data;
+            
+          if (audioData) {
             // Decode base64 to ArrayBuffer
-            const binaryString = atob(audioContent);
+            const binaryString = atob(audioData);
             const bytes = new Uint8Array(binaryString.length);
             for (let i = 0; i < binaryString.length; i++) {
               bytes[i] = binaryString.charCodeAt(i);
@@ -499,14 +500,68 @@ Create 3-5 study prompts that will help students test their understanding.`
             ttsProvider = "openrouter-gemini";
             console.log("OpenRouter Gemini TTS successful");
           } else {
-            console.warn("OpenRouter Gemini TTS: No audio in response");
+            console.warn("OpenRouter Gemini TTS: No audio data found in response. Keys:", Object.keys(responseData));
           }
         } else {
           const errorText = await openRouterResponse.text();
-          console.warn("OpenRouter Gemini TTS failed:", openRouterResponse.status, errorText.substring(0, 200));
+          console.warn("OpenRouter Gemini TTS failed:", openRouterResponse.status, errorText.substring(0, 500));
         }
       } catch (openRouterError) {
         console.warn("OpenRouter Gemini TTS error:", openRouterError instanceof Error ? openRouterError.message : String(openRouterError));
+      }
+    }
+
+    // Final fallback: Use Lovable AI Gateway for TTS if available
+    if (!audioBuffer && LOVABLE_API_KEY) {
+      try {
+        console.log("Falling back to Lovable AI Gateway for TTS...");
+        
+        const lovableTTSResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${LOVABLE_API_KEY}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            model: "google/gemini-2.5-flash",
+            messages: [
+              {
+                role: "system",
+                content: "Generate audio narration for the following educational content. Speak clearly and at a moderate pace suitable for learning."
+              },
+              {
+                role: "user",
+                content: ttsText.substring(0, 5000)
+              }
+            ],
+            modalities: ["audio"],
+            audio: {
+              voice: "Kore",
+              format: "mp3"
+            }
+          }),
+        });
+
+        if (lovableTTSResponse.ok) {
+          const responseData = await lovableTTSResponse.json();
+          const audioData = responseData.choices?.[0]?.message?.audio?.data;
+          
+          if (audioData) {
+            const binaryString = atob(audioData);
+            const bytes = new Uint8Array(binaryString.length);
+            for (let i = 0; i < binaryString.length; i++) {
+              bytes[i] = binaryString.charCodeAt(i);
+            }
+            audioBuffer = bytes.buffer;
+            ttsProvider = "lovable-gemini";
+            console.log("Lovable AI Gateway TTS successful");
+          }
+        } else {
+          const errorText = await lovableTTSResponse.text();
+          console.warn("Lovable AI Gateway TTS failed:", lovableTTSResponse.status, errorText.substring(0, 200));
+        }
+      } catch (lovableError) {
+        console.warn("Lovable AI Gateway TTS error:", lovableError instanceof Error ? lovableError.message : String(lovableError));
       }
     }
 

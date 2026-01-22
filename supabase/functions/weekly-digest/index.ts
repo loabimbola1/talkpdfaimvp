@@ -17,6 +17,11 @@ interface UserDigestData {
   avg_quiz_score: number;
   badges_earned: { gold: number; silver: number; bronze: number };
   spaced_reviews_due: number;
+  credits_used: number;
+  credits_limit: number;
+  subscription_plan: string;
+  lessons_completed: number;
+  streak_days: number;
 }
 
 serve(async (req) => {
@@ -61,7 +66,7 @@ serve(async (req) => {
     // Get all active users with email
     const { data: profiles, error: profilesError } = await supabase
       .from("profiles")
-      .select("user_id, email, full_name")
+      .select("user_id, email, full_name, subscription_plan")
       .not("email", "is", null);
 
     if (profilesError) {
@@ -87,6 +92,11 @@ serve(async (req) => {
           avg_quiz_score: 0,
           badges_earned: { gold: 0, silver: 0, bronze: 0 },
           spaced_reviews_due: 0,
+          credits_used: 0,
+          credits_limit: profile.subscription_plan === "pro" ? 500 : profile.subscription_plan === "plus" ? 100 : 0,
+          subscription_plan: profile.subscription_plan || "free",
+          lessons_completed: 0,
+          streak_days: 0,
         };
 
         // Documents uploaded this week
@@ -142,9 +152,63 @@ serve(async (req) => {
           .lte("next_review_date", new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString());
         digestData.spaced_reviews_due = reviewsDue || 0;
 
+        // Credits used this month (from usage_tracking)
+        const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+        const { data: monthlyUsage } = await supabase
+          .from("usage_tracking")
+          .select("action_type, audio_minutes_used")
+          .eq("user_id", profile.user_id)
+          .gte("created_at", monthStart);
+        
+        if (monthlyUsage) {
+          let credits = 0;
+          for (const u of monthlyUsage) {
+            if (u.action_type === "pdf_upload") credits += 1;
+            else if (u.action_type === "audio_conversion") credits += Math.ceil(Number(u.audio_minutes_used || 0) / 5);
+            else if (u.action_type === "explain_back") credits += 2;
+          }
+          digestData.credits_used = credits;
+        }
+
+        // Lessons completed this week
+        const { count: lessonsCount } = await supabase
+          .from("micro_lesson_progress")
+          .select("*", { count: "exact", head: true })
+          .eq("user_id", profile.user_id)
+          .eq("status", "completed")
+          .gte("completed_at", weekAgoISO);
+        digestData.lessons_completed = lessonsCount || 0;
+
+        // Calculate study streak
+        const { data: dailyUsage } = await supabase
+          .from("daily_usage_summary")
+          .select("date")
+          .eq("user_id", profile.user_id)
+          .order("date", { ascending: false })
+          .limit(60);
+        
+        let streak = 0;
+        if (dailyUsage && dailyUsage.length > 0) {
+          const today = new Date();
+          for (let i = 0; i < dailyUsage.length; i++) {
+            const usageDate = new Date(dailyUsage[i].date);
+            const expectedDate = new Date(today);
+            expectedDate.setDate(today.getDate() - i);
+            expectedDate.setHours(0, 0, 0, 0);
+            usageDate.setHours(0, 0, 0, 0);
+            if (usageDate.getTime() === expectedDate.getTime()) {
+              streak++;
+            } else {
+              break;
+            }
+          }
+        }
+        digestData.streak_days = streak;
+
         // Skip if user has no activity
         const hasActivity = digestData.documents_count > 0 || 
           digestData.quiz_count > 0 || 
+          digestData.lessons_completed > 0 ||
           (digestData.badges_earned.gold + digestData.badges_earned.silver + digestData.badges_earned.bronze) > 0;
 
         if (!hasActivity && digestData.spaced_reviews_due === 0) {
@@ -202,6 +266,7 @@ serve(async (req) => {
 function generateDigestEmail(data: UserDigestData): string {
   const name = data.full_name || "Student";
   const totalBadges = data.badges_earned.gold + data.badges_earned.silver + data.badges_earned.bronze;
+  const creditsPercent = data.credits_limit > 0 ? Math.round((data.credits_used / data.credits_limit) * 100) : 0;
 
   return `
 <!DOCTYPE html>
@@ -220,6 +285,7 @@ function generateDigestEmail(data: UserDigestData): string {
   <div style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white; padding: 30px; border-radius: 16px; margin-bottom: 20px;">
     <h2 style="margin: 0 0 10px 0;">Hey ${name}! 👋</h2>
     <p style="margin: 0; opacity: 0.9;">Here's how you did this week</p>
+    ${data.streak_days > 0 ? `<p style="margin: 10px 0 0 0; font-size: 14px;">🔥 ${data.streak_days} day study streak!</p>` : ''}
   </div>
 
   <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; margin-bottom: 20px;">
@@ -236,10 +302,22 @@ function generateDigestEmail(data: UserDigestData): string {
       <div style="color: #666; font-size: 14px;">Quizzes Taken</div>
     </div>
     <div style="background: #f3f4f6; padding: 20px; border-radius: 12px; text-align: center;">
-      <div style="font-size: 32px; font-weight: bold; color: #10b981;">${data.avg_quiz_score}%</div>
-      <div style="color: #666; font-size: 14px;">Avg Quiz Score</div>
+      <div style="font-size: 32px; font-weight: bold; color: #10b981;">${data.lessons_completed}</div>
+      <div style="color: #666; font-size: 14px;">Lessons Done</div>
     </div>
   </div>
+
+  ${data.credits_limit > 0 ? `
+  <div style="background: #f0fdf4; padding: 20px; border-radius: 12px; margin-bottom: 20px; border: 1px solid #bbf7d0;">
+    <h3 style="margin: 0 0 10px 0; color: #166534;">💳 Credits Usage (${data.subscription_plan.charAt(0).toUpperCase() + data.subscription_plan.slice(1)} Plan)</h3>
+    <div style="background: #dcfce7; border-radius: 8px; height: 12px; overflow: hidden;">
+      <div style="background: #10b981; height: 100%; width: ${Math.min(creditsPercent, 100)}%;"></div>
+    </div>
+    <p style="margin: 8px 0 0 0; font-size: 14px; color: #166534;">
+      ${data.credits_used} / ${data.credits_limit} credits used (${creditsPercent}%)
+    </p>
+  </div>
+  ` : ''}
 
   ${totalBadges > 0 ? `
   <div style="background: #fef3c7; padding: 20px; border-radius: 12px; margin-bottom: 20px;">
@@ -249,6 +327,13 @@ function generateDigestEmail(data: UserDigestData): string {
       ${data.badges_earned.silver > 0 ? `<span style="font-size: 24px;">🥈 x${data.badges_earned.silver}</span>` : ''}
       ${data.badges_earned.bronze > 0 ? `<span style="font-size: 24px;">🥉 x${data.badges_earned.bronze}</span>` : ''}
     </div>
+  </div>
+  ` : ''}
+
+  ${data.avg_quiz_score > 0 ? `
+  <div style="background: #ede9fe; padding: 20px; border-radius: 12px; margin-bottom: 20px;">
+    <h3 style="margin: 0 0 10px 0; color: #5b21b6;">📊 Quiz Performance</h3>
+    <p style="margin: 0; color: #7c3aed; font-size: 24px; font-weight: bold;">${data.avg_quiz_score}% Average Score</p>
   </div>
   ` : ''}
 

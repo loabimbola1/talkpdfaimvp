@@ -449,15 +449,14 @@ Create 3-5 study prompts that will help students test their understanding.`
       }
     }
 
-    // Fallback to OpenRouter TTS (via their TTS models) if both Spitch and ElevenLabs failed
+    // Fallback to OpenRouter TTS using Gemini 2.5 Flash (supports native TTS)
     const OPENROUTER_API_KEY = Deno.env.get("OPENROUTER_API_KEY");
     if (!audioBuffer && OPENROUTER_API_KEY) {
       try {
-        console.log("Falling back to OpenRouter TTS...");
+        console.log("Falling back to OpenRouter Gemini TTS...");
         
-        // OpenRouter supports text-to-speech via specific models
-        // Using openai/tts-1 model through OpenRouter
-        const openRouterResponse = await fetch("https://openrouter.ai/api/v1/audio/speech", {
+        // Use Gemini 2.5 Flash with audio generation via chat completions API
+        const openRouterResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
           method: "POST",
           headers: {
             "Authorization": `Bearer ${OPENROUTER_API_KEY}`,
@@ -466,24 +465,48 @@ Create 3-5 study prompts that will help students test their understanding.`
             "X-Title": "TalkPDF"
           },
           body: JSON.stringify({
-            model: "openai/tts-1",
-            input: ttsText.substring(0, 4000), // TTS-1 has 4000 char limit
-            voice: "nova", // Available: alloy, echo, fable, onyx, nova, shimmer
-            response_format: "mp3",
-            speed: 1.0
+            model: "google/gemini-2.5-flash-preview-tts",
+            modalities: ["audio"],
+            audio: {
+              voice: "Kore", // Available: Aoede, Charon, Fenrir, Kore, Puck
+              format: "mp3"
+            },
+            messages: [
+              {
+                role: "system",
+                content: "You are a professional audiobook narrator. Read the following text naturally and clearly with good pacing for educational content."
+              },
+              {
+                role: "user",
+                content: ttsText.substring(0, 8000) // Gemini supports longer inputs
+              }
+            ]
           }),
         });
 
         if (openRouterResponse.ok) {
-          audioBuffer = await openRouterResponse.arrayBuffer();
-          ttsProvider = "openrouter";
-          console.log("OpenRouter TTS successful");
+          const responseData = await openRouterResponse.json();
+          // Extract audio from Gemini response (base64 encoded in message content)
+          const audioContent = responseData.choices?.[0]?.message?.audio?.data;
+          if (audioContent) {
+            // Decode base64 to ArrayBuffer
+            const binaryString = atob(audioContent);
+            const bytes = new Uint8Array(binaryString.length);
+            for (let i = 0; i < binaryString.length; i++) {
+              bytes[i] = binaryString.charCodeAt(i);
+            }
+            audioBuffer = bytes.buffer;
+            ttsProvider = "openrouter-gemini";
+            console.log("OpenRouter Gemini TTS successful");
+          } else {
+            console.warn("OpenRouter Gemini TTS: No audio in response");
+          }
         } else {
           const errorText = await openRouterResponse.text();
-          console.warn("OpenRouter TTS failed:", openRouterResponse.status, errorText.substring(0, 200));
+          console.warn("OpenRouter Gemini TTS failed:", openRouterResponse.status, errorText.substring(0, 200));
         }
       } catch (openRouterError) {
-        console.warn("OpenRouter TTS error:", openRouterError instanceof Error ? openRouterError.message : String(openRouterError));
+        console.warn("OpenRouter Gemini TTS error:", openRouterError instanceof Error ? openRouterError.message : String(openRouterError));
       }
     }
 

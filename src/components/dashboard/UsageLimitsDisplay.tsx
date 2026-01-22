@@ -203,7 +203,7 @@ const UsageLimitsDisplay = ({ onUpgrade }: UsageLimitsDisplayProps) => {
 
         {limits.explain_back_per_day === 0 && (
           <div className="text-sm text-muted-foreground text-center py-2">
-            Explain-Back Mode is available on Study Go and above
+            Explain-Back Mode is available on Plus and above
           </div>
         )}
       </CardContent>

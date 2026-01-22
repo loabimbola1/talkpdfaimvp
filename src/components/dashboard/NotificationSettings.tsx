@@ -15,20 +15,27 @@ const NotificationSettings = () => {
   const [reminderDays, setReminderDays] = useState<string[]>(
     JSON.parse(localStorage.getItem("talkpdf-reminder-days") || '["monday","wednesday","friday"]')
   );
+  const [isToggling, setIsToggling] = useState(false);
 
   const handleToggleNotifications = async () => {
-    if (isSubscribed) {
-      await unsubscribe();
-    } else {
-      const success = await subscribe();
-      if (success) {
-        // Schedule a test reminder in 5 seconds
-        scheduleStudyReminder(
-          "Welcome to TalkPDF! 📚",
-          "You'll receive study reminders to help you stay on track.",
-          5000
-        );
+    if (isToggling) return; // Prevent double-clicks
+    setIsToggling(true);
+    try {
+      if (isSubscribed) {
+        await unsubscribe();
+      } else {
+        const success = await subscribe();
+        if (success) {
+          // Schedule a test reminder in 5 seconds
+          scheduleStudyReminder(
+            "Welcome to TalkPDF! 📚",
+            "You'll receive study reminders to help you stay on track.",
+            5000
+          );
+        }
       }
+    } finally {
+      setIsToggling(false);
     }
   };
 
@@ -94,6 +101,7 @@ const NotificationSettings = () => {
         <Switch
           checked={isSubscribed}
           onCheckedChange={handleToggleNotifications}
+          disabled={isToggling}
         />
       </div>
 

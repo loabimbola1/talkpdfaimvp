@@ -343,17 +343,29 @@ Create 3-5 study prompts that will help students test their understanding.`
     let audioBuffer: ArrayBuffer | null = null;
     let ttsProvider = "none";
 
+    // Map language to Spitch API language enum (yo, en, ha, ig, am)
+    const spitchLanguageMap: Record<string, string> = {
+      yo: "yo", yoruba: "yo",
+      ha: "ha", hausa: "ha",
+      ig: "ig", igbo: "ig",
+      pcm: "en", pidgin: "en",
+      en: "en", english: "en",
+      am: "am", amharic: "am",
+    };
+    const spitchLanguage = spitchLanguageMap[language.toLowerCase()] || "en";
+
     // Try Spitch first (Nigerian language TTS)
     try {
       if (SPITCH_API_KEY) {
-        console.log("Attempting Spitch TTS...");
-        const ttsResponse = await fetch("https://api.spitch.app/api/tts", {
+        console.log(`Attempting Spitch TTS with language: ${spitchLanguage}, voice: ${selectedVoice}...`);
+        const ttsResponse = await fetch("https://api.spitch.app/v1/speech", {
           method: "POST",
           headers: {
             "Authorization": `Bearer ${SPITCH_API_KEY}`,
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
+            language: spitchLanguage, // Required parameter per Spitch API docs
             text: ttsText,
             voice: selectedVoice,
             format: "mp3",
@@ -366,7 +378,7 @@ Create 3-5 study prompts that will help students test their understanding.`
           console.log("Spitch TTS successful");
         } else {
           const errorText = await ttsResponse.text();
-          console.warn("Spitch TTS failed:", errorText);
+          console.warn("Spitch TTS failed:", ttsResponse.status, errorText);
         }
       }
     } catch (spitchError) {

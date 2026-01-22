@@ -44,7 +44,7 @@ const helpTopics = [
       },
       {
         question: "Can I download audio for offline listening?",
-        answer: "Yes! Mastery Pass subscribers can download audio files for offline listening."
+        answer: "Yes! Study Pass subscribers can download audio files for offline listening."
       }
     ]
   },
@@ -63,7 +63,7 @@ const helpTopics = [
       },
       {
         question: "Is Explain-Back Mode available on Free plan?",
-        answer: "Explain-Back Mode is available on Student Pro and Mastery Pass plans only."
+        answer: "Explain-Back Mode is available on Study Go and Study Pass plans only."
       }
     ]
   },

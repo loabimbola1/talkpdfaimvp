@@ -16,8 +16,8 @@ interface PaymentRequest {
 
 // Strict plan/price mapping - single source of truth
 const PRICE_MAP: Record<string, Record<BillingCycle, number>> = {
-  student_pro: { monthly: 2000, yearly: 20000 },
-  mastery_pass: { monthly: 3500, yearly: 40000 },
+  study_go: { monthly: 2000, yearly: 20000 },
+  study_pass: { monthly: 3500, yearly: 40000 },
 };
 
 // Valid plans list for validation

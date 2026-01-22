@@ -23,13 +23,13 @@ const PLAN_LIMITS: Record<string, UsageLimits> = {
     explain_back_per_day: 0,
     can_download: false,
   },
-  student_pro: {
+  study_go: {
     pdfs_per_day: 10,
     audio_minutes_per_day: 60,
     explain_back_per_day: 20,
     can_download: false,
   },
-  mastery_pass: {
+  study_pass: {
     pdfs_per_day: -1, // unlimited
     audio_minutes_per_day: -1,
     explain_back_per_day: -1,
@@ -127,7 +127,7 @@ const UsageLimitsDisplay = ({ onUpgrade }: UsageLimitsDisplayProps) => {
             <CardTitle className="text-lg">Daily Usage</CardTitle>
             <CardDescription>Your usage resets at midnight</CardDescription>
           </div>
-          {plan !== "mastery_pass" && (
+        {plan !== "study_pass" && (
             <Button variant="outline" size="sm" className="gap-2" onClick={onUpgrade}>
               <Crown className="h-4 w-4" />
               Upgrade
@@ -203,7 +203,7 @@ const UsageLimitsDisplay = ({ onUpgrade }: UsageLimitsDisplayProps) => {
 
         {limits.explain_back_per_day === 0 && (
           <div className="text-sm text-muted-foreground text-center py-2">
-            Explain-Back Mode is available on Student Pro and above
+            Explain-Back Mode is available on Study Go and above
           </div>
         )}
       </CardContent>

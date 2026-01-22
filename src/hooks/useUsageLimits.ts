@@ -21,13 +21,13 @@ export const PLAN_LIMITS: Record<string, UsageLimits> = {
     explain_back_per_day: 0,
     can_download: false,
   },
-  student_pro: {
+  study_go: {
     pdfs_per_day: 10,
     audio_minutes_per_day: 60,
     explain_back_per_day: 20,
     can_download: false,
   },
-  mastery_pass: {
+  study_pass: {
     pdfs_per_day: -1, // unlimited
     audio_minutes_per_day: -1,
     explain_back_per_day: -1,

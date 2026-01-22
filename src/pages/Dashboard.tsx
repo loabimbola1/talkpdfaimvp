@@ -3,13 +3,15 @@ import { useNavigate, useSearchParams, Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { LogOut, Upload, Headphones, Award, Settings, User, FileText, Brain, Crown, Trophy, HelpCircle, BookOpen, BarChart3, Users, Calendar, School, WifiOff, Gift } from "lucide-react";
+import { LogOut, Upload, Headphones, Award, Settings, User, FileText, Brain, Crown, Trophy, HelpCircle, BookOpen, BarChart3, Users, Calendar, School, WifiOff, Gift, Coins } from "lucide-react";
 import PDFUpload from "@/components/dashboard/PDFUpload";
 import AudioPlayer from "@/components/dashboard/AudioPlayer";
 import MyDocuments from "@/components/dashboard/MyDocuments";
 import ProfileSettings from "@/components/dashboard/ProfileSettings";
 import ExplainBackMode from "@/components/dashboard/ExplainBackMode";
 import UsageLimitsDisplay from "@/components/dashboard/UsageLimitsDisplay";
+import CreditsUsageTracker from "@/components/dashboard/CreditsUsageTracker";
+import ReferralLeaderboard from "@/components/dashboard/ReferralLeaderboard";
 import SubscriptionPlans from "@/components/dashboard/SubscriptionPlans";
 import BadgesDisplay from "@/components/dashboard/BadgesDisplay";
 import Leaderboard from "@/components/dashboard/Leaderboard";
@@ -317,8 +319,10 @@ const Dashboard = () => {
               </div>
             </div>
 
-            <div className="lg:col-span-1">
+            <div className="lg:col-span-1 space-y-6">
               <UsageLimitsDisplay onUpgrade={() => setActiveTab("subscription")} />
+              <CreditsUsageTracker onUpgrade={() => setActiveTab("subscription")} />
+              <ReferralLeaderboard />
             </div>
           </div>
         </div>

@@ -4,11 +4,12 @@ import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Upload, FileText, X, CheckCircle, AlertCircle, Loader2, Crown, AlertTriangle } from "lucide-react";
+import { Upload, FileText, X, CheckCircle, AlertCircle, Loader2, Crown, AlertTriangle, Lock } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { useUsageLimits } from "@/hooks/useUsageLimits";
+import { useFeatureAccess, LANGUAGE_ACCESS } from "@/hooks/useFeatureAccess";
 
 interface UploadedFile {
   id?: string;
@@ -20,11 +21,11 @@ interface UploadedFile {
 }
 
 const languages = [
-  { value: "en", label: "English" },
-  { value: "yo", label: "Yoruba" },
-  { value: "ha", label: "Hausa" },
-  { value: "ig", label: "Igbo" },
-  { value: "pcm", label: "Pidgin" },
+  { value: "en", label: "English", planRequired: "free" as const },
+  { value: "yo", label: "Yoruba", planRequired: "plus" as const },
+  { value: "ig", label: "Igbo", planRequired: "plus" as const },
+  { value: "pcm", label: "Pidgin", planRequired: "plus" as const },
+  { value: "ha", label: "Hausa", planRequired: "pro" as const },
 ];
 
 interface PDFUploadProps {
@@ -47,6 +48,8 @@ const PDFUpload = ({ onDocumentProcessed, onUpgrade }: PDFUploadProps) => {
     getRemainingPdfs,
     refetch: refetchUsage 
   } = useUsageLimits();
+
+  const { canAccessLanguage, getLanguageUpgradeMessage } = useFeatureAccess();
 
   // Sanitize filename to remove special characters that cause storage issues
   const sanitizeFileName = (name: string): string => {
@@ -324,16 +327,49 @@ const PDFUpload = ({ onDocumentProcessed, onUpgrade }: PDFUploadProps) => {
       {/* Language Selection */}
       <div className="flex items-center gap-4">
         <label className="text-sm font-medium text-foreground">Audio Language:</label>
-        <Select value={selectedLanguage} onValueChange={setSelectedLanguage}>
-          <SelectTrigger className="w-40">
+        <Select 
+          value={selectedLanguage} 
+          onValueChange={(value) => {
+            if (canAccessLanguage(value)) {
+              setSelectedLanguage(value);
+            } else {
+              toast.error(getLanguageUpgradeMessage(value), {
+                action: onUpgrade ? {
+                  label: "Upgrade",
+                  onClick: onUpgrade,
+                } : undefined,
+              });
+            }
+          }}
+        >
+          <SelectTrigger className="w-48">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            {languages.map((lang) => (
-              <SelectItem key={lang.value} value={lang.value}>
-                {lang.label}
-              </SelectItem>
-            ))}
+            {languages.map((lang) => {
+              const hasAccess = canAccessLanguage(lang.value);
+              return (
+                <SelectItem 
+                  key={lang.value} 
+                  value={lang.value}
+                  disabled={!hasAccess}
+                  className={cn(!hasAccess && "opacity-60")}
+                >
+                  <div className="flex items-center gap-2">
+                    <span>{lang.label}</span>
+                    {!hasAccess && (
+                      <Lock className="h-3 w-3 text-muted-foreground" />
+                    )}
+                    {lang.planRequired === "pro" && !hasAccess && (
+                      <span className="text-xs text-muted-foreground">(Pro)</span>
+                    )}
+                    {lang.planRequired === "plus" && !hasAccess && (
+                      <span className="text-xs text-muted-foreground">(Plus+)</span>
+                    )}
+                  </div>
+                </SelectItem>
+              );
+            })}
           </SelectContent>
         </Select>
       </div>

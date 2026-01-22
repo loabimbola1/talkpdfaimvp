@@ -221,7 +221,7 @@ const OfflineAudioManager = () => {
               <li>• Download audio before going offline</li>
               <li>• Cached audio is stored in your browser</li>
               <li>• Clear browser data will remove offline files</li>
-              <li>• Study Pass subscribers have unlimited downloads</li>
+              <li>• Pro subscribers have unlimited downloads</li>
             </ul>
           </div>
         </div>

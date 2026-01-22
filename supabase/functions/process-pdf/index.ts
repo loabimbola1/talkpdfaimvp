@@ -354,33 +354,42 @@ Create 3-5 study prompts that will help students test their understanding.`
     };
     const spitchLanguage = spitchLanguageMap[language.toLowerCase()] || "en";
 
-    // Try Spitch first (Nigerian language TTS) - using correct endpoint
+    // Try Spitch first (Nigerian language TTS) - using correct endpoint per docs.spitch.app
     try {
       if (SPITCH_API_KEY) {
         console.log(`Attempting Spitch TTS with language: ${spitchLanguage}, voice: ${selectedVoice}...`);
         
         // Use the correct Spitch API endpoint per their documentation
+        // Docs: https://docs.spitch.app/features/speech
         const ttsResponse = await fetch("https://api.spitch.app/v1/speech", {
           method: "POST",
           headers: {
             "Authorization": `Bearer ${SPITCH_API_KEY}`,
             "Content-Type": "application/json",
+            "Accept": "audio/mpeg",
           },
           body: JSON.stringify({
-            language: spitchLanguage,
+            language: spitchLanguage, // Required: yo, en, ha, ig, am
+            voice: selectedVoice,     // Required: sade, segun, zainab, ngozi, lucy, etc.
             text: ttsText.substring(0, 5000), // Spitch has text limits
-            voice: selectedVoice,
             format: "mp3",
           }),
         });
 
         if (ttsResponse.ok) {
-          audioBuffer = await ttsResponse.arrayBuffer();
-          ttsProvider = "spitch";
-          console.log("Spitch TTS successful");
+          const contentType = ttsResponse.headers.get("content-type") || "";
+          if (contentType.includes("audio") || contentType.includes("octet-stream")) {
+            audioBuffer = await ttsResponse.arrayBuffer();
+            ttsProvider = "spitch";
+            console.log("Spitch TTS successful, audio size:", audioBuffer.byteLength);
+          } else {
+            // Response might be JSON with error
+            const responseText = await ttsResponse.text();
+            console.warn("Spitch TTS unexpected response type:", contentType, responseText.substring(0, 200));
+          }
         } else {
           const errorText = await ttsResponse.text();
-          console.warn("Spitch TTS failed:", ttsResponse.status, errorText.substring(0, 200));
+          console.warn("Spitch TTS failed:", ttsResponse.status, errorText.substring(0, 300));
         }
       }
     } catch (spitchError) {

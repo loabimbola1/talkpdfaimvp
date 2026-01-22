@@ -225,23 +225,81 @@ export function useAchievements() {
 
   const checkAndCelebrate = useCallback(
     async (achievementId: string) => {
-      const achievement = achievements.find((a) => a.id === achievementId);
-      if (!achievement) return;
+      // Get current user first
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
 
-      // Refetch to get latest progress
-      await fetchAchievements();
+      // Calculate fresh progress directly (don't rely on stale state)
+      const freshProgress = await calculateProgress(user.id);
+      
+      // Find the achievement config
+      const config = ACHIEVEMENT_CONFIGS.find((c) => c.id === achievementId);
+      if (!config) return;
 
-      const updatedAchievement = achievements.find((a) => a.id === achievementId);
-      if (updatedAchievement?.unlocked && !achievement.unlocked) {
-        setNewlyUnlocked(updatedAchievement);
+      // Get current progress for this achievement
+      let currentProgress = 0;
+      switch (achievementId) {
+        case "first_pdf":
+        case "pdf_5":
+        case "pdf_10":
+        case "pdf_25":
+        case "pdf_50":
+          currentProgress = freshProgress.documents || 0;
+          break;
+        case "first_quiz":
+        case "quiz_10":
+        case "quiz_50":
+          currentProgress = freshProgress.quiz || 0;
+          break;
+        case "quiz_perfect":
+          currentProgress = freshProgress.quiz_perfect || 0;
+          break;
+        case "first_lesson":
+        case "lesson_10":
+        case "lesson_50":
+          currentProgress = freshProgress.lessons || 0;
+          break;
+        case "first_badge":
+        case "badge_10":
+          currentProgress = freshProgress.badges || 0;
+          break;
+        case "badge_gold":
+          currentProgress = freshProgress.badge_gold || 0;
+          break;
+        case "streak_3":
+        case "streak_7":
+        case "streak_30":
+          currentProgress = freshProgress.streak || 0;
+          break;
+      }
+
+      const wasUnlockedBefore = achievements.find((a) => a.id === achievementId)?.unlocked || false;
+      const isNowUnlocked = currentProgress >= config.target;
+
+      // Trigger celebration if just unlocked
+      if (isNowUnlocked && !wasUnlockedBefore) {
+        const unlockedAchievement: Achievement = {
+          id: config.id,
+          name: config.name,
+          description: config.description,
+          icon: config.icon,
+          unlocked: true,
+          progress: currentProgress,
+          target: config.target,
+        };
+        
+        setNewlyUnlocked(unlockedAchievement);
         triggerConfetti();
-        toast.success(`🎉 Achievement Unlocked: ${updatedAchievement.name}!`, {
-          description: updatedAchievement.description,
+        toast.success(`🎉 Achievement Unlocked: ${config.name}!`, {
+          description: config.description,
           duration: 5000,
         });
       }
+
+      // Refetch to update state
+      await fetchAchievements();
     },
-    [achievements, fetchAchievements]
+    [achievements, fetchAchievements, calculateProgress]
   );
 
   const dismissNewlyUnlocked = useCallback(() => {

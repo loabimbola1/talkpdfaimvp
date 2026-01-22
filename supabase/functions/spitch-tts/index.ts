@@ -132,17 +132,18 @@ serve(async (req) => {
     
     console.log(`Generating TTS with Spitch - language: ${spitchLanguage}, voice: ${selectedVoice}, text length: ${text.length}`);
 
-    // Call Spitch TTS API - correct endpoint is /v1/speech with language as required param
+    // Call Spitch TTS API - correct endpoint per docs.spitch.app/features/speech
     const response = await fetch("https://api.spitch.app/v1/speech", {
       method: "POST",
       headers: {
         "Authorization": `Bearer ${SPITCH_API_KEY}`,
         "Content-Type": "application/json",
+        "Accept": "audio/mpeg",
       },
       body: JSON.stringify({
-        language: spitchLanguage, // Required parameter
+        language: spitchLanguage, // Required: yo, en, ha, ig, am
+        voice: selectedVoice,     // Required: sade, segun, zainab, ngozi, lucy, etc.
         text: text.substring(0, 5000), // Spitch has text limits
-        voice: selectedVoice,
         format: "mp3",
       }),
     });

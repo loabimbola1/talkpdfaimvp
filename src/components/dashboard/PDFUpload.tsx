@@ -10,6 +10,8 @@ import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { useUsageLimits } from "@/hooks/useUsageLimits";
 import { useFeatureAccess, LANGUAGE_ACCESS } from "@/hooks/useFeatureAccess";
+import { useAchievements } from "@/hooks/useAchievements";
+import { useMilestoneNotifications } from "@/hooks/useMilestoneNotifications";
 
 interface UploadedFile {
   id?: string;
@@ -50,6 +52,8 @@ const PDFUpload = ({ onDocumentProcessed, onUpgrade }: PDFUploadProps) => {
   } = useUsageLimits();
 
   const { canAccessLanguage, getLanguageUpgradeMessage } = useFeatureAccess();
+  const { checkAndCelebrate } = useAchievements();
+  const { checkNearMilestones } = useMilestoneNotifications();
 
   // Sanitize filename to remove special characters that cause storage issues
   const sanitizeFileName = (name: string): string => {
@@ -141,6 +145,14 @@ const PDFUpload = ({ onDocumentProcessed, onUpgrade }: PDFUploadProps) => {
         if (error) throw error;
 
         toast.success(`${file.name} processed successfully!`);
+        
+        // Check for achievement unlocks and near-milestones
+        await checkAndCelebrate("first_pdf");
+        await checkAndCelebrate("pdf_5");
+        await checkAndCelebrate("pdf_10");
+        await checkAndCelebrate("pdf_25");
+        await checkAndCelebrate("pdf_50");
+        await checkNearMilestones("documents");
         
         // Remove from list and notify parent
         setFiles((prev) => prev.filter((f) => f.name !== file.name));

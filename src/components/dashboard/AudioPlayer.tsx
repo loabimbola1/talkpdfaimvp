@@ -80,6 +80,8 @@ const AudioPlayer = ({ selectedDocumentId: propDocumentId, onExplainBackTrigger 
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [generatingAudio, setGeneratingAudio] = useState(false);
+  const [usingBrowserTTS, setUsingBrowserTTS] = useState(false);
+  const [browserTTSPlaying, setBrowserTTSPlaying] = useState(false);
   
   // Offline audio hook
   const {
@@ -229,16 +231,86 @@ const AudioPlayer = ({ selectedDocumentId: propDocumentId, onExplainBackTrigger 
 
       if (error) throw error;
 
-      toast.success("Audio generated successfully!");
-      
       // Refresh documents to get updated audio_url
       await fetchDocumentsWithAudio();
+      
+      // Check if audio was actually generated
+      const updatedDoc = documents.find(d => d.id === doc.id);
+      if (updatedDoc?.audio_url) {
+        toast.success("Audio generated successfully!");
+      } else {
+        toast.info("Document processed, but audio generation is temporarily unavailable. You can use browser voice instead.");
+      }
     } catch (error: any) {
       console.error("Error generating audio:", error);
       toast.error(`Failed to generate audio: ${error.message}`);
     } finally {
       setGeneratingAudio(false);
     }
+  };
+  
+  // Browser-based TTS fallback
+  const startBrowserTTS = async () => {
+    if (!selectedDocument) return;
+    
+    // Fetch the document summary for TTS
+    try {
+      const { data: docData, error } = await supabase
+        .from("documents")
+        .select("summary")
+        .eq("id", selectedDocument.id)
+        .single();
+      
+      if (error) throw error;
+      
+      const textToSpeak = docData?.summary || selectedDocument.title;
+      
+      if (!textToSpeak) {
+        toast.error("No content available to read");
+        return;
+      }
+      
+      // Stop any existing speech
+      speechSynthesis.cancel();
+      
+      const utterance = new SpeechSynthesisUtterance(textToSpeak);
+      utterance.rate = 0.9;
+      utterance.pitch = 1;
+      
+      // Try to find a good voice
+      const voices = speechSynthesis.getVoices();
+      const preferredVoice = voices.find(v => 
+        v.lang.startsWith("en") && v.name.includes("Natural")
+      ) || voices.find(v => v.lang.startsWith("en"));
+      
+      if (preferredVoice) {
+        utterance.voice = preferredVoice;
+      }
+      
+      utterance.onend = () => {
+        setBrowserTTSPlaying(false);
+        setUsingBrowserTTS(false);
+      };
+      
+      utterance.onerror = () => {
+        setBrowserTTSPlaying(false);
+        toast.error("Browser voice playback failed");
+      };
+      
+      setUsingBrowserTTS(true);
+      setBrowserTTSPlaying(true);
+      speechSynthesis.speak(utterance);
+      toast.success("Using browser voice playback");
+    } catch (error) {
+      console.error("Error starting browser TTS:", error);
+      toast.error("Failed to start voice playback");
+    }
+  };
+  
+  const stopBrowserTTS = () => {
+    speechSynthesis.cancel();
+    setBrowserTTSPlaying(false);
+    setUsingBrowserTTS(false);
   };
 
   const handleDownloadOffline = async () => {
@@ -553,26 +625,56 @@ const AudioPlayer = ({ selectedDocumentId: propDocumentId, onExplainBackTrigger 
             <h3 className="font-display text-xl font-semibold text-foreground mb-2">
               No Audio for "{selectedDocument?.title}"
             </h3>
-            <p className="text-muted-foreground mb-6">
-              This document doesn't have audio yet. Generate audio to start listening.
+            <p className="text-muted-foreground mb-4">
+              This document doesn't have audio yet. Try generating it or use browser voice as a fallback.
             </p>
-            <Button 
-              onClick={() => selectedDocument && generateAudioForDocument(selectedDocument)}
-              disabled={generatingAudio}
-              className="gap-2"
-            >
-              {generatingAudio ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Generating Audio...
-                </>
+            
+            <div className="flex flex-col sm:flex-row gap-3 justify-center">
+              <Button 
+                onClick={() => selectedDocument && generateAudioForDocument(selectedDocument)}
+                disabled={generatingAudio}
+                className="gap-2"
+              >
+                {generatingAudio ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Generating...
+                  </>
+                ) : (
+                  <>
+                    <Headphones className="h-4 w-4" />
+                    Generate Audio
+                  </>
+                )}
+              </Button>
+              
+              {/* Browser TTS Fallback */}
+              {!browserTTSPlaying ? (
+                <Button 
+                  variant="outline"
+                  onClick={startBrowserTTS}
+                  className="gap-2"
+                >
+                  <Volume2 className="h-4 w-4" />
+                  Use Browser Voice
+                </Button>
               ) : (
-                <>
-                  <Headphones className="h-4 w-4" />
-                  Generate Audio
-                </>
+                <Button 
+                  variant="destructive"
+                  onClick={stopBrowserTTS}
+                  className="gap-2"
+                >
+                  <VolumeX className="h-4 w-4" />
+                  Stop Voice
+                </Button>
               )}
-            </Button>
+            </div>
+            
+            {usingBrowserTTS && (
+              <p className="text-xs text-primary mt-4 animate-pulse">
+                🔊 Browser voice is reading your document...
+              </p>
+            )}
           </div>
         ) : (
           <>

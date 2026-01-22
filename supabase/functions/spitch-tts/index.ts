@@ -32,6 +32,22 @@ const voiceMap: Record<string, string> = {
   english: "lucy",
 };
 
+// Map language codes to Spitch API language enum (yo, en, ha, ig, am)
+const languageCodeMap: Record<string, string> = {
+  yo: "yo",
+  yoruba: "yo",
+  ha: "ha",
+  hausa: "ha",
+  ig: "ig",
+  igbo: "ig",
+  pcm: "en", // Pidgin uses English
+  pidgin: "en",
+  en: "en",
+  english: "en",
+  am: "am", // Amharic
+  amharic: "am",
+};
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -110,19 +126,21 @@ serve(async (req) => {
       );
     }
 
-    // Get the appropriate voice for the language
+    // Get the appropriate voice and language code for Spitch API
     const selectedVoice = voiceId || voiceMap[language.toLowerCase()] || voiceMap["en"];
+    const spitchLanguage = languageCodeMap[language.toLowerCase()] || "en";
     
-    console.log(`Generating TTS with Spitch - language: ${language}, voice: ${selectedVoice}, text length: ${text.length}`);
+    console.log(`Generating TTS with Spitch - language: ${spitchLanguage}, voice: ${selectedVoice}, text length: ${text.length}`);
 
-    // Call Spitch TTS API
-    const response = await fetch("https://api.spitch.app/api/tts", {
+    // Call Spitch TTS API - correct endpoint is /v1/speech with language as required param
+    const response = await fetch("https://api.spitch.app/v1/speech", {
       method: "POST",
       headers: {
         "Authorization": `Bearer ${SPITCH_API_KEY}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
+        language: spitchLanguage, // Required parameter
         text: text.substring(0, 5000), // Spitch has text limits
         voice: selectedVoice,
         format: "mp3",

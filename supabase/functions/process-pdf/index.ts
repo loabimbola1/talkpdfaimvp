@@ -354,10 +354,12 @@ Create 3-5 study prompts that will help students test their understanding.`
     };
     const spitchLanguage = spitchLanguageMap[language.toLowerCase()] || "en";
 
-    // Try Spitch first (Nigerian language TTS)
+    // Try Spitch first (Nigerian language TTS) - using correct endpoint
     try {
       if (SPITCH_API_KEY) {
         console.log(`Attempting Spitch TTS with language: ${spitchLanguage}, voice: ${selectedVoice}...`);
+        
+        // Use the correct Spitch API endpoint per their documentation
         const ttsResponse = await fetch("https://api.spitch.app/v1/speech", {
           method: "POST",
           headers: {
@@ -365,11 +367,11 @@ Create 3-5 study prompts that will help students test their understanding.`
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            language: spitchLanguage, // Required parameter per Spitch API docs
-            text: ttsText,
+            language: spitchLanguage,
+            text: ttsText.substring(0, 5000), // Spitch has text limits
             voice: selectedVoice,
             format: "mp3",
-          })
+          }),
         });
 
         if (ttsResponse.ok) {
@@ -378,11 +380,11 @@ Create 3-5 study prompts that will help students test their understanding.`
           console.log("Spitch TTS successful");
         } else {
           const errorText = await ttsResponse.text();
-          console.warn("Spitch TTS failed:", ttsResponse.status, errorText);
+          console.warn("Spitch TTS failed:", ttsResponse.status, errorText.substring(0, 200));
         }
       }
     } catch (spitchError) {
-      console.warn("Spitch TTS error:", spitchError);
+      console.warn("Spitch TTS error:", spitchError instanceof Error ? spitchError.message : String(spitchError));
     }
 
     // Fallback to ElevenLabs if Spitch failed

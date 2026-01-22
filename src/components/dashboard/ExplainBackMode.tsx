@@ -421,7 +421,7 @@ const ExplainBackMode = ({ documentId: propDocumentId, documentTitle, promptInde
     return `💡 Hint: Think about ${currentPrompt.topic.toLowerCase()}. Here's a clue from the document: "${summaryWords}..."`;
   };
 
-  const isPaidPlan = userPlan === "study_go" || userPlan === "study_pass";
+  const isPaidPlan = userPlan === "plus" || userPlan === "pro";
 
   if (isLoading || isCheckingPlan) {
     return (
@@ -443,7 +443,7 @@ const ExplainBackMode = ({ documentId: propDocumentId, documentTitle, promptInde
           Explain-Back Mode
         </h3>
         <p className="text-muted-foreground text-sm max-w-md mx-auto mb-6">
-          Explain-Back Mode is available on Study Go and Study Pass plans. Test your understanding by explaining concepts in your own words and earn badges!
+          Explain-Back Mode is available on Plus and Pro plans. Test your understanding by explaining concepts in your own words and earn badges!
         </p>
         <div className="bg-secondary/30 rounded-xl p-4 max-w-sm mx-auto mb-6">
           <p className="text-sm text-foreground font-medium mb-2">What you get:</p>
@@ -458,7 +458,7 @@ const ExplainBackMode = ({ documentId: propDocumentId, documentTitle, promptInde
           const event = new CustomEvent("navigateToTab", { detail: { tab: "subscription" } });
           window.dispatchEvent(event);
         }}>
-          Upgrade to Study Go
+          Upgrade to Plus
         </Button>
       </div>
     );

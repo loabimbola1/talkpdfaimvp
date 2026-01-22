@@ -44,12 +44,12 @@ const plans: PricingPlan[] = [
     ctaVariant: "outline",
   },
   {
-    name: "Study Go",
+    name: "Plus",
     description: "Great value for everyday learners",
     monthlyPrice: 2000,
     yearlyPrice: 20000,
     priceLabel: "/month",
-    planId: "study_go",
+    planId: "plus",
     features: [
       { text: "60 minutes audio per day", included: true },
       { text: "20 PDF uploads per month", included: true },
@@ -59,16 +59,16 @@ const plans: PricingPlan[] = [
       { text: "Basic micro-lessons", included: true },
       { text: "Email support", included: true },
     ],
-    ctaText: "Get Study Go",
+    ctaText: "Get Plus",
     ctaVariant: "outline",
   },
   {
-    name: "Study Pass",
+    name: "Pro",
     description: "For serious learners who want to excel",
     monthlyPrice: 3500,
     yearlyPrice: 40000,
     priceLabel: "/month",
-    planId: "study_pass",
+    planId: "pro",
     popular: true,
     features: [
       { text: "Unlimited audio generation", included: true },
@@ -82,7 +82,7 @@ const plans: PricingPlan[] = [
       { text: "Offline mode", included: true },
       { text: "Priority support", included: true },
     ],
-    ctaText: "Get Study Pass",
+    ctaText: "Get Pro",
     ctaVariant: "default",
   },
 ];

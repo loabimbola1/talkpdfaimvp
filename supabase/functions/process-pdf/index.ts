@@ -407,7 +407,8 @@ Create 3-5 study prompts that will help students test their understanding.`
 
         // If quota is tight, retry with a shorter script based on remaining credits
         if (!ttsResponse.ok) {
-          const errorText = await ttsResponse.text();
+          // Clone response before reading body to avoid "Body already consumed" error
+          const errorText = await ttsResponse.clone().text();
           console.warn("ElevenLabs first attempt failed:", errorText);
 
           const remainingMatch = errorText.match(/You have (\d+) credits remaining/i);
@@ -425,7 +426,8 @@ Create 3-5 study prompts that will help students test their understanding.`
           ttsProvider = "elevenlabs";
           console.log("ElevenLabs TTS successful");
         } else {
-          const errorText = await ttsResponse.text();
+          // Clone response before reading body
+          const errorText = await ttsResponse.clone().text();
           console.warn("ElevenLabs TTS failed:", errorText);
         }
       } catch (elevenLabsError) {

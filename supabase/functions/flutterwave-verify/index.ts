@@ -14,8 +14,8 @@ interface VerifyRequest {
 
 // Strict plan/price mapping - must match flutterwave-payment
 const PRICE_MAP: Record<string, Record<string, number>> = {
-  student_pro: { monthly: 2000, yearly: 20000 },
-  mastery_pass: { monthly: 3500, yearly: 40000 },
+  study_go: { monthly: 2000, yearly: 20000 },
+  study_pass: { monthly: 3500, yearly: 40000 },
 };
 
 serve(async (req) => {

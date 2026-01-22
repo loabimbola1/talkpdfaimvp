@@ -304,7 +304,7 @@ const PDFUpload = ({ onDocumentProcessed, onUpgrade }: PDFUploadProps) => {
               You've reached your daily limit of {limits.pdfs_per_day} PDFs. 
               {plan === "free" && " Upgrade to upload more."}
             </span>
-            {plan !== "mastery_pass" && onUpgrade && (
+            {plan !== "study_pass" && onUpgrade && (
               <Button size="sm" variant="outline" className="ml-4 gap-1" onClick={onUpgrade}>
                 <Crown className="h-3 w-3" />
                 Upgrade

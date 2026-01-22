@@ -23,3 +23,9 @@ verify_jwt = false
 
 [functions.generate-quiz]
 verify_jwt = false
+
+[functions.weekly-digest]
+verify_jwt = false
+
+[functions.send-payment-email]
+verify_jwt = false

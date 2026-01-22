@@ -23,7 +23,7 @@ const faqs = [
       },
       {
         question: "Does it work offline?",
-        answer: "Mastery Pass subscribers can download audio files for offline listening. However, initial PDF processing and Explain-Back Mode require an internet connection."
+        answer: "Study Pass subscribers can download audio files for offline listening. However, initial PDF processing and Explain-Back Mode require an internet connection."
       }
     ]
   },

@@ -256,6 +256,9 @@ export type Database = {
           full_name: string | null
           id: string
           leaderboard_opt_in: boolean | null
+          referral_code: string | null
+          referral_credits: number | null
+          referred_by: string | null
           subscription_plan: string | null
           subscription_status: string | null
           university: string | null
@@ -271,6 +274,9 @@ export type Database = {
           full_name?: string | null
           id?: string
           leaderboard_opt_in?: boolean | null
+          referral_code?: string | null
+          referral_credits?: number | null
+          referred_by?: string | null
           subscription_plan?: string | null
           subscription_status?: string | null
           university?: string | null
@@ -286,6 +292,9 @@ export type Database = {
           full_name?: string | null
           id?: string
           leaderboard_opt_in?: boolean | null
+          referral_code?: string | null
+          referral_credits?: number | null
+          referred_by?: string | null
           subscription_plan?: string | null
           subscription_status?: string | null
           university?: string | null
@@ -334,6 +343,39 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      referrals: {
+        Row: {
+          completed_at: string | null
+          created_at: string
+          credits_awarded: number | null
+          id: string
+          referral_code: string
+          referred_id: string
+          referrer_id: string
+          status: string
+        }
+        Insert: {
+          completed_at?: string | null
+          created_at?: string
+          credits_awarded?: number | null
+          id?: string
+          referral_code: string
+          referred_id: string
+          referrer_id: string
+          status?: string
+        }
+        Update: {
+          completed_at?: string | null
+          created_at?: string
+          credits_awarded?: number | null
+          id?: string
+          referral_code?: string
+          referred_id?: string
+          referrer_id?: string
+          status?: string
+        }
+        Relationships: []
       }
       spaced_repetition: {
         Row: {

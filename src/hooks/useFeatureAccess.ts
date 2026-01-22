@@ -3,6 +3,15 @@ import { supabase } from "@/integrations/supabase/client";
 
 export type SubscriptionPlan = "free" | "plus" | "pro";
 
+// Language codes mapped to plan access
+export const LANGUAGE_ACCESS: Record<string, SubscriptionPlan[]> = {
+  en: ["free", "plus", "pro"],      // English - all plans
+  yo: ["plus", "pro"],              // Yoruba - Plus and Pro
+  ig: ["plus", "pro"],              // Igbo - Plus and Pro
+  pcm: ["plus", "pro"],             // Pidgin - Plus and Pro
+  ha: ["pro"],                      // Hausa - Pro only
+};
+
 export interface PlanFeatures {
   audioMinutesPerDay: number;
   pdfUploadsPerDay: number;
@@ -26,7 +35,7 @@ export const PLAN_FEATURES: Record<SubscriptionPlan, PlanFeatures> = {
   free: {
     audioMinutesPerDay: 5,
     pdfUploadsPerDay: 2,
-    languages: ["english"],
+    languages: ["en"],
     explainBack: false,
     microLessons: false,
     advancedMicroLessons: false,
@@ -44,7 +53,7 @@ export const PLAN_FEATURES: Record<SubscriptionPlan, PlanFeatures> = {
   plus: {
     audioMinutesPerDay: 60,
     pdfUploadsPerDay: 20,
-    languages: ["english", "yoruba", "igbo"],
+    languages: ["en", "yo", "ig", "pcm"], // 3 Nigerian languages + English
     explainBack: true,
     microLessons: true,
     advancedMicroLessons: false,
@@ -62,7 +71,7 @@ export const PLAN_FEATURES: Record<SubscriptionPlan, PlanFeatures> = {
   pro: {
     audioMinutesPerDay: -1, // Unlimited
     pdfUploadsPerDay: -1, // Unlimited
-    languages: ["english", "yoruba", "igbo", "hausa", "pidgin"],
+    languages: ["en", "yo", "ig", "pcm", "ha"], // All 5 languages
     explainBack: true,
     microLessons: true,
     advancedMicroLessons: true,
@@ -131,6 +140,29 @@ export function useFeatureAccess() {
     [canAccess]
   );
 
+  const canAccessLanguage = useCallback(
+    (languageCode: string): boolean => {
+      const allowedPlans = LANGUAGE_ACCESS[languageCode];
+      if (!allowedPlans) return false;
+      return allowedPlans.includes(plan);
+    },
+    [plan]
+  );
+
+  const getLanguageUpgradeMessage = useCallback(
+    (languageCode: string): string => {
+      const allowedPlans = LANGUAGE_ACCESS[languageCode];
+      if (!allowedPlans) return "";
+      if (allowedPlans.includes(plan)) return "";
+      
+      if (allowedPlans.includes("plus")) {
+        return "Upgrade to Plus to access this language";
+      }
+      return "Upgrade to Pro to access this language";
+    },
+    [plan]
+  );
+
   const getUpgradeMessage = useCallback(
     (feature: string): string => {
       if (plan === "free") {
@@ -151,6 +183,8 @@ export function useFeatureAccess() {
     referralCredits,
     canAccess,
     hasFeature,
+    canAccessLanguage,
+    getLanguageUpgradeMessage,
     getUpgradeMessage,
     refetch: fetchPlan,
     isPro: plan === "pro",

@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams, Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { LogOut, Upload, Headphones, Award, Settings, User, FileText, Brain, Crown, Trophy, HelpCircle, BookOpen, BarChart3, Users, Calendar, School, WifiOff, Gift, Coins } from "lucide-react";
+import { LogOut, Upload, Headphones, Award, Settings, User, FileText, Brain, Crown, Trophy, HelpCircle, BookOpen, BarChart3, Users, Calendar, School, WifiOff, Gift, Coins, Target } from "lucide-react";
 import PDFUpload from "@/components/dashboard/PDFUpload";
 import AudioPlayer from "@/components/dashboard/AudioPlayer";
 import MyDocuments from "@/components/dashboard/MyDocuments";
@@ -24,6 +24,7 @@ import StudyGroups from "@/components/dashboard/StudyGroups";
 import SpacedRepetition from "@/components/dashboard/SpacedRepetition";
 import OnboardingGuide from "@/components/dashboard/OnboardingGuide";
 import OfflineAudioManager from "@/components/dashboard/OfflineAudioManager";
+import AchievementMilestones from "@/components/dashboard/AchievementMilestones";
 import { ReferralProgram } from "@/components/dashboard/ReferralProgram";
 import FeatureGate from "@/components/dashboard/FeatureGate";
 import ThemeToggle from "@/components/ThemeToggle";
@@ -31,7 +32,7 @@ import { usePdfCompleteNotification } from "@/hooks/usePdfCompleteNotification";
 import { useFeatureAccess } from "@/hooks/useFeatureAccess";
 import type { User as SupabaseUser } from "@supabase/supabase-js";
 
-type TabType = "upload" | "documents" | "listen" | "explain" | "quiz" | "lessons" | "progress" | "badges" | "leaderboard" | "quiz-leaders" | "campus" | "groups" | "review" | "subscription" | "offline" | "referral" | "settings";
+type TabType = "upload" | "documents" | "listen" | "explain" | "quiz" | "lessons" | "progress" | "badges" | "achievements" | "leaderboard" | "quiz-leaders" | "campus" | "groups" | "review" | "subscription" | "offline" | "referral" | "settings";
 
 const Dashboard = () => {
   const [user, setUser] = useState<SupabaseUser | null>(null);
@@ -50,7 +51,7 @@ const Dashboard = () => {
     const docId = searchParams.get("doc");
     const promptIndex = searchParams.get("prompt");
     
-    if (tab && ["upload", "documents", "listen", "explain", "quiz", "lessons", "progress", "badges", "leaderboard", "subscription", "referral", "settings"].includes(tab)) {
+    if (tab && ["upload", "documents", "listen", "explain", "quiz", "lessons", "progress", "badges", "achievements", "leaderboard", "subscription", "referral", "settings"].includes(tab)) {
       setActiveTab(tab as TabType);
     }
     if (docId) {
@@ -167,6 +168,7 @@ const Dashboard = () => {
     { id: "review" as TabType, label: "Review", icon: Calendar },
     { id: "progress" as TabType, label: "Progress", icon: BarChart3 },
     { id: "badges" as TabType, label: "Badges", icon: Award },
+    { id: "achievements" as TabType, label: "Milestones", icon: Target },
     { id: "groups" as TabType, label: "Groups", icon: Users },
     { id: "leaderboard" as TabType, label: "Leaderboard", icon: Trophy },
     { id: "quiz-leaders" as TabType, label: "Quiz Leaders", icon: Trophy },
@@ -292,6 +294,7 @@ const Dashboard = () => {
                   }} />
                 )}
                 {activeTab === "badges" && <BadgesDisplay key={badgeRefreshKey} />}
+                {activeTab === "achievements" && <AchievementMilestones />}
                 {activeTab === "groups" && <StudyGroups />}
                 {activeTab === "leaderboard" && <Leaderboard />}
                 {activeTab === "quiz-leaders" && <QuizLeaderboard />}

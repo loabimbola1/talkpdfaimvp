@@ -14,7 +14,7 @@ import SubscriptionPlans from "@/components/dashboard/SubscriptionPlans";
 import BadgesDisplay from "@/components/dashboard/BadgesDisplay";
 import Leaderboard from "@/components/dashboard/Leaderboard";
 import QuizLeaderboard from "@/components/dashboard/QuizLeaderboard";
-import CampusLeaderboard from "@/components/dashboard/CampusLeaderboard";
+import CampusTab from "@/components/dashboard/CampusTab";
 import QuizMode from "@/components/dashboard/QuizMode";
 import MicroLessons from "@/components/dashboard/MicroLessons";
 import ProgressDashboard from "@/components/dashboard/ProgressDashboard";
@@ -256,7 +256,7 @@ const Dashboard = () => {
                 {activeTab === "groups" && <StudyGroups />}
                 {activeTab === "leaderboard" && <Leaderboard />}
                 {activeTab === "quiz-leaders" && <QuizLeaderboard />}
-                {activeTab === "campus" && <CampusLeaderboard />}
+                {activeTab === "campus" && <CampusTab />}
                 {activeTab === "offline" && <OfflineAudioManager />}
                 {activeTab === "subscription" && <SubscriptionPlans />}
                 {activeTab === "settings" && <ProfileSettings user={user} />}

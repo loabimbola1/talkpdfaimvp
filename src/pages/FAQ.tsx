@@ -7,7 +7,6 @@ import {
   AccordionTrigger 
 } from "@/components/ui/accordion";
 import { ArrowLeft } from "lucide-react";
-import logo from "@/assets/logo.png";
 
 const faqs = [
   {
@@ -96,7 +95,7 @@ const FAQ = () => {
         <div className="container mx-auto px-4">
           <div className="flex items-center justify-between h-16">
             <Link to="/" className="flex items-center gap-2">
-              <img src={logo} alt="TalkPDF AI" className="h-8 w-auto" />
+              <span className="font-display font-bold text-xl text-primary">TalkPDF AI</span>
             </Link>
             <Link to="/">
               <Button variant="ghost" size="sm" className="gap-2">

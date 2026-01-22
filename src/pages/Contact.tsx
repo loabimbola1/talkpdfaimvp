@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/select";
 import { ArrowLeft, Mail, MessageSquare, Send, Loader2 } from "lucide-react";
 import { toast } from "sonner";
-import logo from "@/assets/logo.png";
+import { supabase } from "@/integrations/supabase/client";
 
 const Contact = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -28,12 +28,21 @@ const Contact = () => {
     e.preventDefault();
     setIsSubmitting(true);
 
-    // Simulate form submission
-    await new Promise(resolve => setTimeout(resolve, 1500));
-    
-    toast.success("Message sent successfully! We'll get back to you within 24 hours.");
-    setFormData({ name: "", email: "", subject: "", message: "" });
-    setIsSubmitting(false);
+    try {
+      const { error } = await supabase.functions.invoke("contact-form", {
+        body: formData
+      });
+
+      if (error) throw error;
+      
+      toast.success("Message sent successfully! We'll get back to you within 24 hours.");
+      setFormData({ name: "", email: "", subject: "", message: "" });
+    } catch (error) {
+      console.error("Contact form error:", error);
+      toast.error("Failed to send message. Please try again or email asktalkpdfai@gmail.com directly.");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
@@ -50,7 +59,7 @@ const Contact = () => {
         <div className="container mx-auto px-4">
           <div className="flex items-center justify-between h-16">
             <Link to="/" className="flex items-center gap-2">
-              <img src={logo} alt="TalkPDF AI" className="h-8 w-auto" />
+              <span className="font-display font-bold text-xl text-primary">TalkPDF AI</span>
             </Link>
             <Link to="/">
               <Button variant="ghost" size="sm" className="gap-2">

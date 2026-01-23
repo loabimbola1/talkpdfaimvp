@@ -132,10 +132,10 @@ const Dashboard = () => {
   }, []);
 
   const handleDocumentProcessed = useCallback((documentId: string) => {
-    // Auto-navigate to Explain-Back with the newly processed document
+    // Navigate to Listen tab after document processing (not Explain-Back)
     setSelectedDocumentId(documentId);
-    setActiveTab("explain");
-    toast.success("Document ready! Let's test your understanding.", { duration: 4000 });
+    setActiveTab("listen");
+    toast.success("Document ready! Listen to your audio summary.", { duration: 4000 });
   }, []);
 
   const handleBadgeEarned = useCallback(() => {

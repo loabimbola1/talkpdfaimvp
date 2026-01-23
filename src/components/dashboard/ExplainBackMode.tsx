@@ -67,6 +67,15 @@ interface Badge {
   description: string;
 }
 
+// Supported languages for voice explanations
+const VOICE_LANGUAGES = [
+  { code: "en", label: "English" },
+  { code: "yo", label: "Yoruba" },
+  { code: "ig", label: "Igbo" },
+  { code: "ha", label: "Hausa" },
+  { code: "pcm", label: "Pidgin" },
+];
+
 const ExplainBackMode = ({ documentId: propDocumentId, documentTitle, promptIndex: propPromptIndex, onBadgeEarned }: ExplainBackModeProps) => {
   const [isRecording, setIsRecording] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
@@ -82,6 +91,7 @@ const ExplainBackMode = ({ documentId: propDocumentId, documentTitle, promptInde
   const [result, setResult] = useState<EvaluationResult | null>(null);
   const [userPlan, setUserPlan] = useState<string>("free");
   const [isCheckingPlan, setIsCheckingPlan] = useState(true);
+  const [voiceLanguage, setVoiceLanguage] = useState<string>("en");
   
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
@@ -212,8 +222,9 @@ const ExplainBackMode = ({ documentId: propDocumentId, documentTitle, promptInde
       reader.readAsDataURL(audioBlob);
       const base64Audio = await base64Promise;
 
+      // Pass selected language for better transcription
       const { data, error } = await supabase.functions.invoke("voice-to-text", {
-        body: { audio: base64Audio }
+        body: { audio: base64Audio, language: voiceLanguage }
       });
 
       if (error) throw error;
@@ -562,6 +573,23 @@ const ExplainBackMode = ({ documentId: propDocumentId, documentTitle, promptInde
 
           {/* Recording / Text Input */}
           <div className="space-y-4">
+            {/* Voice Language Selector */}
+            <div className="flex items-center gap-3 justify-center">
+              <span className="text-sm text-muted-foreground">Speak in:</span>
+              <Select value={voiceLanguage} onValueChange={setVoiceLanguage}>
+                <SelectTrigger className="w-[140px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {VOICE_LANGUAGES.map((lang) => (
+                    <SelectItem key={lang.code} value={lang.code}>
+                      {lang.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
             <div className="flex items-center justify-center gap-4">
               <Button
                 variant={isRecording ? "destructive" : "outline"}
@@ -592,7 +620,7 @@ const ExplainBackMode = ({ documentId: propDocumentId, documentTitle, promptInde
             {isRecording && (
               <div className="flex items-center justify-center gap-2 text-destructive">
                 <span className="w-2 h-2 bg-destructive rounded-full animate-pulse" />
-                <span className="text-sm">Recording... Speak clearly</span>
+                <span className="text-sm">Recording in {VOICE_LANGUAGES.find(l => l.code === voiceLanguage)?.label || "English"}...</span>
               </div>
             )}
 

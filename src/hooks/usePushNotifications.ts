@@ -51,26 +51,53 @@ export function usePushNotifications() {
     }
 
     try {
-      // Request permission
-      const permission = await Notification.requestPermission();
+      // Check if permission was already denied
+      if (Notification.permission === "denied") {
+        toast.error(
+          "Notifications are blocked. Please enable them in your browser settings by clicking the lock icon in the address bar.",
+          { duration: 6000 }
+        );
+        return false;
+      }
+
+      // Request permission if not already granted
+      let permission: NotificationPermission = Notification.permission;
+      if (permission === "default") {
+        permission = await Notification.requestPermission();
+      }
       setPermissionState(permission);
       
       if (permission !== "granted") {
-        toast.error("Please allow notifications to receive study reminders");
+        toast.error(
+          "Please click 'Allow' when prompted to enable study reminders",
+          { duration: 5000 }
+        );
         return false;
       }
 
       // Try to subscribe via service worker if available
       if ("serviceWorker" in navigator && "PushManager" in window) {
         try {
-          const registration = await navigator.serviceWorker.ready;
-          const subscription = await registration.pushManager.subscribe({
-            userVisibleOnly: true,
-            applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
-          });
-          localStorage.setItem("talkpdf-push-subscription", JSON.stringify(subscription.toJSON()));
+          // Register service worker if not already registered
+          let registration = await navigator.serviceWorker.getRegistration();
+          if (!registration) {
+            try {
+              registration = await navigator.serviceWorker.register('/sw.js');
+              await navigator.serviceWorker.ready;
+            } catch (swError) {
+              console.log("Service worker registration not available:", swError);
+            }
+          }
+          
+          if (registration) {
+            const subscription = await registration.pushManager.subscribe({
+              userVisibleOnly: true,
+              applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
+            });
+            localStorage.setItem("talkpdf-push-subscription", JSON.stringify(subscription.toJSON()));
+          }
         } catch (pushError) {
-          console.log("Push subscription not available, using local notifications only");
+          console.log("Push subscription not available, using local notifications only:", pushError);
         }
       }
       

@@ -101,7 +101,7 @@ const Footer = () => {
             © {currentYear} TalkPDF AI. All rights reserved.
           </p>
           <p className="text-muted-foreground text-sm">
-            Built with ❤️ for Nigerian students
+            Built with ❤️ for Nigerian learners
           </p>
         </div>
       </div>

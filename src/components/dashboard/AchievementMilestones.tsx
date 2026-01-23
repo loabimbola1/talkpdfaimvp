@@ -1,11 +1,19 @@
+import { useState } from "react";
 import { useAchievements, Achievement } from "@/hooks/useAchievements";
 import { Progress } from "@/components/ui/progress";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Trophy, Loader2, Lock, CheckCircle2 } from "lucide-react";
+import { Trophy, Loader2, Lock, CheckCircle2, Share2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import AchievementShareCard from "./AchievementShareCard";
 
-const AchievementCard = ({ achievement }: { achievement: Achievement }) => {
+interface AchievementCardProps {
+  achievement: Achievement;
+  onShare: (achievement: Achievement) => void;
+}
+
+const AchievementCard = ({ achievement, onShare }: AchievementCardProps) => {
   const progressPercent = (achievement.progress / achievement.target) * 100;
 
   return (
@@ -50,8 +58,18 @@ const AchievementCard = ({ achievement }: { achievement: Achievement }) => {
             {achievement.description}
           </p>
 
-          {/* Progress bar */}
-          {!achievement.unlocked && (
+          {/* Progress bar or Share button */}
+          {achievement.unlocked ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="gap-1.5 h-7 px-2 text-xs"
+              onClick={() => onShare(achievement)}
+            >
+              <Share2 className="h-3.5 w-3.5" />
+              Share
+            </Button>
+          ) : (
             <div className="space-y-1">
               <Progress value={progressPercent} className="h-1.5" />
               <p className="text-xs text-muted-foreground">
@@ -67,6 +85,7 @@ const AchievementCard = ({ achievement }: { achievement: Achievement }) => {
 
 const AchievementMilestones = () => {
   const { achievements, loading, unlockedCount, totalCount } = useAchievements();
+  const [shareAchievement, setShareAchievement] = useState<Achievement | null>(null);
 
   if (loading) {
     return (
@@ -146,12 +165,25 @@ const AchievementMilestones = () => {
                   return b.progress / b.target - a.progress / a.target;
                 })
                 .map((achievement) => (
-                  <AchievementCard key={achievement.id} achievement={achievement} />
+                  <AchievementCard 
+                    key={achievement.id} 
+                    achievement={achievement} 
+                    onShare={setShareAchievement}
+                  />
                 ))}
             </div>
           </TabsContent>
         ))}
       </Tabs>
+
+      {/* Share Dialog */}
+      {shareAchievement && (
+        <AchievementShareCard
+          achievement={shareAchievement}
+          isOpen={!!shareAchievement}
+          onClose={() => setShareAchievement(null)}
+        />
+      )}
     </div>
   );
 };

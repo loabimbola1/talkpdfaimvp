@@ -1,71 +1,70 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { FileText, Play, Clock, Trash2, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
 import AudioStatusIndicator, { getAudioStatus, AudioStatus } from "./AudioStatusIndicator";
-
-interface Document {
-  id: string;
-  title: string;
-  file_name: string;
-  status: string;
-  audio_url: string | null;
-  audio_language: string | null;
-  audio_duration_seconds: number | null;
-  explain_back_score: number | null;
-  last_studied_at: string | null;
-  created_at: string;
-}
+import { useDocuments, Document } from "@/hooks/useDocuments";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 interface MyDocumentsProps {
   onSelectDocument: (documentId: string) => void;
 }
 
 const MyDocuments = ({ onSelectDocument }: MyDocumentsProps) => {
-  const [documents, setDocuments] = useState<Document[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { documents, loading, refetch } = useDocuments();
   const [deletingId, setDeletingId] = useState<string | null>(null);
-
-  useEffect(() => {
-    fetchDocuments();
-  }, []);
-
-  const fetchDocuments = async () => {
-    try {
-      const { data, error } = await supabase
-        .from("documents")
-        .select("*")
-        .order("created_at", { ascending: false });
-
-      if (error) throw error;
-      setDocuments(data || []);
-    } catch (error) {
-      console.error("Error fetching documents:", error);
-      toast.error("Failed to load documents");
-    } finally {
-      setLoading(false);
-    }
-  };
+  const [documentToDelete, setDocumentToDelete] = useState<Document | null>(null);
 
   const handleAudioStatusChange = (docId: string, newStatus: AudioStatus) => {
     if (newStatus === "processing") {
       // Refetch documents after a delay to get updated status
-      setTimeout(fetchDocuments, 3000);
+      setTimeout(refetch, 3000);
     }
   };
 
-  const handleDelete = async (id: string) => {
+  const handleDelete = async () => {
+    if (!documentToDelete) return;
+    
+    const id = documentToDelete.id;
     setDeletingId(id);
+    setDocumentToDelete(null);
+    
     try {
-      const { error } = await supabase.from("documents").delete().eq("id", id);
+      // Use select to get a count of affected rows
+      const { error, data } = await supabase
+        .from("documents")
+        .delete()
+        .eq("id", id)
+        .select("id");
+      
       if (error) throw error;
-      setDocuments((prev) => prev.filter((doc) => doc.id !== id));
-      toast.success("Document deleted");
+      
+      // Check if any rows were actually deleted
+      if (!data || data.length === 0) {
+        throw new Error("Document could not be deleted. Please try again.");
+      }
+      
+      toast.success("Document permanently deleted");
+      
+      // Force refetch to ensure state is synced with database
+      await refetch();
     } catch (error) {
       console.error("Error deleting document:", error);
-      toast.error("Failed to delete document");
+      toast.error(error instanceof Error ? error.message : "Failed to delete document");
+      // Refetch in case of error to ensure UI is in sync
+      await refetch();
     } finally {
       setDeletingId(null);
     }
@@ -160,7 +159,7 @@ const MyDocuments = ({ onSelectDocument }: MyDocumentsProps) => {
                   status={getAudioStatus(doc)}
                   audioUrl={doc.audio_url}
                   audioLanguage={doc.audio_language}
-                  onRetry={fetchDocuments}
+                  onRetry={refetch}
                   onStatusChange={(status) => handleAudioStatusChange(doc.id, status)}
                 />
               </div>
@@ -177,20 +176,44 @@ const MyDocuments = ({ onSelectDocument }: MyDocumentsProps) => {
                   <Play className="h-4 w-4" />
                 </Button>
               )}
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => handleDelete(doc.id)}
-                disabled={deletingId === doc.id}
-                className="text-muted-foreground hover:text-destructive"
-                title="Delete document"
-              >
-                {deletingId === doc.id ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Trash2 className="h-4 w-4" />
-                )}
-              </Button>
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => setDocumentToDelete(doc)}
+                    disabled={deletingId === doc.id}
+                    className="text-muted-foreground hover:text-destructive"
+                    title="Delete document"
+                  >
+                    {deletingId === doc.id ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Trash2 className="h-4 w-4" />
+                    )}
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Delete Document</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      Are you sure you want to delete "{doc.title}"? This action cannot be undone. 
+                      All associated audio and progress data will be permanently removed.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel onClick={() => setDocumentToDelete(null)}>
+                      Cancel
+                    </AlertDialogCancel>
+                    <AlertDialogAction
+                      onClick={handleDelete}
+                      className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                    >
+                      Delete
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
             </div>
           </div>
         ))}

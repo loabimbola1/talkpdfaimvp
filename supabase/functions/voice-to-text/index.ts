@@ -13,35 +13,14 @@ const RATE_LIMIT_CONFIG = {
   maxRequests: 30,
 };
 
-// Process base64 in chunks to prevent memory issues
-function processBase64Chunks(base64String: string, chunkSize = 32768): Uint8Array {
-  const chunks: Uint8Array[] = [];
-  let position = 0;
-  
-  while (position < base64String.length) {
-    const chunk = base64String.slice(position, position + chunkSize);
-    const binaryChunk = atob(chunk);
-    const bytes = new Uint8Array(binaryChunk.length);
-    
-    for (let i = 0; i < binaryChunk.length; i++) {
-      bytes[i] = binaryChunk.charCodeAt(i);
-    }
-    
-    chunks.push(bytes);
-    position += chunkSize;
-  }
-
-  const totalLength = chunks.reduce((acc, chunk) => acc + chunk.length, 0);
-  const result = new Uint8Array(totalLength);
-  let offset = 0;
-
-  for (const chunk of chunks) {
-    result.set(chunk, offset);
-    offset += chunk.length;
-  }
-
-  return result;
-}
+// Language labels for transcription hints
+const languageLabelMap: Record<string, string> = {
+  en: "English",
+  yo: "Yoruba",
+  ha: "Hausa",
+  ig: "Igbo",
+  pcm: "Nigerian Pidgin English",
+};
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -103,7 +82,7 @@ serve(async (req) => {
 
     console.log("Transcribing audio for user:", userId);
 
-    const { audio } = await req.json();
+    const { audio, language } = await req.json();
     
     if (!audio) {
       throw new Error("No audio data provided");
@@ -114,7 +93,13 @@ serve(async (req) => {
       throw new Error("LOVABLE_API_KEY is not configured");
     }
 
-    console.log("Transcribing audio...");
+    // Build language hint for better transcription accuracy
+    const langLabel = language ? languageLabelMap[language.toLowerCase()] : null;
+    const languageHint = langLabel 
+      ? `The speaker is communicating in ${langLabel}. ` 
+      : "";
+
+    console.log(`Transcribing audio (language hint: ${langLabel || "none"})...`);
 
     // Use Lovable AI for transcription via Gemini's multimodal capabilities
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
@@ -128,14 +113,14 @@ serve(async (req) => {
         messages: [
           {
             role: "system",
-            content: "You are an audio transcription assistant. Transcribe the audio exactly as spoken. Output ONLY the transcribed text, nothing else. If you cannot understand the audio, output an empty string.",
+            content: `You are an audio transcription assistant specializing in Nigerian languages and English. ${languageHint}Transcribe the audio exactly as spoken, preserving the original language and any code-switching. Output ONLY the transcribed text, nothing else. If you cannot understand the audio, output an empty string.`,
           },
           {
             role: "user",
             content: [
               {
                 type: "text",
-                text: "Transcribe this audio recording:",
+                text: `Transcribe this audio recording${langLabel ? ` (the speaker may be using ${langLabel})` : ""}:`,
               },
               {
                 type: "file",
@@ -168,10 +153,10 @@ serve(async (req) => {
     const data = await response.json();
     const text = data.choices?.[0]?.message?.content?.trim() || "";
 
-    console.log("Transcription result for user:", userId);
+    console.log("Transcription result for user:", userId, "Language:", langLabel || "auto");
 
     return new Response(
-      JSON.stringify({ text }),
+      JSON.stringify({ text, detectedLanguage: langLabel || "auto" }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (error) {

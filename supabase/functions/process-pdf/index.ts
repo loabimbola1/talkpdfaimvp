@@ -26,6 +26,9 @@ const RATE_LIMIT_CONFIG = {
   maxRequests: 5,
 };
 
+// Languages actually supported by Spitch API (not Pidgin)
+const SPITCH_SUPPORTED_LANGUAGES = ["en", "yo", "ha", "ig"];
+
 serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === "OPTIONS") {
@@ -260,7 +263,7 @@ Create 3-5 study prompts that will help students test their understanding.`
       }
     }
 
-    // Generate audio using TTS - try Spitch first, fallback to ElevenLabs
+    // Generate audio using TTS - try multiple providers with improved fallback
     console.log("Generating audio with TTS...");
     
     let audioPath: string | null = null;
@@ -324,7 +327,6 @@ Create 3-5 study prompts that will help students test their understanding.`
       "yo": "sade",
       "ha": "zainab",
       "ig": "ngozi",
-      "pcm": "lucy"
     };
     
     // Map language to ElevenLabs voice (fallback)
@@ -336,7 +338,6 @@ Create 3-5 study prompts that will help students test their understanding.`
       "pcm": "EXAVITQu4vr4xnSDxMaL"
     };
     
-    const selectedVoice = spitchVoiceMap[language] || spitchVoiceMap["en"];
     const SPITCH_API_KEY = Deno.env.get("SPITCH_API_KEY");
     const ELEVENLABS_API_KEY = Deno.env.get("ELEVENLABS_API_KEY");
 
@@ -348,40 +349,50 @@ Create 3-5 study prompts that will help students test their understanding.`
       yo: "yo", yoruba: "yo",
       ha: "ha", hausa: "ha",
       ig: "ig", igbo: "ig",
-      pcm: "en", pidgin: "en",
       en: "en", english: "en",
       am: "am", amharic: "am",
     };
     const spitchLanguage = spitchLanguageMap[language.toLowerCase()] || "en";
 
-    // Try Spitch first (Nigerian language TTS) - using correct endpoint per docs.spitch.app
-    try {
-      if (SPITCH_API_KEY) {
+    // Check if Spitch supports this language (NOT pidgin/pcm)
+    const useSpitch = SPITCH_API_KEY && SPITCH_SUPPORTED_LANGUAGES.includes(language.toLowerCase());
+
+    // Try Spitch first for supported Nigerian languages
+    if (useSpitch) {
+      try {
+        const selectedVoice = spitchVoiceMap[language] || spitchVoiceMap["en"];
         console.log(`Attempting Spitch TTS with language: ${spitchLanguage}, voice: ${selectedVoice}...`);
         
-        // Use the correct Spitch API endpoint per their documentation
-        // Docs: https://docs.spitch.app/features/speech
+        // Use the correct Spitch API endpoint - request WAV format (default) which is more reliable
         const ttsResponse = await fetch("https://api.spitch.app/v1/speech", {
           method: "POST",
           headers: {
             "Authorization": `Bearer ${SPITCH_API_KEY}`,
             "Content-Type": "application/json",
-            "Accept": "audio/mpeg",
           },
           body: JSON.stringify({
             language: spitchLanguage, // Required: yo, en, ha, ig, am
             voice: selectedVoice,     // Required: sade, segun, zainab, ngozi, lucy, etc.
             text: ttsText.substring(0, 5000), // Spitch has text limits
-            format: "mp3",
           }),
         });
 
         if (ttsResponse.ok) {
           const contentType = ttsResponse.headers.get("content-type") || "";
+          console.log(`Spitch response content-type: ${contentType}`);
+          
+          // Spitch returns audio/wav by default or audio/mpeg if mp3 requested
           if (contentType.includes("audio") || contentType.includes("octet-stream")) {
             audioBuffer = await ttsResponse.arrayBuffer();
-            ttsProvider = "spitch";
-            console.log("Spitch TTS successful, audio size:", audioBuffer.byteLength);
+            
+            // Validate we got actual audio data (at least 1KB)
+            if (audioBuffer.byteLength > 1024) {
+              ttsProvider = "spitch";
+              console.log("Spitch TTS successful, audio size:", audioBuffer.byteLength);
+            } else {
+              console.warn("Spitch returned too small audio buffer:", audioBuffer.byteLength);
+              audioBuffer = null;
+            }
           } else {
             // Response might be JSON with error
             const responseText = await ttsResponse.text();
@@ -391,12 +402,14 @@ Create 3-5 study prompts that will help students test their understanding.`
           const errorText = await ttsResponse.text();
           console.warn("Spitch TTS failed:", ttsResponse.status, errorText.substring(0, 300));
         }
+      } catch (spitchError) {
+        console.warn("Spitch TTS error:", spitchError instanceof Error ? spitchError.message : String(spitchError));
       }
-    } catch (spitchError) {
-      console.warn("Spitch TTS error:", spitchError instanceof Error ? spitchError.message : String(spitchError));
+    } else {
+      console.log(`Skipping Spitch for language '${language}' - not in supported languages:`, SPITCH_SUPPORTED_LANGUAGES);
     }
 
-    // Fallback to ElevenLabs if Spitch failed
+    // Fallback to ElevenLabs if Spitch failed or not supported
     if (!audioBuffer && ELEVENLABS_API_KEY) {
       try {
         console.log("Falling back to ElevenLabs TTS...");
@@ -430,7 +443,6 @@ Create 3-5 study prompts that will help students test their understanding.`
 
         // If quota is tight, retry with a shorter script based on remaining credits
         if (!ttsResponse.ok) {
-          // Clone response before reading body to avoid "Body already consumed" error
           const errorText = await ttsResponse.clone().text();
           console.warn("ElevenLabs first attempt failed:", errorText);
 
@@ -447,9 +459,8 @@ Create 3-5 study prompts that will help students test their understanding.`
         if (ttsResponse.ok) {
           audioBuffer = await ttsResponse.arrayBuffer();
           ttsProvider = "elevenlabs";
-          console.log("ElevenLabs TTS successful");
+          console.log("ElevenLabs TTS successful, audio size:", audioBuffer.byteLength);
         } else {
-          // Clone response before reading body
           const errorText = await ttsResponse.clone().text();
           console.warn("ElevenLabs TTS failed:", errorText);
         }
@@ -575,22 +586,26 @@ Create 3-5 study prompts that will help students test their understanding.`
     }
 
     // Upload audio if we got any
-    if (audioBuffer) {
+    if (audioBuffer && audioBuffer.byteLength > 1024) {
       try {
-        const audioBlob = new Blob([audioBuffer], { type: "audio/mpeg" });
+        // Determine content type based on provider
+        const contentType = ttsProvider === "spitch" ? "audio/wav" : "audio/mpeg";
+        const fileExt = ttsProvider === "spitch" ? "wav" : "mp3";
+        
+        const audioBlob = new Blob([audioBuffer], { type: contentType });
         
         // Calculate approximate audio duration (~150 words per minute)
         const wordCount = ttsText.split(/\s+/).length;
         audioDurationSeconds = Math.round(wordCount / 2.5);
 
         // Upload audio to storage
-        audioPath = `${document.user_id}/${documentId}/audio.mp3`;
+        audioPath = `${document.user_id}/${documentId}/audio.${fileExt}`;
         
         const { error: uploadError } = await supabase
           .storage
           .from("talkpdf")
           .upload(audioPath, audioBlob, {
-            contentType: "audio/mpeg",
+            contentType: contentType,
             upsert: true
           });
 
@@ -625,8 +640,6 @@ Create 3-5 study prompts that will help students test their understanding.`
     }
 
     // Track usage (idempotent):
-    // - pdf_upload should only be counted once per document
-    // - audio_conversion only when audio was actually generated
     const { data: existingPdfUpload } = await supabase
       .from("usage_tracking")
       .select("id")
@@ -648,11 +661,11 @@ Create 3-5 study prompts that will help students test their understanding.`
         user_id: document.user_id,
         action_type: "audio_conversion",
         audio_minutes_used: audioDurationSeconds / 60,
-        metadata: { document_id: documentId, language }
+        metadata: { document_id: documentId, language, tts_provider: ttsProvider }
       });
     }
 
-    // Sync daily usage summary from usage_tracking (prevents drift/double-counting)
+    // Sync daily usage summary from usage_tracking
     const startOfToday = new Date();
     startOfToday.setUTCHours(0, 0, 0, 0);
     const startOfTomorrow = new Date(startOfToday);
@@ -691,7 +704,7 @@ Create 3-5 study prompts that will help students test their understanding.`
         );
     }
 
-    console.log("Document processed successfully:", documentId);
+    console.log("Document processed successfully:", documentId, "TTS Provider:", ttsProvider);
 
     return new Response(
       JSON.stringify({
@@ -699,7 +712,8 @@ Create 3-5 study prompts that will help students test their understanding.`
         documentId,
         summary: summary.substring(0, 200) + "...",
         studyPromptsCount: studyPrompts.length,
-        audioDuration: audioDurationSeconds
+        audioDuration: audioDurationSeconds,
+        ttsProvider
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );

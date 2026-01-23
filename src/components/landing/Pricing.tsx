@@ -7,10 +7,12 @@ import { Check, Sparkles, Loader2, Zap } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { Badge } from "@/components/ui/badge";
 
 interface PlanFeature {
   text: string;
   included: boolean;
+  comingSoon?: boolean;
 }
 
 interface PricingPlan {
@@ -83,7 +85,7 @@ const plans: PricingPlan[] = [
       { text: "1-Minute Mastery micro-lessons", included: true },
       { text: "All badge levels (Bronze, Silver, Gold)", included: true },
       { text: "Campus leaderboard access", included: true },
-      { text: "WhatsApp integration", included: true },
+      { text: "WhatsApp integration", included: true, comingSoon: true },
       { text: "Offline mode & audio download", included: true },
       { text: "Priority support", included: true },
     ],
@@ -312,12 +314,21 @@ const Pricing = () => {
                       />
                       <span
                         className={cn(
+                          "flex items-center gap-2",
                           plan.popular
                             ? "text-background/90"
                             : "text-foreground"
                         )}
                       >
                         {feature.text}
+                        {feature.comingSoon && (
+                          <Badge variant="outline" className={cn(
+                            "text-[10px] px-1.5 py-0",
+                            plan.popular ? "border-background/30 text-background/70" : ""
+                          )}>
+                            Coming Soon
+                          </Badge>
+                        )}
                       </span>
                     </li>
                   ))}

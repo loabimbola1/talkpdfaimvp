@@ -16,6 +16,7 @@ import Cookies from "./pages/Cookies";
 import Admin from "./pages/Admin";
 import NotFound from "./pages/NotFound";
 import { SupportChatbot } from "./components/SupportChatbot";
+import { PwaInstallBanner } from "./components/PwaInstallBanner";
 
 const queryClient = new QueryClient();
 
@@ -40,6 +41,7 @@ const App = () => (
           <Route path="*" element={<NotFound />} />
         </Routes>
         <SupportChatbot />
+        <PwaInstallBanner />
       </BrowserRouter>
     </TooltipProvider>
   </QueryClientProvider>

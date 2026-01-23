@@ -558,6 +558,27 @@ export type Database = {
         }
         Relationships: []
       }
+      leaderboard_profiles: {
+        Row: {
+          full_name: string | null
+          referral_credits: number | null
+          university: string | null
+          user_id: string | null
+        }
+        Insert: {
+          full_name?: string | null
+          referral_credits?: number | null
+          university?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          full_name?: string | null
+          referral_credits?: number | null
+          university?: string | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       leaderboard_quiz_scores: {
         Row: {
           completed_at: string | null
@@ -567,6 +588,42 @@ export type Database = {
           total_questions: number | null
           university: string | null
           user_id: string | null
+        }
+        Relationships: []
+      }
+      user_payments_safe: {
+        Row: {
+          amount: number | null
+          billing_cycle: string | null
+          created_at: string | null
+          currency: string | null
+          id: string | null
+          plan: string | null
+          status: string | null
+          updated_at: string | null
+          user_id: string | null
+        }
+        Insert: {
+          amount?: number | null
+          billing_cycle?: string | null
+          created_at?: string | null
+          currency?: string | null
+          id?: string | null
+          plan?: string | null
+          status?: string | null
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          amount?: number | null
+          billing_cycle?: string | null
+          created_at?: string | null
+          currency?: string | null
+          id?: string | null
+          plan?: string | null
+          status?: string | null
+          updated_at?: string | null
+          user_id?: string | null
         }
         Relationships: []
       }

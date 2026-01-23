@@ -68,7 +68,22 @@ export default defineConfig(({ mode }) => ({
             }
           },
           {
-            // Cache API responses for offline use
+            // Cache document list API calls for offline with StaleWhileRevalidate
+            urlPattern: /^https:\/\/.*\.supabase\.co\/rest\/v1\/documents.*/i,
+            handler: "StaleWhileRevalidate",
+            options: {
+              cacheName: "supabase-documents",
+              expiration: {
+                maxEntries: 10,
+                maxAgeSeconds: 60 * 60 * 24 * 7 // 7 days
+              },
+              cacheableResponse: {
+                statuses: [0, 200]
+              }
+            }
+          },
+          {
+            // Cache other API responses for offline use
             urlPattern: /^https:\/\/.*\.supabase\.co\/rest\/v1\/.*/i,
             handler: "NetworkFirst",
             options: {

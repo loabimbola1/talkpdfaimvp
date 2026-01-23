@@ -260,6 +260,7 @@ export type Database = {
           referral_credits: number | null
           referred_by: string | null
           subscription_plan: string | null
+          subscription_started_at: string | null
           subscription_status: string | null
           university: string | null
           updated_at: string
@@ -278,6 +279,7 @@ export type Database = {
           referral_credits?: number | null
           referred_by?: string | null
           subscription_plan?: string | null
+          subscription_started_at?: string | null
           subscription_status?: string | null
           university?: string | null
           updated_at?: string
@@ -296,6 +298,7 @@ export type Database = {
           referral_credits?: number | null
           referred_by?: string | null
           subscription_plan?: string | null
+          subscription_started_at?: string | null
           subscription_status?: string | null
           university?: string | null
           updated_at?: string

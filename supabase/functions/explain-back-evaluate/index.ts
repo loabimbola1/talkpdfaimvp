@@ -13,6 +13,13 @@ const RATE_LIMIT_CONFIG = {
   maxRequests: 30,
 };
 
+// Plan-based context length for explain-back evaluation
+const PLAN_CONTEXT_LIMITS: Record<string, number> = {
+  free: 500,    // Basic context
+  plus: 2000,   // Extended context
+  pro: 5000,    // Comprehensive context
+};
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -24,6 +31,7 @@ serve(async (req) => {
   try {
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
     const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY");
+    const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 
     if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
       return new Response(
@@ -84,6 +92,24 @@ serve(async (req) => {
       throw new Error("LOVABLE_API_KEY is not configured");
     }
 
+    // Get user's plan for context length
+    let userPlan = "free";
+    if (SUPABASE_SERVICE_ROLE_KEY) {
+      const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+      const { data: profile } = await supabaseAdmin
+        .from("profiles")
+        .select("subscription_plan")
+        .eq("user_id", userId)
+        .single();
+      
+      userPlan = profile?.subscription_plan || "free";
+    }
+
+    const contextLimit = PLAN_CONTEXT_LIMITS[userPlan] || PLAN_CONTEXT_LIMITS["free"];
+    const contextText = documentSummary ? documentSummary.substring(0, contextLimit) : "";
+    
+    console.log(`User plan: ${userPlan}, Context limit: ${contextLimit} chars`);
+
     // PRD-based scoring system with 3 dimensions: Simplicity, Accuracy, Analogies
     const systemPrompt = `You are the TalkPDF AI Understanding Engine for Nigerian students preparing for WAEC and JAMB exams. Evaluate a student's explanation of a concept.
 
@@ -101,6 +127,8 @@ serve(async (req) => {
 - If student uses too much textbook jargon, set needsRetry=true with feedback: "That sounds like a textbook definition. Try explaining it like you're teaching a 10-year-old."
 - Be encouraging but honest. Nigerian students need honest feedback to improve.
 
+${userPlan !== "free" ? `**Paid Plan Bonus:** Since the user is on the ${userPlan} plan, provide more detailed and specific feedback with actionable suggestions.` : ""}
+
 Respond with JSON:
 {
   "simplicity": <0-10>,
@@ -117,7 +145,7 @@ Respond with JSON:
 
     const userPrompt = `**Concept to explain:** "${concept}"
 
-${documentSummary ? `**Context from document:** "${documentSummary.substring(0, 500)}"` : ""}
+${contextText ? `**Context from document:** "${contextText}"` : ""}
 
 **Student's explanation:** "${explanation}"
 
@@ -210,7 +238,7 @@ Evaluate this explanation using the 3-dimension scoring system.`;
 
     const evaluation = JSON.parse(toolCall.function.arguments);
     
-    console.log("Evaluation result for user:", userId);
+    console.log("Evaluation result for user:", userId, "Plan:", userPlan);
 
     return new Response(JSON.stringify(evaluation), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },

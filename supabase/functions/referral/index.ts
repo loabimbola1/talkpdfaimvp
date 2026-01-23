@@ -11,8 +11,8 @@ interface ReferralRequest {
   referralCode?: string;
 }
 
-// Credits awarded for successful referral
-const REFERRAL_CREDITS = 5; // 5 extra PDFs per referral
+// Credits awarded for successful referral - BOTH referrer and referred get this
+const REFERRAL_CREDITS = 5;
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -96,7 +96,8 @@ serve(async (req) => {
         JSON.stringify({ 
           valid: true, 
           referrerName: referrer.full_name || "A TalkPDF user",
-          credits: REFERRAL_CREDITS
+          credits: REFERRAL_CREDITS,
+          message: `You'll both get ${REFERRAL_CREDITS} bonus credits!`
         }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
@@ -113,7 +114,7 @@ serve(async (req) => {
       // Get referrer
       const { data: referrer, error: refError } = await supabase
         .from("profiles")
-        .select("user_id, referral_code")
+        .select("user_id, referral_code, full_name")
         .eq("referral_code", referralCode.toUpperCase())
         .maybeSingle();
 
@@ -138,7 +139,7 @@ serve(async (req) => {
         );
       }
 
-      // Create referral record
+      // Create referral record (credits awarded to BOTH)
       const { error: insertError } = await supabase
         .from("referrals")
         .insert({
@@ -146,7 +147,7 @@ serve(async (req) => {
           referred_id: userId,
           referral_code: referralCode.toUpperCase(),
           status: "completed",
-          credits_awarded: REFERRAL_CREDITS,
+          credits_awarded: REFERRAL_CREDITS * 2, // Track total credits awarded (both users)
           completed_at: new Date().toISOString()
         });
 
@@ -158,32 +159,40 @@ serve(async (req) => {
         );
       }
 
-      // Award credits to referrer - get current and update
+      // Award credits to REFERRER
       const { data: referrerProfile } = await supabase
         .from("profiles")
         .select("referral_credits")
         .eq("user_id", referrer.user_id)
         .single();
 
-      const currentCredits = referrerProfile?.referral_credits || 0;
+      const referrerCurrentCredits = referrerProfile?.referral_credits || 0;
       
       await supabase
         .from("profiles")
-        .update({ referral_credits: currentCredits + REFERRAL_CREDITS })
+        .update({ referral_credits: referrerCurrentCredits + REFERRAL_CREDITS })
         .eq("user_id", referrer.user_id);
 
-      // Update referred user's profile
-      await supabase
-        .from("profiles")
-        .update({ referred_by: referrer.user_id })
-        .eq("user_id", userId);
+      console.log(`Awarded ${REFERRAL_CREDITS} credits to referrer ${referrer.user_id}`);
 
-      // Get referred user's name for email notification
+      // Award credits to REFERRED USER (this was missing!)
       const { data: referredProfile } = await supabase
         .from("profiles")
-        .select("full_name")
+        .select("referral_credits, full_name")
         .eq("user_id", userId)
         .single();
+
+      const referredCurrentCredits = referredProfile?.referral_credits || 0;
+      
+      await supabase
+        .from("profiles")
+        .update({ 
+          referral_credits: referredCurrentCredits + REFERRAL_CREDITS,
+          referred_by: referrer.user_id 
+        })
+        .eq("user_id", userId);
+
+      console.log(`Awarded ${REFERRAL_CREDITS} credits to referred user ${userId}`);
 
       const referredName = referredProfile?.full_name || "A new user";
 
@@ -201,19 +210,21 @@ serve(async (req) => {
             creditsAwarded: REFERRAL_CREDITS,
           }),
         });
-        console.log("Referral notification sent");
+        console.log("Referral notification sent to referrer");
       } catch (emailError) {
         console.error("Failed to send referral notification email:", emailError);
         // Don't fail the main request if email fails
       }
 
-      console.log(`Referral applied: ${userId} referred by ${referrer.user_id}`);
+      console.log(`Referral applied: ${userId} referred by ${referrer.user_id}, both received ${REFERRAL_CREDITS} credits`);
 
       return new Response(
         JSON.stringify({ 
           success: true, 
-          message: `Referral applied! You both get ${REFERRAL_CREDITS} bonus PDF credits.`,
-          credits: REFERRAL_CREDITS
+          message: `Referral applied! You and ${referrer.full_name || 'your referrer'} each got ${REFERRAL_CREDITS} bonus credits!`,
+          credits: REFERRAL_CREDITS,
+          referrerCredits: REFERRAL_CREDITS,
+          referredCredits: REFERRAL_CREDITS
         }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );

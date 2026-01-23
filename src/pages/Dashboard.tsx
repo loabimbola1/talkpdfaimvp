@@ -26,6 +26,7 @@ import OnboardingGuide from "@/components/dashboard/OnboardingGuide";
 import OfflineAudioManager from "@/components/dashboard/OfflineAudioManager";
 import AchievementMilestones from "@/components/dashboard/AchievementMilestones";
 import { ReferralProgram } from "@/components/dashboard/ReferralProgram";
+import ComingSoonOverlay from "@/components/dashboard/ComingSoonOverlay";
 import FeatureGate from "@/components/dashboard/FeatureGate";
 import ThemeToggle from "@/components/ThemeToggle";
 import { usePdfCompleteNotification } from "@/hooks/usePdfCompleteNotification";
@@ -295,7 +296,12 @@ const Dashboard = () => {
                 )}
                 {activeTab === "badges" && <BadgesDisplay key={badgeRefreshKey} />}
                 {activeTab === "achievements" && <AchievementMilestones />}
-                {activeTab === "groups" && <StudyGroups />}
+                {activeTab === "groups" && (
+                  <ComingSoonOverlay 
+                    featureName="Study Groups" 
+                    description="Form study groups with friends, compete on group leaderboards, and learn together! This feature is coming soon."
+                  />
+                )}
                 {activeTab === "leaderboard" && <Leaderboard />}
                 {activeTab === "quiz-leaders" && <QuizLeaderboard />}
                 {activeTab === "campus" && (

@@ -256,12 +256,13 @@ serve(async (req) => {
       });
     }
 
-    // Update user's subscription plan
+    // Update user's subscription plan AND reset subscription_started_at for credit tracking
     const { error: profileError } = await supabaseAdmin
       .from("profiles")
       .update({
         subscription_plan: updatedPayment.plan,
         subscription_status: "active",
+        subscription_started_at: new Date().toISOString(), // CRITICAL: Reset for credit tracking
       })
       .eq("user_id", updatedPayment.user_id);
 
@@ -270,7 +271,7 @@ serve(async (req) => {
       // Don't fail the request; payment is already confirmed.
     }
 
-    console.log(logPrefix, "Payment verification complete", { 
+    console.log(logPrefix, "Payment verification complete - subscription_started_at reset", { 
       paymentId: payment.id, 
       plan: updatedPayment.plan,
       userId: user.id 
@@ -311,7 +312,7 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({
         success: true,
-        message: "Payment verified successfully",
+        message: "Payment verified successfully! Your credits have been reset.",
         plan: updatedPayment.plan,
       }),
       {

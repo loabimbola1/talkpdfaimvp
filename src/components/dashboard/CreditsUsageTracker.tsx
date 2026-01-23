@@ -15,6 +15,7 @@ interface CreditsData {
   totalCredits: number;
   usedCredits: number;
   referralCredits: number;
+  subscriptionStartedAt: string | null;
 }
 
 const PLAN_CREDITS: Record<string, number> = {
@@ -23,12 +24,22 @@ const PLAN_CREDITS: Record<string, number> = {
   pro: 500,
 };
 
+// Credit costs per action
+const CREDIT_COSTS = {
+  pdf_upload: 1,
+  audio_per_5_min: 1,
+  explain_back: 2,
+  quiz: 1,
+  micro_lesson: 1,
+};
+
 const CreditsUsageTracker = ({ onUpgrade }: CreditsUsageTrackerProps) => {
   const [creditsData, setCreditsData] = useState<CreditsData>({
     plan: "free",
     totalCredits: 0,
     usedCredits: 0,
     referralCredits: 0,
+    subscriptionStartedAt: null,
   });
   const [loading, setLoading] = useState(true);
 
@@ -41,33 +52,66 @@ const CreditsUsageTracker = ({ onUpgrade }: CreditsUsageTrackerProps) => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      // Get user's profile for plan and referral credits
+      // Get user's profile for plan, referral credits, and subscription_started_at
       const { data: profile } = await supabase
         .from("profiles")
-        .select("subscription_plan, referral_credits")
+        .select("subscription_plan, referral_credits, subscription_started_at")
         .eq("user_id", user.id)
         .single();
 
       const plan = profile?.subscription_plan || "free";
       const referralCredits = profile?.referral_credits || 0;
       const planCredits = PLAN_CREDITS[plan] || 0;
+      const subscriptionStartedAt = profile?.subscription_started_at;
 
-      // Calculate used credits from this month's usage
-      const now = new Date();
-      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+      // CRITICAL FIX: Calculate usage from subscription start date, NOT start of month
+      // This ensures credits reset when user upgrades
+      let startDate: string;
+      
+      if (subscriptionStartedAt) {
+        // Use subscription start date for credit calculation
+        const subStart = new Date(subscriptionStartedAt);
+        const now = new Date();
+        
+        // If subscription started in current month, use subscription date
+        // Otherwise, use start of current month (monthly billing cycle)
+        const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+        
+        if (subStart > startOfMonth) {
+          startDate = subscriptionStartedAt;
+        } else {
+          startDate = startOfMonth.toISOString();
+        }
+      } else {
+        // Fallback to start of month for free users or legacy
+        const now = new Date();
+        startDate = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+      }
       
       const { data: usageData } = await supabase
         .from("usage_tracking")
         .select("action_type, audio_minutes_used")
         .eq("user_id", user.id)
-        .gte("created_at", startOfMonth);
+        .gte("created_at", startDate);
 
-      // Each PDF upload = 1 credit, each 5 min audio = 1 credit, each explain-back = 2 credits
+      // Calculate credits used with proper cost structure
       let usedCredits = 0;
       (usageData || []).forEach(entry => {
-        if (entry.action_type === "pdf_upload") usedCredits += 1;
-        if (entry.action_type === "audio_conversion") usedCredits += Math.ceil((entry.audio_minutes_used || 0) / 5);
-        if (entry.action_type === "explain_back") usedCredits += 2;
+        if (entry.action_type === "pdf_upload") {
+          usedCredits += CREDIT_COSTS.pdf_upload;
+        }
+        if (entry.action_type === "audio_conversion") {
+          usedCredits += Math.ceil((entry.audio_minutes_used || 0) / 5) * CREDIT_COSTS.audio_per_5_min;
+        }
+        if (entry.action_type === "explain_back") {
+          usedCredits += CREDIT_COSTS.explain_back;
+        }
+        if (entry.action_type === "quiz") {
+          usedCredits += CREDIT_COSTS.quiz;
+        }
+        if (entry.action_type === "micro_lesson") {
+          usedCredits += CREDIT_COSTS.micro_lesson;
+        }
       });
 
       setCreditsData({
@@ -75,6 +119,7 @@ const CreditsUsageTracker = ({ onUpgrade }: CreditsUsageTrackerProps) => {
         totalCredits: planCredits + referralCredits,
         usedCredits: Math.min(usedCredits, planCredits + referralCredits),
         referralCredits,
+        subscriptionStartedAt,
       });
     } catch (error) {
       console.error("Error fetching credits:", error);
@@ -226,15 +271,15 @@ const CreditsUsageTracker = ({ onUpgrade }: CreditsUsageTrackerProps) => {
           <p className="text-xs text-muted-foreground mb-2">Credit usage:</p>
           <div className="grid grid-cols-3 gap-2 text-xs">
             <div className="text-center p-2 bg-secondary/50 rounded">
-              <p className="font-medium">1 credit</p>
+              <p className="font-medium">{CREDIT_COSTS.pdf_upload} credit</p>
               <p className="text-muted-foreground">per PDF</p>
             </div>
             <div className="text-center p-2 bg-secondary/50 rounded">
-              <p className="font-medium">1 credit</p>
+              <p className="font-medium">{CREDIT_COSTS.audio_per_5_min} credit</p>
               <p className="text-muted-foreground">per 5 min audio</p>
             </div>
             <div className="text-center p-2 bg-secondary/50 rounded">
-              <p className="font-medium">2 credits</p>
+              <p className="font-medium">{CREDIT_COSTS.explain_back} credits</p>
               <p className="text-muted-foreground">per explain-back</p>
             </div>
           </div>

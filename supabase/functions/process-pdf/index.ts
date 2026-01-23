@@ -35,6 +35,23 @@ const yarnGPTVoiceMap: Record<string, string> = {
   "pcm": "tayo",     // Upbeat, energetic (good for Pidgin)
 };
 
+// ElevenLabs voice mapping for Nigerian-sounding voices
+// Using voices with African/Nigerian accents where possible
+const elevenLabsVoiceMap: Record<string, string> = {
+  "en": "pFZP5JQG7iQjIQuC4Bku",  // Lily - clear, warm (better than British Sarah)
+  "yo": "onwK4e9ZLuTAKqWW03F9",  // Daniel - warm, expressive
+  "ha": "TX3LPaxmHKxFdv7VOQHJ",  // Liam - warm, engaging
+  "ig": "cjVigY5qzO86Huf0OWal",  // Eric - clear, friendly
+  "pcm": "bIHbv24MWmeRgasZH58o", // Will - friendly, conversational
+};
+
+// Plan-based TTS character limits
+const PLAN_TTS_LIMITS: Record<string, number> = {
+  "free": 1400,    // Short summary only
+  "plus": 5000,    // Extended summary (~10 min audio)
+  "pro": 15000,    // Comprehensive (~25 min audio)
+};
+
 serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === "OPTIONS") {
@@ -119,6 +136,18 @@ serve(async (req) => {
         { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
+
+    // Get user's subscription plan for TTS limits
+    const { data: userProfile } = await supabase
+      .from("profiles")
+      .select("subscription_plan")
+      .eq("user_id", userId)
+      .single();
+    
+    const userPlan = userProfile?.subscription_plan || "free";
+    const maxTtsChars = PLAN_TTS_LIMITS[userPlan] || PLAN_TTS_LIMITS["free"];
+    
+    console.log(`User plan: ${userPlan}, Max TTS chars: ${maxTtsChars}`);
 
     // Update status to processing
     await supabase
@@ -212,8 +241,11 @@ serve(async (req) => {
       );
     }
 
-    // Generate summary and study prompts
+    // Generate summary and study prompts - MORE COMPREHENSIVE for paid plans
     console.log("Generating summary and study prompts...");
+    
+    // Determine how much text to analyze based on plan
+    const analysisTextLimit = userPlan === "pro" ? 15000 : (userPlan === "plus" ? 8000 : 5000);
     
     const summaryResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
@@ -226,11 +258,16 @@ serve(async (req) => {
         messages: [
           {
             role: "system",
-            content: `You are an educational content analyzer. Create a comprehensive summary and study prompts from the document content. 
+            content: `You are an educational content analyzer for Nigerian students preparing for WAEC and JAMB exams. Create a comprehensive summary and study prompts from the document content.
             
+The user is on the "${userPlan}" plan:
+${userPlan === "free" ? "- Create a concise summary (300-500 words) that covers key points" : ""}
+${userPlan === "plus" ? "- Create a detailed summary (800-1200 words) that covers all important concepts thoroughly" : ""}
+${userPlan === "pro" ? "- Create a comprehensive, page-by-page style summary (1500-2500 words) that explains concepts in depth like reading the actual textbook" : ""}
+
 Output a JSON object with this structure:
 {
-  "summary": "A comprehensive summary of the document (300-500 words)",
+  "summary": "Summary as described above",
   "key_concepts": ["concept1", "concept2", ...],
   "study_prompts": [
     {"topic": "Topic name", "prompt": "Explain..."},
@@ -238,14 +275,14 @@ Output a JSON object with this structure:
   ]
 }
 
-Create 3-5 study prompts that will help students test their understanding.`
+Create ${userPlan === "pro" ? "8-10" : (userPlan === "plus" ? "5-7" : "3-5")} study prompts that will help students test their understanding.`
           },
           {
             role: "user",
-            content: `Analyze this document content and create a summary with study prompts:\n\n${extractedText.substring(0, 10000)}`
+            content: `Analyze this document content and create a summary with study prompts:\n\n${extractedText.substring(0, analysisTextLimit)}`
           }
         ],
-        max_tokens: 4000
+        max_tokens: userPlan === "pro" ? 6000 : (userPlan === "plus" ? 4000 : 2000)
       })
     });
 
@@ -275,14 +312,16 @@ Create 3-5 study prompts that will help students test their understanding.`
     let audioPath: string | null = null;
     let audioDurationSeconds = 0;
     
-    // Build a short, spoken-friendly script (keeps ElevenLabs within quota)
-    // - Use the generated summary (already compact)
-    // - Translate it to the requested language for better language sync
-    let ttsText = (summary || extractedText.substring(0, 1000)).trim();
+    // Build TTS script based on user's plan
+    // Free: Use summary only
+    // Plus: Use extended summary
+    // Pro: Use comprehensive summary (almost page-by-page)
+    let ttsText = summary.trim();
 
+    // Translate if non-English
     if (language !== "en" && LOVABLE_API_KEY) {
       try {
-        console.log(`Translating TTS script to ${language}...`);
+        console.log(`Translating TTS script to ${language} (${maxTtsChars} chars max)...`);
         const targetLabel = languageLabelMap[language] || "English";
         const translateResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
           method: "POST",
@@ -295,15 +334,14 @@ Create 3-5 study prompts that will help students test their understanding.`
             messages: [
               {
                 role: "system",
-                content:
-                  "You translate text for spoken audio. Output ONLY the translation (no quotes, no extra notes). Keep it natural and easy to listen to.",
+                content: `You translate text for spoken audio into ${targetLabel}. Output ONLY the translation (no quotes, no extra notes). Keep it natural and easy to listen to. Use authentic ${targetLabel} expressions where appropriate.`,
               },
               {
                 role: "user",
-                content: `Translate this into ${targetLabel}. Keep it under 1200 characters.\n\n${ttsText}`,
+                content: `Translate this into ${targetLabel}. Keep it under ${maxTtsChars} characters.\n\n${ttsText}`,
               },
             ],
-            max_tokens: 1200,
+            max_tokens: Math.ceil(maxTtsChars / 3),
           }),
         });
 
@@ -320,21 +358,13 @@ Create 3-5 study prompts that will help students test their understanding.`
       }
     }
 
-    // Hard cap to avoid provider quota/limits
+    // Apply plan-based character limit
     ttsText = ttsText.replace(/\s+/g, " ").trim();
-    const MAX_TTS_CHARS = 1400;
-    if (ttsText.length > MAX_TTS_CHARS) {
-      ttsText = ttsText.substring(0, MAX_TTS_CHARS);
+    if (ttsText.length > maxTtsChars) {
+      ttsText = ttsText.substring(0, maxTtsChars);
     }
     
-    // Map language to ElevenLabs voice (fallback)
-    const elevenLabsVoiceMap: Record<string, string> = {
-      "en": "EXAVITQu4vr4xnSDxMaL", // Sarah
-      "yo": "EXAVITQu4vr4xnSDxMaL",
-      "ha": "EXAVITQu4vr4xnSDxMaL",
-      "ig": "EXAVITQu4vr4xnSDxMaL",
-      "pcm": "EXAVITQu4vr4xnSDxMaL"
-    };
+    console.log(`TTS text length after plan limits: ${ttsText.length} chars (plan: ${userPlan})`);
     
     const YARNGPT_API_KEY = Deno.env.get("YARNGPT_API_KEY");
     const ELEVENLABS_API_KEY = Deno.env.get("ELEVENLABS_API_KEY");
@@ -343,13 +373,13 @@ Create 3-5 study prompts that will help students test their understanding.`
     let ttsProvider = "none";
     const failedProviders: string[] = [];
 
-    // Try YarnGPT first for all Nigerian languages (including Pidgin)
+    // Try YarnGPT first for ALL Nigerian languages (best for Nigerian accents)
     if (YARNGPT_API_KEY) {
       try {
         const selectedVoice = yarnGPTVoiceMap[language.toLowerCase()] || yarnGPTVoiceMap["en"];
         console.log(`Attempting YarnGPT TTS with voice: ${selectedVoice} for language: ${language}...`);
         
-        // YarnGPT has 2000 char limit
+        // YarnGPT has 2000 char limit per request
         const yarnText = ttsText.substring(0, 2000);
         
         const ttsResponse = await fetch("https://yarngpt.ai/api/v1/tts", {
@@ -401,11 +431,12 @@ Create 3-5 study prompts that will help students test their understanding.`
       failedProviders.push("yarngpt (no API key)");
     }
 
-    // Fallback to ElevenLabs if Spitch failed or not supported
+    // Fallback to ElevenLabs with Nigerian-appropriate voices
     if (!audioBuffer && ELEVENLABS_API_KEY) {
       try {
-        console.log("Falling back to ElevenLabs TTS...");
+        console.log("Falling back to ElevenLabs TTS with language-specific voice...");
         const elevenVoice = elevenLabsVoiceMap[language] || elevenLabsVoiceMap["en"];
+        console.log(`Using ElevenLabs voice: ${elevenVoice} for language: ${language}`);
 
         const requestElevenLabs = async (text: string) => {
           return await fetch(
@@ -455,9 +486,11 @@ Create 3-5 study prompts that will help students test their understanding.`
         } else {
           const errorText = await ttsResponse.clone().text();
           console.warn("ElevenLabs TTS failed:", errorText);
+          failedProviders.push(`elevenlabs (${ttsResponse.status})`);
         }
       } catch (elevenLabsError) {
         console.warn("ElevenLabs TTS error:", elevenLabsError);
+        failedProviders.push("elevenlabs (error)");
       }
     }
 
@@ -513,13 +546,16 @@ Create 3-5 study prompts that will help students test their understanding.`
             console.log("OpenRouter Gemini TTS successful");
           } else {
             console.warn("OpenRouter Gemini TTS: No audio data found in response. Keys:", Object.keys(responseData));
+            failedProviders.push("openrouter (no audio data)");
           }
         } else {
           const errorText = await openRouterResponse.text();
           console.warn("OpenRouter Gemini TTS failed:", openRouterResponse.status, errorText.substring(0, 500));
+          failedProviders.push(`openrouter (${openRouterResponse.status})`);
         }
       } catch (openRouterError) {
         console.warn("OpenRouter Gemini TTS error:", openRouterError instanceof Error ? openRouterError.message : String(openRouterError));
+        failedProviders.push("openrouter (error)");
       }
     }
 
@@ -567,22 +603,31 @@ Create 3-5 study prompts that will help students test their understanding.`
             audioBuffer = bytes.buffer;
             ttsProvider = "lovable-gemini";
             console.log("Lovable AI Gateway TTS successful");
+          } else {
+            failedProviders.push("lovable (no audio data)");
           }
         } else {
           const errorText = await lovableTTSResponse.text();
           console.warn("Lovable AI Gateway TTS failed:", lovableTTSResponse.status, errorText.substring(0, 200));
+          failedProviders.push(`lovable (${lovableTTSResponse.status})`);
         }
       } catch (lovableError) {
         console.warn("Lovable AI Gateway TTS error:", lovableError instanceof Error ? lovableError.message : String(lovableError));
+        failedProviders.push("lovable (error)");
       }
+    }
+
+    // Log failed providers for debugging
+    if (failedProviders.length > 0) {
+      console.log("Failed TTS providers:", failedProviders.join(", "));
     }
 
     // Upload audio if we got any
     if (audioBuffer && audioBuffer.byteLength > 1024) {
       try {
         // Determine content type based on provider
-        const contentType = ttsProvider === "spitch" ? "audio/wav" : "audio/mpeg";
-        const fileExt = ttsProvider === "spitch" ? "wav" : "mp3";
+        const contentType = "audio/mpeg";
+        const fileExt = "mp3";
         
         const audioBlob = new Blob([audioBuffer], { type: contentType });
         
@@ -696,7 +741,7 @@ Create 3-5 study prompts that will help students test their understanding.`
         );
     }
 
-    console.log("Document processed successfully:", documentId, "TTS Provider:", ttsProvider);
+    console.log("Document processed successfully:", documentId, "TTS Provider:", ttsProvider, "Plan:", userPlan);
 
     return new Response(
       JSON.stringify({
@@ -705,7 +750,8 @@ Create 3-5 study prompts that will help students test their understanding.`
         summary: summary.substring(0, 200) + "...",
         studyPromptsCount: studyPrompts.length,
         audioDuration: audioDurationSeconds,
-        ttsProvider
+        ttsProvider,
+        userPlan
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );

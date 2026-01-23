@@ -26,8 +26,14 @@ const RATE_LIMIT_CONFIG = {
   maxRequests: 5,
 };
 
-// Languages actually supported by Spitch API (not Pidgin)
-const SPITCH_SUPPORTED_LANGUAGES = ["en", "yo", "ha", "ig"];
+// YarnGPT voice mapping for Nigerian languages
+const yarnGPTVoiceMap: Record<string, string> = {
+  "en": "emma",      // Authoritative, deep
+  "yo": "idera",     // Melodic, gentle (Yoruba native)
+  "ha": "zainab",    // Soothing, gentle (Hausa native)
+  "ig": "chinenye",  // Engaging, warm (Igbo native)
+  "pcm": "tayo",     // Upbeat, energetic (good for Pidgin)
+};
 
 serve(async (req) => {
   // Handle CORS preflight requests
@@ -321,14 +327,6 @@ Create 3-5 study prompts that will help students test their understanding.`
       ttsText = ttsText.substring(0, MAX_TTS_CHARS);
     }
     
-    // Map language to Spitch voices
-    const spitchVoiceMap: Record<string, string> = {
-      "en": "lucy",
-      "yo": "sade",
-      "ha": "zainab",
-      "ig": "ngozi",
-    };
-    
     // Map language to ElevenLabs voice (fallback)
     const elevenLabsVoiceMap: Record<string, string> = {
       "en": "EXAVITQu4vr4xnSDxMaL", // Sarah
@@ -338,75 +336,69 @@ Create 3-5 study prompts that will help students test their understanding.`
       "pcm": "EXAVITQu4vr4xnSDxMaL"
     };
     
-    const SPITCH_API_KEY = Deno.env.get("SPITCH_API_KEY");
+    const YARNGPT_API_KEY = Deno.env.get("YARNGPT_API_KEY");
     const ELEVENLABS_API_KEY = Deno.env.get("ELEVENLABS_API_KEY");
 
     let audioBuffer: ArrayBuffer | null = null;
     let ttsProvider = "none";
+    const failedProviders: string[] = [];
 
-    // Map language to Spitch API language enum (yo, en, ha, ig, am)
-    const spitchLanguageMap: Record<string, string> = {
-      yo: "yo", yoruba: "yo",
-      ha: "ha", hausa: "ha",
-      ig: "ig", igbo: "ig",
-      en: "en", english: "en",
-      am: "am", amharic: "am",
-    };
-    const spitchLanguage = spitchLanguageMap[language.toLowerCase()] || "en";
-
-    // Check if Spitch supports this language (NOT pidgin/pcm)
-    const useSpitch = SPITCH_API_KEY && SPITCH_SUPPORTED_LANGUAGES.includes(language.toLowerCase());
-
-    // Try Spitch first for supported Nigerian languages
-    if (useSpitch) {
+    // Try YarnGPT first for all Nigerian languages (including Pidgin)
+    if (YARNGPT_API_KEY) {
       try {
-        const selectedVoice = spitchVoiceMap[language] || spitchVoiceMap["en"];
-        console.log(`Attempting Spitch TTS with language: ${spitchLanguage}, voice: ${selectedVoice}...`);
+        const selectedVoice = yarnGPTVoiceMap[language.toLowerCase()] || yarnGPTVoiceMap["en"];
+        console.log(`Attempting YarnGPT TTS with voice: ${selectedVoice} for language: ${language}...`);
         
-        // Use the correct Spitch API endpoint - request WAV format (default) which is more reliable
-        const ttsResponse = await fetch("https://api.spitch.app/v1/speech", {
+        // YarnGPT has 2000 char limit
+        const yarnText = ttsText.substring(0, 2000);
+        
+        const ttsResponse = await fetch("https://yarngpt.ai/api/v1/tts", {
           method: "POST",
           headers: {
-            "Authorization": `Bearer ${SPITCH_API_KEY}`,
+            "Authorization": `Bearer ${YARNGPT_API_KEY}`,
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            language: spitchLanguage, // Required: yo, en, ha, ig, am
-            voice: selectedVoice,     // Required: sade, segun, zainab, ngozi, lucy, etc.
-            text: ttsText.substring(0, 5000), // Spitch has text limits
+            text: yarnText,
+            voice: selectedVoice,
+            response_format: "mp3"
           }),
         });
 
         if (ttsResponse.ok) {
           const contentType = ttsResponse.headers.get("content-type") || "";
-          console.log(`Spitch response content-type: ${contentType}`);
+          console.log(`YarnGPT response content-type: ${contentType}`);
           
-          // Spitch returns audio/wav by default or audio/mpeg if mp3 requested
-          if (contentType.includes("audio") || contentType.includes("octet-stream")) {
+          if (contentType.includes("audio") || contentType.includes("mpeg") || contentType.includes("mp3") || contentType.includes("octet-stream")) {
             audioBuffer = await ttsResponse.arrayBuffer();
             
             // Validate we got actual audio data (at least 1KB)
             if (audioBuffer.byteLength > 1024) {
-              ttsProvider = "spitch";
-              console.log("Spitch TTS successful, audio size:", audioBuffer.byteLength);
+              ttsProvider = "yarngpt";
+              console.log(`YarnGPT TTS successful for ${language}, audio size:`, audioBuffer.byteLength);
             } else {
-              console.warn("Spitch returned too small audio buffer:", audioBuffer.byteLength);
+              console.warn("YarnGPT returned too small audio buffer:", audioBuffer.byteLength);
               audioBuffer = null;
+              failedProviders.push("yarngpt (audio too small)");
             }
           } else {
             // Response might be JSON with error
             const responseText = await ttsResponse.text();
-            console.warn("Spitch TTS unexpected response type:", contentType, responseText.substring(0, 200));
+            console.warn("YarnGPT TTS unexpected response type:", contentType, responseText.substring(0, 200));
+            failedProviders.push("yarngpt (unexpected response)");
           }
         } else {
           const errorText = await ttsResponse.text();
-          console.warn("Spitch TTS failed:", ttsResponse.status, errorText.substring(0, 300));
+          console.warn("YarnGPT TTS failed:", ttsResponse.status, errorText.substring(0, 300));
+          failedProviders.push(`yarngpt (${ttsResponse.status})`);
         }
-      } catch (spitchError) {
-        console.warn("Spitch TTS error:", spitchError instanceof Error ? spitchError.message : String(spitchError));
+      } catch (yarnError) {
+        console.warn("YarnGPT TTS error:", yarnError instanceof Error ? yarnError.message : String(yarnError));
+        failedProviders.push(`yarngpt (${yarnError instanceof Error ? yarnError.message : 'error'})`);
       }
     } else {
-      console.log(`Skipping Spitch for language '${language}' - not in supported languages:`, SPITCH_SUPPORTED_LANGUAGES);
+      console.log("YarnGPT API key not configured, skipping");
+      failedProviders.push("yarngpt (no API key)");
     }
 
     // Fallback to ElevenLabs if Spitch failed or not supported

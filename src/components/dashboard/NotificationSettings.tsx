@@ -8,7 +8,7 @@ import { usePushNotifications } from "@/hooks/usePushNotifications";
 import { toast } from "sonner";
 
 const NotificationSettings = () => {
-  const { isSupported, isSubscribed, isLoading, subscribe, unsubscribe, scheduleStudyReminder } = usePushNotifications();
+  const { isSupported, isSubscribed, isLoading, permissionState, subscribe, unsubscribe, scheduleStudyReminder } = usePushNotifications();
   const [reminderTime, setReminderTime] = useState<string>(
     localStorage.getItem("talkpdf-reminder-time") || "18:00"
   );
@@ -74,6 +74,28 @@ const NotificationSettings = () => {
         <p className="text-sm text-muted-foreground">
           Your browser doesn't support push notifications. Try using Chrome, Edge, or Safari on a recent version.
         </p>
+      </div>
+    );
+  }
+
+  // Show instructions if permission was denied
+  if (permissionState === "denied") {
+    return (
+      <div className="bg-destructive/10 rounded-xl p-6 text-center border border-destructive/20">
+        <BellOff className="h-12 w-12 text-destructive mx-auto mb-3" />
+        <h4 className="font-medium text-foreground mb-2">Notifications Blocked</h4>
+        <p className="text-sm text-muted-foreground mb-4">
+          You previously blocked notifications. To enable them:
+        </p>
+        <ol className="text-sm text-muted-foreground text-left space-y-2 mb-4">
+          <li>1. Click the lock/info icon in your browser's address bar</li>
+          <li>2. Find "Notifications" in the permissions</li>
+          <li>3. Change it from "Block" to "Allow"</li>
+          <li>4. Refresh this page</li>
+        </ol>
+        <Button variant="outline" onClick={() => window.location.reload()} className="w-full">
+          Refresh Page
+        </Button>
       </div>
     );
   }

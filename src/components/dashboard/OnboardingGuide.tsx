@@ -37,70 +37,53 @@ const onboardingSteps: OnboardingStep[] = [
     icon: Sparkles,
     title: "Welcome to TalkPDF AI! 🎉",
     description:
-      "Let's take a quick tour to help you get started with your learning journey. TalkPDF AI converts your PDFs into interactive audio lessons in Nigerian languages.",
+      "Let's take a quick tour of the key features. TalkPDF AI converts your PDFs into interactive audio lessons in Nigerian languages.",
   },
   {
     id: "upload",
     icon: Upload,
     title: "Upload Your PDFs",
     description:
-      "Start by uploading your study materials, textbooks, or notes. We support PDFs up to 20MB. Choose your preferred audio language - English, Yoruba, Hausa, Igbo, or Pidgin.",
+      "Upload your study materials in any of 5 languages: English, Yoruba, Hausa, Igbo, or Pidgin. Our AI converts them into audio lessons you can listen to anywhere.",
     action: "Go to Upload tab",
-  },
-  {
-    id: "listen",
-    icon: Headphones,
-    title: "Listen & Learn",
-    description:
-      "Once processed, your documents become audio lessons. Listen while commuting, exercising, or relaxing. The audio auto-pauses at key points so you can reflect on what you've learned.",
-    action: "Go to Listen tab",
   },
   {
     id: "explain",
     icon: Brain,
     title: "Explain-Back Mode",
     description:
-      "Test your understanding by explaining concepts in your own words - just like teaching a friend! Use your voice or type. Our AI evaluates your explanation and awards badges based on your performance.",
+      "Test your understanding by explaining concepts in your own words - like teaching a friend! Use your voice or type, and our AI will score your explanation.",
     action: "Go to Explain-Back tab",
   },
   {
-    id: "quiz",
-    icon: HelpCircle,
-    title: "Quiz Yourself",
-    description:
-      "Challenge yourself with AI-generated quizzes based on your documents. Multiple choice, true/false, and fill-in-the-blank questions help reinforce your learning.",
-    action: "Go to Quiz tab",
-  },
-  {
-    id: "badges",
+    id: "achievements",
     icon: Award,
-    title: "Earn Badges & Share",
+    title: "Achievement Milestones",
     description:
-      "Earn Bronze, Silver, and Gold Scholar badges for your achievements. Share your badges on WhatsApp, Twitter, and LinkedIn to celebrate with friends!",
-    action: "Go to Badges tab",
+      "Unlock 18 achievement milestones across PDFs, quizzes, lessons, and streaks. Watch for confetti celebrations when you hit a milestone! Share your achievements on WhatsApp, Twitter, and Facebook.",
+    action: "Go to Milestones tab",
   },
   {
     id: "groups",
     icon: Users,
     title: "Study Groups",
     description:
-      "Create or join study groups to collaborate with classmates. Share documents and study together for exams like WAEC and JAMB.",
+      "Create or join study groups to compete with friends. Share invite codes via WhatsApp and track each other on group leaderboards.",
     action: "Go to Groups tab",
   },
   {
-    id: "leaderboard",
+    id: "notifications",
     icon: Trophy,
-    title: "Campus Leaderboards",
+    title: "Smart Notifications",
     description:
-      "Compete with students from your university! Set your university in Settings to appear on the campus leaderboard and see how you rank among your peers.",
-    action: "Go to Leaderboard tab",
+      "Enable push notifications to get reminded when you're close to unlocking a milestone, or when it's time for your spaced repetition review.",
   },
   {
     id: "complete",
     icon: CheckCircle,
     title: "You're All Set! 🚀",
     description:
-      "You now know the basics of TalkPDF AI. Start by uploading your first PDF and experience a new way of learning. Na you go top that leaderboard!",
+      "Upload your first PDF and start earning achievements. Na you go top that leaderboard!",
   },
 ];
 
@@ -151,12 +134,9 @@ const OnboardingGuide = ({ onComplete, onNavigate }: OnboardingGuideProps) => {
     const step = onboardingSteps[currentStep];
     const tabMap: Record<string, string> = {
       upload: "upload",
-      listen: "listen",
       explain: "explain",
-      quiz: "quiz",
-      badges: "badges",
+      achievements: "achievements",
       groups: "groups",
-      leaderboard: "leaderboard",
     };
     
     if (tabMap[step.id]) {

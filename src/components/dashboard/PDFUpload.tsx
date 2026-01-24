@@ -212,8 +212,9 @@ const PDFUpload = ({ onDocumentProcessed, onUpgrade }: PDFUploadProps) => {
     }
 
     acceptedFiles.forEach((file) => {
-      if (file.type !== "application/pdf") {
-        toast.error("Only PDF files are allowed");
+      const validTypes = ["application/pdf", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"];
+      if (!validTypes.includes(file.type)) {
+        toast.error("Only PDF and Word (.docx) files are allowed");
         return;
       }
       if (file.size > 20 * 1024 * 1024) {
@@ -236,6 +237,7 @@ const PDFUpload = ({ onDocumentProcessed, onUpgrade }: PDFUploadProps) => {
     onDrop,
     accept: {
       "application/pdf": [".pdf"],
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document": [".docx"],
     },
     maxSize: 20 * 1024 * 1024,
     multiple: true,
@@ -438,8 +440,8 @@ const PDFUpload = ({ onDocumentProcessed, onUpgrade }: PDFUploadProps) => {
               {!canUpload 
                 ? "Daily limit reached" 
                 : isDragActive 
-                  ? "Drop your PDF here" 
-                  : "Drag & drop your PDF here"}
+                  ? "Drop your document here" 
+                  : "Drag & drop your PDF or Word document here"}
             </p>
             <p className="text-sm text-muted-foreground">
               {canUpload ? "or click to browse (max 20MB)" : "Upgrade to continue uploading"}

@@ -69,7 +69,7 @@ const faqs = [
     items: [
       {
         question: "What file formats are supported?",
-        answer: "Currently, we only support PDF files. We recommend using online converters for Word, PowerPoint, or other document formats."
+        answer: "We support PDF and Word (.docx) documents. Both formats are processed using AI for accurate text extraction and audio generation."
       },
       {
         question: "What's the maximum file size?",

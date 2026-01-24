@@ -2,6 +2,20 @@ import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useOfflineDocuments } from "./useOfflineDocuments";
 
+export interface TTSMetadata {
+  tts_provider?: string;
+  requested_language?: string;
+  translation_applied?: boolean;
+  failed_providers?: string[];
+  tts_text_length?: number;
+  tts_text_preview?: string;
+  audio_size_bytes?: number;
+  chunks_generated?: number;
+  processed_at?: string;
+  voice_used?: string;
+  file_type?: string;
+}
+
 export interface Document {
   id: string;
   title: string;
@@ -15,6 +29,7 @@ export interface Document {
   last_studied_at: string | null;
   created_at: string;
   study_prompts?: Array<{ topic: string; prompt: string }> | null;
+  tts_metadata?: TTSMetadata | null;
 }
 
 export function useDocuments() {
@@ -56,10 +71,11 @@ export function useDocuments() {
 
       if (fetchError) throw fetchError;
 
-      // Transform study_prompts to correct type
+      // Transform to correct types
       const typedDocs: Document[] = (data || []).map((doc) => ({
         ...doc,
         study_prompts: doc.study_prompts as Array<{ topic: string; prompt: string }> | null,
+        tts_metadata: doc.tts_metadata as TTSMetadata | null,
       }));
 
       setDocuments(typedDocs);

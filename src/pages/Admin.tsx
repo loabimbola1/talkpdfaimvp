@@ -7,10 +7,11 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
-import { ArrowLeft, Users, CreditCard, BarChart3, Shield, Loader2, AlertTriangle, Gift } from "lucide-react";
+import { ArrowLeft, Users, CreditCard, BarChart3, Shield, Loader2, AlertTriangle, Gift, FileText } from "lucide-react";
 import { toast } from "sonner";
 import logo from "@/assets/logo.png";
 import AdminReferralAnalytics from "@/components/dashboard/AdminReferralAnalytics";
+import AdminDocumentAnalytics from "@/components/dashboard/AdminDocumentAnalytics";
 
 const Admin = () => {
   const [isAdmin, setIsAdmin] = useState(false);
@@ -166,6 +167,7 @@ const Admin = () => {
             <TabsTrigger value="users" className="gap-2"><Users className="h-4 w-4" />Users</TabsTrigger>
             <TabsTrigger value="payments" className="gap-2"><CreditCard className="h-4 w-4" />Payments</TabsTrigger>
             <TabsTrigger value="usage" className="gap-2"><BarChart3 className="h-4 w-4" />Usage</TabsTrigger>
+            <TabsTrigger value="documents" className="gap-2"><FileText className="h-4 w-4" />Documents</TabsTrigger>
             <TabsTrigger value="referrals" className="gap-2"><Gift className="h-4 w-4" />Referrals</TabsTrigger>
           </TabsList>
 
@@ -254,6 +256,10 @@ const Admin = () => {
                 </Table>
               </CardContent>
             </Card>
+          </TabsContent>
+
+          <TabsContent value="documents">
+            <AdminDocumentAnalytics />
           </TabsContent>
 
           <TabsContent value="referrals">

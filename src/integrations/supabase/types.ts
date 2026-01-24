@@ -111,6 +111,7 @@ export type Database = {
           study_prompts: Json | null
           summary: string | null
           title: string
+          tts_metadata: Json | null
           updated_at: string
           user_id: string
         }
@@ -130,6 +131,7 @@ export type Database = {
           study_prompts?: Json | null
           summary?: string | null
           title: string
+          tts_metadata?: Json | null
           updated_at?: string
           user_id: string
         }
@@ -149,6 +151,7 @@ export type Database = {
           study_prompts?: Json | null
           summary?: string | null
           title?: string
+          tts_metadata?: Json | null
           updated_at?: string
           user_id?: string
         }

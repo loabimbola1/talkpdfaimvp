@@ -12,6 +12,20 @@ interface ProcessRequest {
   language?: string;
 }
 
+interface TTSMetadata {
+  tts_provider: string;
+  requested_language: string;
+  translation_applied: boolean;
+  failed_providers: string[];
+  tts_text_length: number;
+  tts_text_preview: string;
+  audio_size_bytes: number;
+  chunks_generated: number;
+  processed_at: string;
+  voice_used: string;
+  file_type: string;
+}
+
 const languageLabelMap: Record<string, string> = {
   en: "English",
   yo: "Yoruba",
@@ -26,15 +40,15 @@ const RATE_LIMIT_CONFIG = {
   maxRequests: 5,
 };
 
-// YarnGPT voice mapping for Nigerian languages
-// Valid YarnGPT voices: "idera" (default), "chinenye", "zainab", "tayo"
-// Note: "emma" is NOT a valid voice - use "idera" for English with Nigerian accent
+// YarnGPT NATIVE LANGUAGE voice mapping for Nigerian languages
+// Updated to use native language voices for authentic pronunciation
+// Reference: https://yarngpt.ai/api-docs
 const yarnGPTVoiceMap: Record<string, string> = {
-  "en": "idera",     // Nigerian accent for English (default/best voice)
-  "yo": "idera",     // Melodic, gentle (Yoruba native)
-  "ha": "zainab",    // Soothing, gentle (Hausa native)
-  "ig": "chinenye",  // Engaging, warm (Igbo native)
-  "pcm": "tayo",     // Upbeat, energetic (good for Pidgin)
+  "en": "idera",           // Nigerian accent for English (clear, natural)
+  "yo": "yoruba_female2",  // Native Yoruba voice (authentic pronunciation)
+  "ha": "hausa_female1",   // Native Hausa voice (authentic pronunciation)
+  "ig": "igbo_female2",    // Native Igbo voice (authentic pronunciation)
+  "pcm": "idera",          // Pidgin uses Nigerian-accented English voice with translated text
 };
 
 // ElevenLabs voice mapping for Nigerian-sounding voices
@@ -53,6 +67,124 @@ const PLAN_TTS_LIMITS: Record<string, number> = {
   "plus": 5000,    // Extended summary (~10 min audio)
   "pro": 15000,    // Comprehensive (~25 min audio)
 };
+
+// YarnGPT chunk limit
+const YARNGPT_CHUNK_LIMIT = 2000;
+
+// Split text into chunks at sentence boundaries for YarnGPT
+function splitIntoChunks(text: string, maxLength: number): string[] {
+  const chunks: string[] = [];
+  const sentences = text.split(/(?<=[.!?])\s+/);
+  let currentChunk = "";
+  
+  for (const sentence of sentences) {
+    if ((currentChunk + " " + sentence).length <= maxLength) {
+      currentChunk += (currentChunk ? " " : "") + sentence;
+    } else {
+      if (currentChunk) chunks.push(currentChunk.trim());
+      // If single sentence is too long, split by words
+      if (sentence.length > maxLength) {
+        const words = sentence.split(/\s+/);
+        currentChunk = "";
+        for (const word of words) {
+          if ((currentChunk + " " + word).length <= maxLength) {
+            currentChunk += (currentChunk ? " " : "") + word;
+          } else {
+            if (currentChunk) chunks.push(currentChunk.trim());
+            currentChunk = word;
+          }
+        }
+      } else {
+        currentChunk = sentence;
+      }
+    }
+  }
+  if (currentChunk.trim()) chunks.push(currentChunk.trim());
+  
+  return chunks;
+}
+
+// Concatenate multiple audio buffers into one
+function concatenateAudioBuffers(buffers: ArrayBuffer[]): ArrayBuffer {
+  const totalLength = buffers.reduce((sum, buf) => sum + buf.byteLength, 0);
+  const result = new Uint8Array(totalLength);
+  let offset = 0;
+  
+  for (const buffer of buffers) {
+    result.set(new Uint8Array(buffer), offset);
+    offset += buffer.byteLength;
+  }
+  
+  return result.buffer;
+}
+
+// Generate audio using YarnGPT with chunking support
+async function generateYarnGPTAudio(
+  text: string,
+  voice: string,
+  apiKey: string,
+  maxChunks: number = 1
+): Promise<{ buffer: ArrayBuffer | null; chunksGenerated: number; error?: string }> {
+  const chunks = splitIntoChunks(text, YARNGPT_CHUNK_LIMIT);
+  const chunksToProcess = chunks.slice(0, maxChunks);
+  const audioBuffers: ArrayBuffer[] = [];
+  
+  console.log(`YarnGPT: Processing ${chunksToProcess.length} of ${chunks.length} chunks with voice: ${voice}`);
+  
+  for (let i = 0; i < chunksToProcess.length; i++) {
+    const chunk = chunksToProcess[i];
+    console.log(`YarnGPT: Processing chunk ${i + 1}/${chunksToProcess.length} (${chunk.length} chars)`);
+    
+    try {
+      const response = await fetch("https://yarngpt.ai/api/v1/tts", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          text: chunk,
+          voice: voice,
+          response_format: "mp3"
+        }),
+      });
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.warn(`YarnGPT chunk ${i + 1} failed:`, response.status, errorText.substring(0, 200));
+        return { buffer: null, chunksGenerated: i, error: `Status ${response.status}: ${errorText.substring(0, 100)}` };
+      }
+      
+      const contentType = response.headers.get("content-type") || "";
+      if (contentType.includes("audio") || contentType.includes("mpeg") || contentType.includes("mp3") || contentType.includes("octet-stream")) {
+        const buffer = await response.arrayBuffer();
+        if (buffer.byteLength > 1024) {
+          audioBuffers.push(buffer);
+        } else {
+          console.warn(`YarnGPT chunk ${i + 1}: audio too small (${buffer.byteLength} bytes)`);
+          return { buffer: null, chunksGenerated: i, error: "Audio too small" };
+        }
+      } else {
+        const responseText = await response.text();
+        console.warn(`YarnGPT chunk ${i + 1}: unexpected content-type`, contentType, responseText.substring(0, 100));
+        return { buffer: null, chunksGenerated: i, error: `Unexpected response: ${contentType}` };
+      }
+    } catch (error) {
+      console.warn(`YarnGPT chunk ${i + 1} error:`, error instanceof Error ? error.message : String(error));
+      return { buffer: null, chunksGenerated: i, error: error instanceof Error ? error.message : "Network error" };
+    }
+  }
+  
+  if (audioBuffers.length === 0) {
+    return { buffer: null, chunksGenerated: 0, error: "No audio generated" };
+  }
+  
+  // Concatenate all chunks
+  const finalBuffer = concatenateAudioBuffers(audioBuffers);
+  console.log(`YarnGPT: Successfully generated ${audioBuffers.length} chunks, total size: ${finalBuffer.byteLength} bytes`);
+  
+  return { buffer: finalBuffer, chunksGenerated: audioBuffers.length };
+}
 
 serve(async (req) => {
   // Handle CORS preflight requests
@@ -139,6 +271,16 @@ serve(async (req) => {
       );
     }
 
+    // Detect file type (PDF or Word)
+    const fileName = document.file_name.toLowerCase();
+    const isWordDoc = fileName.endsWith('.docx') || fileName.endsWith('.doc');
+    const fileType = isWordDoc ? "word" : "pdf";
+    const mimeType = isWordDoc 
+      ? "application/vnd.openxmlformats-officedocument.wordprocessingml.document" 
+      : "application/pdf";
+    
+    console.log(`File type detected: ${fileType} (${mimeType})`);
+
     // Get user's subscription plan for TTS limits
     const { data: userProfile } = await supabase
       .from("profiles")
@@ -149,7 +291,10 @@ serve(async (req) => {
     const userPlan = userProfile?.subscription_plan || "free";
     const maxTtsChars = PLAN_TTS_LIMITS[userPlan] || PLAN_TTS_LIMITS["free"];
     
-    console.log(`User plan: ${userPlan}, Max TTS chars: ${maxTtsChars}`);
+    // Calculate max chunks based on plan
+    const maxChunks = userPlan === "pro" ? 8 : (userPlan === "plus" ? 3 : 1);
+    
+    console.log(`User plan: ${userPlan}, Max TTS chars: ${maxTtsChars}, Max chunks: ${maxChunks}`);
 
     // Update status to processing
     await supabase
@@ -157,28 +302,28 @@ serve(async (req) => {
       .update({ status: "processing", audio_language: language })
       .eq("id", documentId);
 
-    // Download PDF from storage
+    // Download file from storage
     const { data: fileData, error: downloadError } = await supabase
       .storage
       .from("talkpdf")
       .download(document.file_url);
 
     if (downloadError || !fileData) {
-      console.error("Failed to download PDF:", downloadError);
+      console.error("Failed to download file:", downloadError);
       await supabase
         .from("documents")
         .update({ status: "error" })
         .eq("id", documentId);
       return new Response(
-        JSON.stringify({ error: "Failed to download PDF" }),
+        JSON.stringify({ error: "Failed to download file" }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    // Extract text from PDF using AI
-    const pdfBase64 = await blobToBase64(fileData);
+    // Extract text from file using AI (works for both PDF and Word)
+    const fileBase64 = await blobToBase64(fileData);
     
-    console.log("Extracting text from PDF...");
+    console.log(`Extracting text from ${fileType}...`);
     
     const extractResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
@@ -191,20 +336,20 @@ serve(async (req) => {
         messages: [
           {
             role: "system",
-            content: "You are a document extraction assistant. Extract ALL text content from the provided PDF document. Preserve the structure and order of the content. Focus on extracting educational content, key concepts, and important information that students would need to learn. Output only the extracted text, no commentary."
+            content: `You are a document extraction assistant. Extract ALL text content from the provided ${fileType.toUpperCase()} document. Preserve the structure and order of the content. Focus on extracting educational content, key concepts, and important information that students would need to learn. Output only the extracted text, no commentary.`
           },
           {
             role: "user",
             content: [
               {
                 type: "text",
-                text: "Extract all text content from this PDF document. Include all educational content, definitions, concepts, and key points."
+                text: `Extract all text content from this ${fileType.toUpperCase()} document. Include all educational content, definitions, concepts, and key points.`
               },
               {
                 type: "file",
                 file: {
                   filename: document.file_name,
-                  file_data: `data:application/pdf;base64,${pdfBase64}`
+                  file_data: `data:${mimeType};base64,${fileBase64}`
                 }
               }
             ]
@@ -222,7 +367,7 @@ serve(async (req) => {
         .update({ status: "error" })
         .eq("id", documentId);
       return new Response(
-        JSON.stringify({ error: "Failed to extract text from PDF" }),
+        JSON.stringify({ error: `Failed to extract text from ${fileType}` }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -238,7 +383,7 @@ serve(async (req) => {
         .update({ status: "error" })
         .eq("id", documentId);
       return new Response(
-        JSON.stringify({ error: "Could not extract text from PDF" }),
+        JSON.stringify({ error: `Could not extract text from ${fileType}` }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -315,10 +460,8 @@ Create ${userPlan === "pro" ? "8-10" : (userPlan === "plus" ? "5-7" : "3-5")} st
     let audioDurationSeconds = 0;
     
     // Build TTS script based on user's plan
-    // Free: Use summary only
-    // Plus: Use extended summary
-    // Pro: Use comprehensive summary (almost page-by-page)
     let ttsText = summary.trim();
+    let translationApplied = false;
 
     // Translate if non-English
     if (language !== "en" && LOVABLE_API_KEY) {
@@ -350,7 +493,11 @@ Create ${userPlan === "pro" ? "8-10" : (userPlan === "plus" ? "5-7" : "3-5")} st
         if (translateResponse.ok) {
           const translateData = await translateResponse.json();
           const translated = (translateData.choices?.[0]?.message?.content || "").trim();
-          if (translated) ttsText = translated;
+          if (translated) {
+            ttsText = translated;
+            translationApplied = true;
+            console.log(`Translation successful to ${language}, length: ${ttsText.length}`);
+          }
         } else {
           const errorText = await translateResponse.text();
           console.warn("Translation failed, falling back to English summary:", errorText);
@@ -373,60 +520,27 @@ Create ${userPlan === "pro" ? "8-10" : (userPlan === "plus" ? "5-7" : "3-5")} st
 
     let audioBuffer: ArrayBuffer | null = null;
     let ttsProvider = "none";
+    let voiceUsed = "";
+    let chunksGenerated = 0;
     const failedProviders: string[] = [];
 
-    // Try YarnGPT first for ALL Nigerian languages (best for Nigerian accents)
+    // Try YarnGPT first with NATIVE LANGUAGE voices for Nigerian languages
     if (YARNGPT_API_KEY) {
-      try {
-        const selectedVoice = yarnGPTVoiceMap[language.toLowerCase()] || yarnGPTVoiceMap["en"];
-        console.log(`Attempting YarnGPT TTS with voice: ${selectedVoice} for language: ${language}...`);
-        
-        // YarnGPT has 2000 char limit per request
-        const yarnText = ttsText.substring(0, 2000);
-        
-        const ttsResponse = await fetch("https://yarngpt.ai/api/v1/tts", {
-          method: "POST",
-          headers: {
-            "Authorization": `Bearer ${YARNGPT_API_KEY}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            text: yarnText,
-            voice: selectedVoice,
-            response_format: "mp3"
-          }),
-        });
-
-        if (ttsResponse.ok) {
-          const contentType = ttsResponse.headers.get("content-type") || "";
-          console.log(`YarnGPT response content-type: ${contentType}`);
-          
-          if (contentType.includes("audio") || contentType.includes("mpeg") || contentType.includes("mp3") || contentType.includes("octet-stream")) {
-            audioBuffer = await ttsResponse.arrayBuffer();
-            
-            // Validate we got actual audio data (at least 1KB)
-            if (audioBuffer.byteLength > 1024) {
-              ttsProvider = "yarngpt";
-              console.log(`YarnGPT TTS successful for ${language}, audio size:`, audioBuffer.byteLength);
-            } else {
-              console.warn("YarnGPT returned too small audio buffer:", audioBuffer.byteLength);
-              audioBuffer = null;
-              failedProviders.push("yarngpt (audio too small)");
-            }
-          } else {
-            // Response might be JSON with error
-            const responseText = await ttsResponse.text();
-            console.warn("YarnGPT TTS unexpected response type:", contentType, responseText.substring(0, 200));
-            failedProviders.push("yarngpt (unexpected response)");
-          }
-        } else {
-          const errorText = await ttsResponse.text();
-          console.warn("YarnGPT TTS failed:", ttsResponse.status, errorText.substring(0, 300));
-          failedProviders.push(`yarngpt (${ttsResponse.status})`);
-        }
-      } catch (yarnError) {
-        console.warn("YarnGPT TTS error:", yarnError instanceof Error ? yarnError.message : String(yarnError));
-        failedProviders.push(`yarngpt (${yarnError instanceof Error ? yarnError.message : 'error'})`);
+      const selectedVoice = yarnGPTVoiceMap[language.toLowerCase()] || yarnGPTVoiceMap["en"];
+      console.log(`Attempting YarnGPT TTS with NATIVE voice: ${selectedVoice} for language: ${language}...`);
+      
+      const result = await generateYarnGPTAudio(ttsText, selectedVoice, YARNGPT_API_KEY, maxChunks);
+      
+      if (result.buffer) {
+        audioBuffer = result.buffer;
+        ttsProvider = "yarngpt";
+        voiceUsed = selectedVoice;
+        chunksGenerated = result.chunksGenerated;
+        console.log(`YarnGPT TTS successful: ${chunksGenerated} chunks, voice: ${selectedVoice}, language: ${language}`);
+      } else {
+        const errorMsg = result.error || "unknown error";
+        console.warn(`YarnGPT failed: ${errorMsg}`);
+        failedProviders.push(`yarngpt (${errorMsg})`);
       }
     } else {
       console.log("YarnGPT API key not configured, skipping");
@@ -484,6 +598,8 @@ Create ${userPlan === "pro" ? "8-10" : (userPlan === "plus" ? "5-7" : "3-5")} st
         if (ttsResponse.ok) {
           audioBuffer = await ttsResponse.arrayBuffer();
           ttsProvider = "elevenlabs";
+          voiceUsed = elevenVoice;
+          chunksGenerated = 1;
           console.log("ElevenLabs TTS successful, audio size:", audioBuffer.byteLength);
         } else {
           const errorText = await ttsResponse.clone().text();
@@ -545,6 +661,8 @@ Create ${userPlan === "pro" ? "8-10" : (userPlan === "plus" ? "5-7" : "3-5")} st
             }
             audioBuffer = bytes.buffer;
             ttsProvider = "openrouter-gemini";
+            voiceUsed = "Kore";
+            chunksGenerated = 1;
             console.log("OpenRouter Gemini TTS successful");
           } else {
             console.warn("OpenRouter Gemini TTS: No audio data found in response. Keys:", Object.keys(responseData));
@@ -604,6 +722,8 @@ Create ${userPlan === "pro" ? "8-10" : (userPlan === "plus" ? "5-7" : "3-5")} st
             }
             audioBuffer = bytes.buffer;
             ttsProvider = "lovable-gemini";
+            voiceUsed = "Kore";
+            chunksGenerated = 1;
             console.log("Lovable AI Gateway TTS successful");
           } else {
             failedProviders.push("lovable (no audio data)");
@@ -623,6 +743,21 @@ Create ${userPlan === "pro" ? "8-10" : (userPlan === "plus" ? "5-7" : "3-5")} st
     if (failedProviders.length > 0) {
       console.log("Failed TTS providers:", failedProviders.join(", "));
     }
+
+    // Build TTS metadata for debugging
+    const ttsMetadata: TTSMetadata = {
+      tts_provider: ttsProvider,
+      requested_language: language,
+      translation_applied: translationApplied,
+      failed_providers: failedProviders,
+      tts_text_length: ttsText.length,
+      tts_text_preview: ttsText.substring(0, 100),
+      audio_size_bytes: audioBuffer?.byteLength || 0,
+      chunks_generated: chunksGenerated,
+      processed_at: new Date().toISOString(),
+      voice_used: voiceUsed,
+      file_type: fileType
+    };
 
     // Upload audio if we got any
     if (audioBuffer && audioBuffer.byteLength > 1024) {
@@ -661,7 +796,7 @@ Create ${userPlan === "pro" ? "8-10" : (userPlan === "plus" ? "5-7" : "3-5")} st
       console.warn("No TTS provider available or all failed - document will be ready without audio");
     }
 
-    // Update document with all the generated content (audio may be null if TTS failed)
+    // Update document with all the generated content including TTS metadata
     const { error: updateError } = await supabase
       .from("documents")
       .update({
@@ -670,7 +805,8 @@ Create ${userPlan === "pro" ? "8-10" : (userPlan === "plus" ? "5-7" : "3-5")} st
         study_prompts: studyPrompts,
         audio_url: audioPath,
         audio_duration_seconds: audioDurationSeconds,
-        audio_language: language
+        audio_language: language,
+        tts_metadata: ttsMetadata
       })
       .eq("id", documentId);
 
@@ -691,7 +827,7 @@ Create ${userPlan === "pro" ? "8-10" : (userPlan === "plus" ? "5-7" : "3-5")} st
       await supabase.from("usage_tracking").insert({
         user_id: document.user_id,
         action_type: "pdf_upload",
-        metadata: { document_id: documentId }
+        metadata: { document_id: documentId, file_type: fileType }
       });
     }
 
@@ -700,7 +836,14 @@ Create ${userPlan === "pro" ? "8-10" : (userPlan === "plus" ? "5-7" : "3-5")} st
         user_id: document.user_id,
         action_type: "audio_conversion",
         audio_minutes_used: audioDurationSeconds / 60,
-        metadata: { document_id: documentId, language, tts_provider: ttsProvider }
+        metadata: { 
+          document_id: documentId, 
+          language, 
+          tts_provider: ttsProvider,
+          voice_used: voiceUsed,
+          chunks_generated: chunksGenerated,
+          translation_applied: translationApplied
+        }
       });
     }
 
@@ -743,7 +886,7 @@ Create ${userPlan === "pro" ? "8-10" : (userPlan === "plus" ? "5-7" : "3-5")} st
         );
     }
 
-    console.log("Document processed successfully:", documentId, "TTS Provider:", ttsProvider, "Plan:", userPlan);
+    console.log("Document processed successfully:", documentId, "TTS Provider:", ttsProvider, "Voice:", voiceUsed, "Language:", language, "Plan:", userPlan);
 
     return new Response(
       JSON.stringify({
@@ -753,6 +896,10 @@ Create ${userPlan === "pro" ? "8-10" : (userPlan === "plus" ? "5-7" : "3-5")} st
         studyPromptsCount: studyPrompts.length,
         audioDuration: audioDurationSeconds,
         ttsProvider,
+        voiceUsed,
+        chunksGenerated,
+        translationApplied,
+        fileType,
         userPlan
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }

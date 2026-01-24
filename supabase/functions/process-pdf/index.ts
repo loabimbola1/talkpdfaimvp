@@ -27,8 +27,10 @@ const RATE_LIMIT_CONFIG = {
 };
 
 // YarnGPT voice mapping for Nigerian languages
+// Valid YarnGPT voices: "idera" (default), "chinenye", "zainab", "tayo"
+// Note: "emma" is NOT a valid voice - use "idera" for English with Nigerian accent
 const yarnGPTVoiceMap: Record<string, string> = {
-  "en": "emma",      // Authoritative, deep
+  "en": "idera",     // Nigerian accent for English (default/best voice)
   "yo": "idera",     // Melodic, gentle (Yoruba native)
   "ha": "zainab",    // Soothing, gentle (Hausa native)
   "ig": "chinenye",  // Engaging, warm (Igbo native)

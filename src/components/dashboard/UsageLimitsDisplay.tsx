@@ -1,101 +1,21 @@
-import { useState, useEffect } from "react";
-import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
 import { FileText, Headphones, Brain, AlertTriangle, Crown } from "lucide-react";
+import { useUsageLimits } from "@/hooks/useUsageLimits";
 
 interface UsageLimitsDisplayProps {
   onUpgrade?: () => void;
 }
 
-interface UsageLimits {
-  pdfs_per_day: number;
-  audio_minutes_per_day: number;
-  explain_back_per_day: number;
-  can_download: boolean;
-}
-
-const PLAN_LIMITS: Record<string, UsageLimits> = {
-  free: {
-    pdfs_per_day: 2,
-    audio_minutes_per_day: 5,
-    explain_back_per_day: 0,
-    can_download: false,
-  },
-  plus: {
-    pdfs_per_day: 10,
-    audio_minutes_per_day: 60,
-    explain_back_per_day: 20,
-    can_download: false,
-  },
-  pro: {
-    pdfs_per_day: -1, // unlimited
-    audio_minutes_per_day: -1,
-    explain_back_per_day: -1,
-    can_download: true,
-  },
-};
-
-interface DailyUsage {
-  pdfs_uploaded: number;
-  audio_minutes_used: number;
-  explain_back_count: number;
-}
-
 const UsageLimitsDisplay = ({ onUpgrade }: UsageLimitsDisplayProps) => {
-  const [plan, setPlan] = useState<string>("free");
-  const [usage, setUsage] = useState<DailyUsage>({
-    pdfs_uploaded: 0,
-    audio_minutes_used: 0,
-    explain_back_count: 0,
-  });
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    fetchUsageData();
-  }, []);
-
-  const fetchUsageData = async () => {
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.user) return;
-
-      // Get user's plan
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("subscription_plan")
-        .eq("user_id", session.user.id)
-        .single();
-
-      if (profile?.subscription_plan) {
-        setPlan(profile.subscription_plan);
-      }
-
-      // Get today's usage
-      const today = new Date().toISOString().split("T")[0];
-      const { data: dailyUsage } = await supabase
-        .from("daily_usage_summary")
-        .select("*")
-        .eq("user_id", session.user.id)
-        .eq("date", today)
-        .single();
-
-      if (dailyUsage) {
-        setUsage({
-          pdfs_uploaded: dailyUsage.pdfs_uploaded || 0,
-          audio_minutes_used: Number(dailyUsage.audio_minutes_used) || 0,
-          explain_back_count: dailyUsage.explain_back_count || 0,
-        });
-      }
-    } catch (error) {
-      console.error("Error fetching usage:", error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const limits = PLAN_LIMITS[plan] || PLAN_LIMITS.free;
+  const { 
+    plan, 
+    limits, 
+    loading, 
+    usage,
+    getPdfLimitDisplay,
+  } = useUsageLimits();
 
   const getUsagePercentage = (used: number, limit: number) => {
     if (limit === -1) return 0;
@@ -115,8 +35,10 @@ const UsageLimitsDisplay = ({ onUpgrade }: UsageLimitsDisplayProps) => {
     return null;
   }
 
+  const pdfDisplay = getPdfLimitDisplay();
+  
   const showWarning = 
-    isLimitReached(usage.pdfs_uploaded, limits.pdfs_per_day) ||
+    isLimitReached(pdfDisplay.used, pdfDisplay.limit) ||
     isLimitReached(usage.audio_minutes_used, limits.audio_minutes_per_day);
 
   return (
@@ -124,10 +46,16 @@ const UsageLimitsDisplay = ({ onUpgrade }: UsageLimitsDisplayProps) => {
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <div>
-            <CardTitle className="text-lg">Daily Usage</CardTitle>
-            <CardDescription>Your usage resets at midnight</CardDescription>
+            <CardTitle className="text-lg">
+              {plan === "free" ? "Daily Usage" : "Usage Limits"}
+            </CardTitle>
+            <CardDescription>
+              {plan === "free" 
+                ? "Your usage resets at midnight" 
+                : "PDFs reset monthly, audio resets daily"}
+            </CardDescription>
           </div>
-        {plan !== "study_pass" && (
+          {plan !== "pro" && (
             <Button variant="outline" size="sm" className="gap-2" onClick={onUpgrade}>
               <Crown className="h-4 w-4" />
               Upgrade
@@ -139,7 +67,7 @@ const UsageLimitsDisplay = ({ onUpgrade }: UsageLimitsDisplayProps) => {
         {showWarning && (
           <div className="flex items-center gap-2 p-3 bg-yellow-500/10 text-yellow-600 dark:text-yellow-400 rounded-lg text-sm">
             <AlertTriangle className="h-4 w-4 flex-shrink-0" />
-            <span>You've reached some daily limits. Upgrade to continue.</span>
+            <span>You've reached some limits. Upgrade to continue.</span>
           </div>
         )}
 
@@ -151,13 +79,18 @@ const UsageLimitsDisplay = ({ onUpgrade }: UsageLimitsDisplayProps) => {
               <span>PDFs Uploaded</span>
             </div>
             <span className="text-muted-foreground">
-              {usage.pdfs_uploaded} / {formatLimit(limits.pdfs_per_day)}
+              {pdfDisplay.used} / {formatLimit(pdfDisplay.limit)}
+              {pdfDisplay.limit !== -1 && (
+                <span className="text-xs ml-1">
+                  ({pdfDisplay.period === "day" ? "today" : "this month"})
+                </span>
+              )}
             </span>
           </div>
-          {limits.pdfs_per_day !== -1 && (
+          {pdfDisplay.limit !== -1 && (
             <Progress 
-              value={getUsagePercentage(usage.pdfs_uploaded, limits.pdfs_per_day)} 
-              className={isLimitReached(usage.pdfs_uploaded, limits.pdfs_per_day) ? "[&>div]:bg-destructive" : ""}
+              value={getUsagePercentage(pdfDisplay.used, pdfDisplay.limit)} 
+              className={isLimitReached(pdfDisplay.used, pdfDisplay.limit) ? "[&>div]:bg-destructive" : ""}
             />
           )}
         </div>
@@ -171,6 +104,9 @@ const UsageLimitsDisplay = ({ onUpgrade }: UsageLimitsDisplayProps) => {
             </div>
             <span className="text-muted-foreground">
               {Math.round(usage.audio_minutes_used)} / {formatLimit(limits.audio_minutes_per_day)} min
+              {limits.audio_minutes_per_day !== -1 && (
+                <span className="text-xs ml-1">(today)</span>
+              )}
             </span>
           </div>
           {limits.audio_minutes_per_day !== -1 && (
@@ -191,6 +127,9 @@ const UsageLimitsDisplay = ({ onUpgrade }: UsageLimitsDisplayProps) => {
               </div>
               <span className="text-muted-foreground">
                 {usage.explain_back_count} / {formatLimit(limits.explain_back_per_day)}
+                {limits.explain_back_per_day !== -1 && (
+                  <span className="text-xs ml-1">(today)</span>
+                )}
               </span>
             </div>
             {limits.explain_back_per_day !== -1 && (

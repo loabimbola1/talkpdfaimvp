@@ -72,14 +72,21 @@ const AudioStatusIndicator = ({
   const handleRetry = async () => {
     if (isRetrying) return;
     
+    // Don't retry if we don't have a valid language - require user to select
+    if (!audioLanguage) {
+      toast.error("Please select a language from the document's audio settings before retrying.");
+      return;
+    }
+    
     setIsRetrying(true);
     onStatusChange?.("processing");
 
     try {
+      console.log(`Retrying audio generation for document ${documentId} with language: ${audioLanguage}`);
       const { error } = await supabase.functions.invoke("process-pdf", {
         body: {
           documentId,
-          language: audioLanguage || "en",
+          language: audioLanguage, // Use the document's stored language, not a default
           regenerateAudio: true,
         },
       });

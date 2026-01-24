@@ -48,6 +48,7 @@ const PDFUpload = ({ onDocumentProcessed, onUpgrade }: PDFUploadProps) => {
     loading: usageLoading, 
     canUploadPdf, 
     getRemainingPdfs,
+    getPdfLimitDisplay,
     refetch: refetchUsage 
   } = useUsageLimits();
 
@@ -64,11 +65,12 @@ const PDFUpload = ({ onDocumentProcessed, onUpgrade }: PDFUploadProps) => {
       .substring(0, 100);        // Limit length
   };
 
-  const uploadFile = async (file: File) => {
+  // Capture selected language at function creation time to avoid stale closures
+  const uploadFileWithLanguage = useCallback(async (file: File, language: string) => {
     const sanitizedName = sanitizeFileName(file.name);
     const newFile: UploadedFile = {
       file,
-      name: file.name,  // Keep original name for display
+      name: file.name,
       size: file.size,
       status: "uploading",
       progress: 0,
@@ -80,7 +82,6 @@ const PDFUpload = ({ onDocumentProcessed, onUpgrade }: PDFUploadProps) => {
     let createdDocumentId: string | undefined;
 
     try {
-      // Get current user
       const {
         data: { user },
       } = await supabase.auth.getUser();
@@ -88,14 +89,15 @@ const PDFUpload = ({ onDocumentProcessed, onUpgrade }: PDFUploadProps) => {
         throw new Error("Not authenticated");
       }
 
-      // Create document record first (status defaults to 'uploaded' in DB)
+      // Create document record with audio_language pre-set
       const { data: document, error: docError } = await supabase
         .from("documents")
         .insert({
           user_id: user.id,
-          title: file.name.replace(".pdf", ""),  // Keep original title for display
-          file_name: sanitizedName,  // Use sanitized name for storage
+          title: file.name.replace(".pdf", ""),
+          file_name: sanitizedName,
           file_size: file.size,
+          audio_language: language, // Store selected language immediately
         })
         .select()
         .single();
@@ -103,7 +105,6 @@ const PDFUpload = ({ onDocumentProcessed, onUpgrade }: PDFUploadProps) => {
       if (docError) throw docError;
       createdDocumentId = document.id;
 
-      // Upload file to storage with sanitized filename
       const filePath = `${user.id}/${document.id}/${sanitizedName}`;
 
       const { error: uploadError } = await supabase.storage.from("talkpdf").upload(filePath, file, {
@@ -113,7 +114,6 @@ const PDFUpload = ({ onDocumentProcessed, onUpgrade }: PDFUploadProps) => {
 
       if (uploadError) throw uploadError;
 
-      // Update document with file URL
       await supabase
         .from("documents")
         .update({
@@ -132,13 +132,13 @@ const PDFUpload = ({ onDocumentProcessed, onUpgrade }: PDFUploadProps) => {
 
       toast.success(`${file.name} uploaded. Starting processing...`);
 
-      // Auto-process the PDF immediately after upload
       setIsProcessing(true);
       try {
+        console.log(`Processing PDF with language: ${language}`);
         const { data, error } = await supabase.functions.invoke("process-pdf", {
           body: {
             documentId: document.id,
-            language: selectedLanguage
+            language: language, // Use the captured language parameter
           }
         });
 
@@ -146,7 +146,6 @@ const PDFUpload = ({ onDocumentProcessed, onUpgrade }: PDFUploadProps) => {
 
         toast.success(`${file.name} processed successfully!`);
         
-        // Check for achievement unlocks and near-milestones
         await checkAndCelebrate("first_pdf");
         await checkAndCelebrate("pdf_5");
         await checkAndCelebrate("pdf_10");
@@ -154,7 +153,6 @@ const PDFUpload = ({ onDocumentProcessed, onUpgrade }: PDFUploadProps) => {
         await checkAndCelebrate("pdf_50");
         await checkNearMilestones("documents");
         
-        // Remove from list and notify parent
         setFiles((prev) => prev.filter((f) => f.name !== file.name));
         onDocumentProcessed?.(document.id);
       } catch (processError: any) {
@@ -182,13 +180,20 @@ const PDFUpload = ({ onDocumentProcessed, onUpgrade }: PDFUploadProps) => {
     } finally {
       setIsUploading(false);
     }
-  };
+  }, [checkAndCelebrate, checkNearMilestones, onDocumentProcessed]);
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
+    // Capture the current language value immediately
+    const currentLanguage = selectedLanguage;
+    console.log(`onDrop called with language: ${currentLanguage}`);
+    
     // Check usage limits before allowing upload
     if (!canUploadPdf()) {
+      const limitMsg = plan === "free" 
+        ? `Daily PDF limit reached (${limits.pdfs_per_day} PDFs).`
+        : `Monthly PDF limit reached.`;
       toast.error(
-        `Daily PDF limit reached (${limits.pdfs_per_day} PDFs). Upgrade your plan to upload more.`,
+        `${limitMsg} Upgrade your plan to upload more.`,
         {
           action: onUpgrade ? {
             label: "Upgrade",
@@ -201,7 +206,8 @@ const PDFUpload = ({ onDocumentProcessed, onUpgrade }: PDFUploadProps) => {
 
     const remaining = getRemainingPdfs();
     if (acceptedFiles.length > remaining && remaining !== Infinity) {
-      toast.warning(`You can only upload ${remaining} more PDF(s) today.`);
+      const timeFrame = plan === "free" ? "today" : "this month";
+      toast.warning(`You can only upload ${remaining} more PDF(s) ${timeFrame}.`);
       acceptedFiles = acceptedFiles.slice(0, remaining);
     }
 
@@ -214,9 +220,10 @@ const PDFUpload = ({ onDocumentProcessed, onUpgrade }: PDFUploadProps) => {
         toast.error("File size must be less than 20MB");
         return;
       }
-      uploadFile(file);
+      // Pass the captured language explicitly
+      uploadFileWithLanguage(file, currentLanguage);
     });
-  }, [canUploadPdf, getRemainingPdfs, limits.pdfs_per_day, onUpgrade]);
+  }, [canUploadPdf, getRemainingPdfs, limits.pdfs_per_day, onUpgrade, plan, selectedLanguage, uploadFileWithLanguage]);
 
   // Refetch usage after processing completes
   useEffect(() => {
@@ -259,6 +266,10 @@ const PDFUpload = ({ onDocumentProcessed, onUpgrade }: PDFUploadProps) => {
       return;
     }
 
+    // Capture language at the start of processing
+    const processingLanguage = selectedLanguage;
+    console.log(`Processing PDFs with language: ${processingLanguage}`);
+
     setIsProcessing(true);
     let lastProcessedId: string | null = null;
 
@@ -273,7 +284,7 @@ const PDFUpload = ({ onDocumentProcessed, onUpgrade }: PDFUploadProps) => {
         const { data, error } = await supabase.functions.invoke("process-pdf", {
           body: {
             documentId: file.id,
-            language: selectedLanguage
+            language: processingLanguage
           }
         });
 
@@ -316,7 +327,12 @@ const PDFUpload = ({ onDocumentProcessed, onUpgrade }: PDFUploadProps) => {
           <AlertTriangle className="h-4 w-4 text-yellow-600" />
           <AlertDescription className="flex items-center justify-between">
             <span className="text-yellow-700 dark:text-yellow-400">
-              You've reached your daily limit of {limits.pdfs_per_day} PDFs. 
+              {plan === "free" 
+                ? `You've reached your daily limit of ${limits.pdfs_per_day} PDFs.`
+                : plan === "plus"
+                  ? `You've reached your monthly limit of ${limits.pdfs_per_month} PDFs.`
+                  : "Upload limit reached."
+              }
               {plan === "free" && " Upgrade to upload more."}
             </span>
             {plan !== "pro" && onUpgrade && (
@@ -330,11 +346,15 @@ const PDFUpload = ({ onDocumentProcessed, onUpgrade }: PDFUploadProps) => {
       )}
 
       {/* Remaining uploads indicator */}
-      {!usageLoading && canUpload && remainingPdfs !== Infinity && (
-        <div className="text-sm text-muted-foreground text-center">
-          <span className="font-medium text-foreground">{remainingPdfs}</span> PDF upload{remainingPdfs !== 1 ? "s" : ""} remaining today
-        </div>
-      )}
+      {!usageLoading && canUpload && remainingPdfs !== Infinity && (() => {
+        const pdfDisplay = getPdfLimitDisplay();
+        const timeFrame = pdfDisplay.period === "day" ? "today" : "this month";
+        return (
+          <div className="text-sm text-muted-foreground text-center">
+            <span className="font-medium text-foreground">{remainingPdfs}</span> PDF upload{remainingPdfs !== 1 ? "s" : ""} remaining {timeFrame}
+          </div>
+        );
+      })()}
 
       {/* Language Selection */}
       <div className="flex items-center gap-4">

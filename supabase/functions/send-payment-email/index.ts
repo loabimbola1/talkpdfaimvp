@@ -100,7 +100,7 @@ serve(async (req) => {
               </p>
               
               <div style="text-align: center;">
-                <a href="https://talkpdf.com.ng/dashboard" style="display: inline-block; background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white; padding: 14px 32px; border-radius: 8px; text-decoration: none; font-weight: 600;">
+                <a href="https://www.talkpdf.online/dashboard" style="display: inline-block; background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white; padding: 14px 32px; border-radius: 8px; text-decoration: none; font-weight: 600;">
                   Go to Dashboard →
                 </a>
               </div>
@@ -145,7 +145,7 @@ serve(async (req) => {
               </div>
               
               <div style="text-align: center; margin-top: 30px;">
-                <a href="https://talkpdf.com.ng/dashboard?tab=subscription" style="display: inline-block; background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white; padding: 14px 32px; border-radius: 8px; text-decoration: none; font-weight: 600;">
+                <a href="https://www.talkpdf.online/dashboard?tab=subscription" style="display: inline-block; background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white; padding: 14px 32px; border-radius: 8px; text-decoration: none; font-weight: 600;">
                   Try Again →
                 </a>
               </div>

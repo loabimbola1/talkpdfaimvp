@@ -189,7 +189,7 @@ serve(async (req: Request): Promise<Response> => {
               <p style="color: #6b7280; margin: 0; font-size: 14px; line-height: 1.5; white-space: pre-wrap;">${message.substring(0, 300)}${message.length > 300 ? "..." : ""}</p>
             </div>
             <p style="color: #1f2937; font-size: 16px; line-height: 1.6;">
-              Check out our <a href="https://talkpdfaimvp.lovable.app/help" style="color: #10b981;">Help Center</a> for instant answers.
+              Check out our <a href="https://www.talkpdf.online/help" style="color: #10b981;">Help Center</a> for instant answers.
             </p>
             <p style="color: #6b7280; margin-top: 30px; font-size: 14px;">
               Best regards,<br>The TalkPDF AI Team

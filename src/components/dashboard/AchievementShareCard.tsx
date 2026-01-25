@@ -30,7 +30,7 @@ interface AchievementShareCardProps {
 const AchievementShareCard = ({ achievement, isOpen, onClose }: AchievementShareCardProps) => {
   const [copied, setCopied] = useState(false);
 
-  const shareUrl = `https://talkpdfaimvp.lovable.app`;
+  const shareUrl = `https://www.talkpdf.online`;
   const shareText = `🏆 I just unlocked the "${achievement.name}" achievement on TalkPDF AI!\n\n${achievement.description}\n\n📚 Join me and start learning smarter!`;
 
   const handleShare = (platform: string) => {

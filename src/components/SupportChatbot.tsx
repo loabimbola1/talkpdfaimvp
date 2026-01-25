@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { MessageCircle, X, Send, Loader2, Bot, User, Sparkles } from "lucide-react";
+import { MessageCircle, X, Send, Loader2, Bot, User, Sparkles, LogIn } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
 
@@ -90,12 +90,15 @@ export function SupportChatbot() {
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [userPlan, setUserPlan] = useState<string>("free");
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    // Check user's subscription plan for priority support
-    const checkPlan = async () => {
+    // Check user's authentication and subscription plan
+    const checkAuth = async () => {
       const { data: { session } } = await supabase.auth.getSession();
+      setIsAuthenticated(!!session);
+      
       if (session) {
         const { data: profile } = await supabase
           .from("profiles")
@@ -108,7 +111,17 @@ export function SupportChatbot() {
         }
       }
     };
-    checkPlan();
+    checkAuth();
+
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      setIsAuthenticated(!!session);
+      if (!session) {
+        setUserPlan("free");
+      }
+    });
+
+    return () => subscription.unsubscribe();
   }, []);
 
   useEffect(() => {
@@ -148,7 +161,6 @@ export function SupportChatbot() {
         const { data, error } = await supabase.functions.invoke("support-chatbot", {
           body: {
             message: userMessage.content,
-            userPlan,
             conversationHistory: messages.slice(-6).map(m => ({
               role: m.role,
               content: m.content
@@ -181,6 +193,94 @@ export function SupportChatbot() {
   };
 
   const isPremium = userPlan === "plus" || userPlan === "pro";
+
+  // Show login prompt for unauthenticated users
+  if (isAuthenticated === false) {
+    return (
+      <>
+        {/* Floating Button */}
+        <Button
+          onClick={() => setIsOpen(true)}
+          className={cn(
+            "fixed bottom-6 right-6 z-50 h-14 w-14 rounded-full shadow-lg",
+            "bg-primary hover:bg-primary/90 transition-all duration-300",
+            isOpen && "scale-0 opacity-0"
+          )}
+          size="icon"
+        >
+          <MessageCircle className="h-6 w-6" />
+        </Button>
+
+        {/* Login Prompt */}
+        <div
+          className={cn(
+            "fixed bottom-6 right-6 z-50 w-[380px] max-w-[calc(100vw-48px)]",
+            "bg-card border border-border rounded-2xl shadow-2xl",
+            "flex flex-col overflow-hidden transition-all duration-300",
+            isOpen ? "opacity-100 scale-100" : "opacity-0 scale-95 h-0 pointer-events-none"
+          )}
+        >
+          {/* Header */}
+          <div className="flex items-center justify-between p-4 border-b border-border bg-primary/5">
+            <div className="flex items-center gap-3">
+              <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
+                <Bot className="h-5 w-5 text-primary" />
+              </div>
+              <div>
+                <h3 className="font-semibold text-foreground text-sm">TalkPDF Support</h3>
+                <p className="text-xs text-muted-foreground">AI-powered assistance</p>
+              </div>
+            </div>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8"
+              onClick={() => setIsOpen(false)}
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
+
+          {/* Login Content */}
+          <div className="p-6 text-center">
+            <div className="h-16 w-16 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-4">
+              <LogIn className="h-8 w-8 text-primary" />
+            </div>
+            <h3 className="font-semibold text-lg mb-2 text-foreground">Sign in to Chat</h3>
+            <p className="text-sm text-muted-foreground mb-6">
+              Please sign in to access our AI support assistant and get personalized help.
+            </p>
+            <Button 
+              onClick={() => window.location.href = "/auth"}
+              className="w-full"
+            >
+              Sign In to Continue
+            </Button>
+            <p className="text-xs text-muted-foreground mt-4">
+              Need help without signing in?<br />
+              Email us at <a href="mailto:asktalkpdfai@gmail.com" className="text-primary hover:underline">asktalkpdfai@gmail.com</a>
+            </p>
+          </div>
+        </div>
+      </>
+    );
+  }
+
+  // Loading state while checking auth
+  if (isAuthenticated === null) {
+    return (
+      <Button
+        className={cn(
+          "fixed bottom-6 right-6 z-50 h-14 w-14 rounded-full shadow-lg",
+          "bg-primary hover:bg-primary/90 transition-all duration-300"
+        )}
+        size="icon"
+        disabled
+      >
+        <Loader2 className="h-6 w-6 animate-spin" />
+      </Button>
+    );
+  }
 
   return (
     <>

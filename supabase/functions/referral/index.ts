@@ -14,6 +14,10 @@ interface ReferralRequest {
 // Credits awarded for successful referral - BOTH referrer and referred get this
 const REFERRAL_CREDITS = 5;
 
+// Abuse protection constants
+const DAILY_REFERRAL_CAP = 5;              // Max 5 successful referrals per day per referrer
+const ACCOUNT_AGE_REQUIREMENT_HOURS = 24;  // Account must be 24h old to use referral codes
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -48,6 +52,12 @@ serve(async (req) => {
     const userId = userData.user.id;
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
     const { action, referralCode }: ReferralRequest = await req.json();
+
+    // Get client IP for abuse tracking
+    const clientIP = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || 
+                     req.headers.get("cf-connecting-ip") || 
+                     "unknown";
+    const userAgent = req.headers.get("user-agent") || "unknown";
 
     if (action === "validate") {
       // Check if referral code is valid and not the user's own code
@@ -88,6 +98,48 @@ serve(async (req) => {
       if (existingRef) {
         return new Response(
           JSON.stringify({ valid: false, error: "You have already used a referral code" }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      // Check account age requirement
+      const accountCreated = new Date(userData.user.created_at);
+      const accountAgeMs = Date.now() - accountCreated.getTime();
+      const minAgeMs = ACCOUNT_AGE_REQUIREMENT_HOURS * 60 * 60 * 1000;
+
+      if (accountAgeMs < minAgeMs) {
+        const hoursRemaining = Math.ceil((minAgeMs - accountAgeMs) / (60 * 60 * 1000));
+        return new Response(
+          JSON.stringify({ 
+            valid: false, 
+            error: `Your account must be at least ${ACCOUNT_AGE_REQUIREMENT_HOURS} hours old to use referral codes. Please try again in ${hoursRemaining} hour(s).` 
+          }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      // Check email verification
+      if (!userData.user.email_confirmed_at) {
+        return new Response(
+          JSON.stringify({ valid: false, error: "Please verify your email before applying a referral code." }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      // Check if referrer has hit daily cap
+      const todayStart = new Date();
+      todayStart.setHours(0, 0, 0, 0);
+
+      const { count: todayReferrals } = await supabase
+        .from("referrals")
+        .select("*", { count: "exact", head: true })
+        .eq("referrer_id", referrer.user_id)
+        .eq("status", "completed")
+        .gte("completed_at", todayStart.toISOString());
+
+      if ((todayReferrals || 0) >= DAILY_REFERRAL_CAP) {
+        return new Response(
+          JSON.stringify({ valid: false, error: "This referrer has reached their daily referral limit. Please try again tomorrow." }),
           { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
@@ -139,7 +191,62 @@ serve(async (req) => {
         );
       }
 
-      // Create referral record (credits awarded to BOTH)
+      // Check account age requirement
+      const accountCreated = new Date(userData.user.created_at);
+      const accountAgeMs = Date.now() - accountCreated.getTime();
+      const minAgeMs = ACCOUNT_AGE_REQUIREMENT_HOURS * 60 * 60 * 1000;
+
+      if (accountAgeMs < minAgeMs) {
+        const hoursRemaining = Math.ceil((minAgeMs - accountAgeMs) / (60 * 60 * 1000));
+        return new Response(
+          JSON.stringify({ 
+            success: false, 
+            error: `Your account must be at least ${ACCOUNT_AGE_REQUIREMENT_HOURS} hours old to use referral codes. Please try again in ${hoursRemaining} hour(s).` 
+          }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      // Check email verification
+      if (!userData.user.email_confirmed_at) {
+        return new Response(
+          JSON.stringify({ success: false, error: "Please verify your email before applying a referral code." }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      // Check if referrer has hit daily cap
+      const todayStart = new Date();
+      todayStart.setHours(0, 0, 0, 0);
+
+      const { count: todayReferrals } = await supabase
+        .from("referrals")
+        .select("*", { count: "exact", head: true })
+        .eq("referrer_id", referrer.user_id)
+        .eq("status", "completed")
+        .gte("completed_at", todayStart.toISOString());
+
+      if ((todayReferrals || 0) >= DAILY_REFERRAL_CAP) {
+        return new Response(
+          JSON.stringify({ success: false, error: "This referrer has reached their daily referral limit. Please try again tomorrow." }),
+          { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      // Check for suspicious IP patterns (same IP, multiple accounts in last 24h)
+      const last24h = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+      const { count: sameIPReferrals } = await supabase
+        .from("referrals")
+        .select("*", { count: "exact", head: true })
+        .eq("ip_address", clientIP)
+        .gte("created_at", last24h);
+
+      const isSuspicious = (sameIPReferrals || 0) >= 3;
+      if (isSuspicious) {
+        console.warn(`Suspicious referral activity detected from IP: ${clientIP}, same IP referrals: ${sameIPReferrals}`);
+      }
+
+      // Create referral record with abuse tracking (credits awarded to BOTH)
       const { error: insertError } = await supabase
         .from("referrals")
         .insert({
@@ -148,11 +255,23 @@ serve(async (req) => {
           referral_code: referralCode.toUpperCase(),
           status: "completed",
           credits_awarded: REFERRAL_CREDITS * 2, // Track total credits awarded (both users)
-          completed_at: new Date().toISOString()
+          completed_at: new Date().toISOString(),
+          ip_address: clientIP,
+          user_agent: userAgent.substring(0, 500), // Truncate to prevent oversized data
+          flagged_suspicious: isSuspicious
         });
 
       if (insertError) {
         console.error("Failed to create referral:", insertError);
+        
+        // Check if it's a unique constraint violation
+        if (insertError.code === "23505") {
+          return new Response(
+            JSON.stringify({ success: false, error: "You have already used a referral code" }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+        
         return new Response(
           JSON.stringify({ success: false, error: "Failed to apply referral" }),
           { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -175,7 +294,7 @@ serve(async (req) => {
 
       console.log(`Awarded ${REFERRAL_CREDITS} credits to referrer ${referrer.user_id}`);
 
-      // Award credits to REFERRED USER (this was missing!)
+      // Award credits to REFERRED USER
       const { data: referredProfile } = await supabase
         .from("profiles")
         .select("referral_credits, full_name")
@@ -216,7 +335,7 @@ serve(async (req) => {
         // Don't fail the main request if email fails
       }
 
-      console.log(`Referral applied: ${userId} referred by ${referrer.user_id}, both received ${REFERRAL_CREDITS} credits`);
+      console.log(`Referral applied: ${userId} referred by ${referrer.user_id}, both received ${REFERRAL_CREDITS} credits. Suspicious: ${isSuspicious}`);
 
       return new Response(
         JSON.stringify({ 
@@ -252,7 +371,8 @@ serve(async (req) => {
           totalCredits: profile?.referral_credits || 0,
           completedReferrals,
           pendingReferrals,
-          creditsPerReferral: REFERRAL_CREDITS
+          creditsPerReferral: REFERRAL_CREDITS,
+          dailyCap: DAILY_REFERRAL_CAP
         }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );

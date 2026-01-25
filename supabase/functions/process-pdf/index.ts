@@ -52,13 +52,13 @@ const yarnGPTVoiceMap: Record<string, string> = {
 };
 
 // ElevenLabs voice mapping for Nigerian-sounding voices
-// Using voices with African/Nigerian accents where possible
+// Using Daniel for warmer, African-friendly tone when YarnGPT fails
 const elevenLabsVoiceMap: Record<string, string> = {
-  "en": "pFZP5JQG7iQjIQuC4Bku",  // Lily - clear, warm (better than British Sarah)
-  "yo": "onwK4e9ZLuTAKqWW03F9",  // Daniel - warm, expressive
-  "ha": "TX3LPaxmHKxFdv7VOQHJ",  // Liam - warm, engaging
-  "ig": "cjVigY5qzO86Huf0OWal",  // Eric - clear, friendly
-  "pcm": "bIHbv24MWmeRgasZH58o", // Will - friendly, conversational
+  "en": "onwK4e9ZLuTAKqWW03F9",  // Daniel - warmer, African-friendly tone
+  "yo": "onwK4e9ZLuTAKqWW03F9",  // Daniel - for consistency
+  "ha": "onwK4e9ZLuTAKqWW03F9",  // Daniel - for consistency
+  "ig": "onwK4e9ZLuTAKqWW03F9",  // Daniel - for consistency
+  "pcm": "onwK4e9ZLuTAKqWW03F9", // Daniel - for consistency
 };
 
 // Plan-based TTS character limits
@@ -624,7 +624,7 @@ Create ${userPlan === "pro" ? "8-10" : (userPlan === "plus" ? "5-7" : "3-5")} st
           headers: {
             "Authorization": `Bearer ${OPENROUTER_API_KEY}`,
             "Content-Type": "application/json",
-            "HTTP-Referer": "https://talkpdfaimvp.lovable.app",
+            "HTTP-Referer": "https://www.talkpdf.online",
             "X-Title": "TalkPDF AI"
           },
           body: JSON.stringify({

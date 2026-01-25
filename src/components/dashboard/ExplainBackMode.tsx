@@ -211,13 +211,28 @@ const ExplainBackMode = ({ documentId: propDocumentId, documentTitle, promptInde
   const transcribeAudio = async (audioBlob: Blob) => {
     setIsTranscribing(true);
     try {
+      // Validate blob size - too small means recording failed or was too short
+      if (audioBlob.size < 1000) {
+        toast.error("Recording too short. Please speak for at least 2 seconds.");
+        setIsTranscribing(false);
+        return;
+      }
+
+      console.log(`Transcribing audio: ${audioBlob.size} bytes, type: ${audioBlob.type}`);
+
       // Convert blob to base64
       const reader = new FileReader();
-      const base64Promise = new Promise<string>((resolve) => {
+      const base64Promise = new Promise<string>((resolve, reject) => {
         reader.onloadend = () => {
-          const base64 = (reader.result as string).split(',')[1];
+          const result = reader.result as string;
+          if (!result) {
+            reject(new Error("Failed to read audio file"));
+            return;
+          }
+          const base64 = result.split(',')[1];
           resolve(base64);
         };
+        reader.onerror = () => reject(new Error("Failed to read audio file"));
       });
       reader.readAsDataURL(audioBlob);
       const base64Audio = await base64Promise;
@@ -227,15 +242,21 @@ const ExplainBackMode = ({ documentId: propDocumentId, documentTitle, promptInde
         body: { audio: base64Audio, language: voiceLanguage }
       });
 
-      if (error) throw error;
+      if (error) {
+        console.error("Transcription API error:", error);
+        throw new Error(error.message || "Transcription service unavailable");
+      }
 
-      if (data?.text) {
+      if (data?.text && data.text.trim() !== "") {
         setExplanation((prev) => prev ? `${prev} ${data.text}` : data.text);
         toast.success("Voice transcribed successfully!");
+      } else {
+        toast.error("No speech detected. Please speak clearly and try again.");
       }
     } catch (error) {
       console.error("Transcription error:", error);
-      toast.error("Failed to transcribe. Please type your explanation instead.");
+      const message = error instanceof Error ? error.message : "Failed to transcribe";
+      toast.error(`${message}. Please type your explanation instead.`);
     } finally {
       setIsTranscribing(false);
     }
@@ -319,7 +340,7 @@ const ExplainBackMode = ({ documentId: propDocumentId, documentTitle, promptInde
     if (!earnedBadge) return;
     
     const shareText = `🎓 I just earned the "${earnedBadge.badge_name}" badge on TalkPDF AI! ${earnedBadge.description} #TalkPDFAI #Learning #Nigeria`;
-    const url = encodeURIComponent("https://talkpdf.ai");
+    const url = encodeURIComponent("https://www.talkpdf.online");
     const text = encodeURIComponent(shareText);
 
     let shareUrl = "";

@@ -355,31 +355,40 @@ export type Database = {
           completed_at: string | null
           created_at: string
           credits_awarded: number | null
+          flagged_suspicious: boolean | null
           id: string
+          ip_address: string | null
           referral_code: string
           referred_id: string
           referrer_id: string
           status: string
+          user_agent: string | null
         }
         Insert: {
           completed_at?: string | null
           created_at?: string
           credits_awarded?: number | null
+          flagged_suspicious?: boolean | null
           id?: string
+          ip_address?: string | null
           referral_code: string
           referred_id: string
           referrer_id: string
           status?: string
+          user_agent?: string | null
         }
         Update: {
           completed_at?: string | null
           created_at?: string
           credits_awarded?: number | null
+          flagged_suspicious?: boolean | null
           id?: string
+          ip_address?: string | null
           referral_code?: string
           referred_id?: string
           referrer_id?: string
           status?: string
+          user_agent?: string | null
         }
         Relationships: []
       }

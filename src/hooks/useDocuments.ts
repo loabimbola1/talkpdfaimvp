@@ -100,26 +100,47 @@ export function useDocuments() {
   }, [isOnline, cacheDocuments, loadFromCache]);
 
   useEffect(() => {
-    fetchDocuments();
+    // Get current user for filtered subscription
+    const setupSubscription = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (!user) {
+        fetchDocuments();
+        return () => {};
+      }
 
-    // Subscribe to realtime changes
-    const channel = supabase
-      .channel("documents-changes")
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "documents",
-        },
-        () => {
-          fetchDocuments();
-        }
-      )
-      .subscribe();
+      fetchDocuments();
+
+      // Subscribe to realtime changes filtered by user_id
+      const channel = supabase
+        .channel(`documents-${user.id}`)
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table: "documents",
+            filter: `user_id=eq.${user.id}`,
+          },
+          (payload) => {
+            console.log("Document change detected:", payload.eventType, payload.new);
+            fetchDocuments();
+          }
+        )
+        .subscribe();
+
+      return () => {
+        supabase.removeChannel(channel);
+      };
+    };
+
+    let cleanup: (() => void) | undefined;
+    setupSubscription().then((cleanupFn) => {
+      cleanup = cleanupFn;
+    });
 
     return () => {
-      supabase.removeChannel(channel);
+      cleanup?.();
     };
   }, [fetchDocuments]);
 

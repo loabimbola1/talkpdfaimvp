@@ -100,7 +100,7 @@ export function ReferralProgram() {
     if (!stats?.referralCode) return;
 
     const shareText = `Join TalkPDF AI - the best way to study with AI tutors in Nigerian languages! Use my referral code ${stats.referralCode} to get ${stats.creditsPerReferral} free PDF credits. 📚🎧`;
-    const shareUrl = `https://talkpdfaimvp.lovable.app/auth?ref=${stats.referralCode}`;
+    const shareUrl = `https://www.talkpdf.online/auth?ref=${stats.referralCode}`;
 
     if (navigator.share) {
       try {

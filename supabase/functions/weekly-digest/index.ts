@@ -347,7 +347,7 @@ function generateDigestEmail(data: UserDigestData): string {
   ` : ''}
 
   <div style="text-align: center; margin: 30px 0;">
-    <a href="https://talkpdfaimvp.lovable.app/dashboard" style="display: inline-block; background: #10b981; color: white; padding: 14px 28px; border-radius: 8px; text-decoration: none; font-weight: bold;">
+    <a href="https://www.talkpdf.online/dashboard" style="display: inline-block; background: #10b981; color: white; padding: 14px 28px; border-radius: 8px; text-decoration: none; font-weight: bold;">
       Continue Studying →
     </a>
   </div>
@@ -355,8 +355,8 @@ function generateDigestEmail(data: UserDigestData): string {
   <div style="text-align: center; color: #999; font-size: 12px; margin-top: 40px; padding-top: 20px; border-top: 1px solid #eee;">
     <p>TalkPDF AI - Learn Smarter, Not Harder</p>
     <p style="margin: 5px 0;">
-      <a href="https://talkpdfaimvp.lovable.app" style="color: #10b981;">Visit Website</a> • 
-      <a href="https://talkpdfaimvp.lovable.app/help" style="color: #10b981;">Help Center</a>
+      <a href="https://www.talkpdf.online" style="color: #10b981;">Visit Website</a> • 
+      <a href="https://www.talkpdf.online/help" style="color: #10b981;">Help Center</a>
     </p>
   </div>
 </body>

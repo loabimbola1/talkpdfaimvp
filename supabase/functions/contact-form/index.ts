@@ -1,9 +1,19 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { checkRateLimit, cleanupRateLimits, rateLimitResponse } from "../_shared/rate-limiter.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
+
+// Rate limit configuration: 5 submissions per hour per IP
+const RATE_LIMIT_CONFIG = {
+  windowMs: 60 * 60 * 1000, // 1 hour
+  maxRequests: 5,
+};
+
+// Email validation regex
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 interface ContactFormRequest {
   name: string;
@@ -39,19 +49,77 @@ async function sendEmail(to: string[], subject: string, html: string, replyTo?: 
 }
 
 serve(async (req: Request): Promise<Response> => {
+  // Cleanup old rate limit entries
+  cleanupRateLimits();
+  
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
+    // Rate limit by IP address
+    const clientIP = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || 
+                     req.headers.get("cf-connecting-ip") ||
+                     req.headers.get("x-real-ip") ||
+                     "anonymous";
+    
+    const rateLimit = checkRateLimit(clientIP, "contact-form", RATE_LIMIT_CONFIG);
+    
+    if (!rateLimit.allowed) {
+      console.log(`Rate limit exceeded for IP: ${clientIP}`);
+      return rateLimitResponse(rateLimit.resetIn, corsHeaders);
+    }
+    
     const { name, email, subject, message }: ContactFormRequest = await req.json();
 
-    if (!name || !email || !message) {
+    // Input validation
+    if (!name || typeof name !== "string" || name.trim().length === 0) {
       return new Response(
-        JSON.stringify({ error: "Name, email, and message are required" }),
+        JSON.stringify({ error: "Name is required" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
+    
+    if (name.length > 100) {
+      return new Response(
+        JSON.stringify({ error: "Name must be less than 100 characters" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+    
+    if (!email || !EMAIL_REGEX.test(email)) {
+      return new Response(
+        JSON.stringify({ error: "Valid email is required" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+    
+    if (email.length > 255) {
+      return new Response(
+        JSON.stringify({ error: "Email must be less than 255 characters" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+    
+    if (!message || typeof message !== "string" || message.trim().length === 0) {
+      return new Response(
+        JSON.stringify({ error: "Message is required" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+    
+    if (message.length > 5000) {
+      return new Response(
+        JSON.stringify({ error: "Message must be less than 5000 characters" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+    
+    // Sanitize inputs
+    const sanitizedName = name.trim().substring(0, 100);
+    const sanitizedEmail = email.trim().toLowerCase().substring(0, 255);
+    const sanitizedMessage = message.trim().substring(0, 5000);
+    const sanitizedSubject = subject ? subject.trim().substring(0, 100) : "general";
 
     const subjectLabels: Record<string, string> = {
       general: "General Inquiry",

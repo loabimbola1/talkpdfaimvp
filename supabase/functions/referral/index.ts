@@ -365,6 +365,15 @@ serve(async (req) => {
       const completedReferrals = referrals?.filter(r => r.status === "completed").length || 0;
       const pendingReferrals = referrals?.filter(r => r.status === "pending").length || 0;
 
+      // Count today's completed referrals for daily cap display
+      const todayStart = new Date();
+      todayStart.setHours(0, 0, 0, 0);
+      
+      const todayReferrals = referrals?.filter(r => {
+        if (r.status !== "completed" || !r.completed_at) return false;
+        return new Date(r.completed_at) >= todayStart;
+      }).length || 0;
+
       return new Response(
         JSON.stringify({
           referralCode: profile?.referral_code || null,
@@ -372,7 +381,8 @@ serve(async (req) => {
           completedReferrals,
           pendingReferrals,
           creditsPerReferral: REFERRAL_CREDITS,
-          dailyCap: DAILY_REFERRAL_CAP
+          dailyCap: DAILY_REFERRAL_CAP,
+          todayReferrals
         }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );

@@ -199,7 +199,7 @@ serve(async (req) => {
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
     const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY");
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+    const OPENROUTER_API_KEY = Deno.env.get("OPENROUTER_API_KEY");
 
     if (!SUPABASE_URL || !SUPABASE_ANON_KEY || !SUPABASE_SERVICE_ROLE_KEY) {
       console.error("Missing Supabase configuration");
@@ -325,14 +325,16 @@ serve(async (req) => {
     
     console.log(`Extracting text from ${fileType}...`);
     
-    const extractResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    const extractResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
       headers: {
-        "Authorization": `Bearer ${LOVABLE_API_KEY}`,
+        "Authorization": `Bearer ${OPENROUTER_API_KEY}`,
         "Content-Type": "application/json",
+        "HTTP-Referer": "https://www.talkpdf.online",
+        "X-Title": "TalkPDF AI",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
+        model: "google/gemini-flash-1.5",
         messages: [
           {
             role: "system",
@@ -394,14 +396,16 @@ serve(async (req) => {
     // Determine how much text to analyze based on plan
     const analysisTextLimit = userPlan === "pro" ? 15000 : (userPlan === "plus" ? 8000 : 5000);
     
-    const summaryResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    const summaryResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
       headers: {
-        "Authorization": `Bearer ${LOVABLE_API_KEY}`,
+        "Authorization": `Bearer ${OPENROUTER_API_KEY}`,
         "Content-Type": "application/json",
+        "HTTP-Referer": "https://www.talkpdf.online",
+        "X-Title": "TalkPDF AI",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
+        model: "google/gemini-flash-1.5",
         messages: [
           {
             role: "system",
@@ -464,18 +468,20 @@ Create ${userPlan === "pro" ? "8-10" : (userPlan === "plus" ? "5-7" : "3-5")} st
     let translationApplied = false;
 
     // Translate if non-English
-    if (language !== "en" && LOVABLE_API_KEY) {
+    if (language !== "en" && OPENROUTER_API_KEY) {
       try {
         console.log(`Translating TTS script to ${language} (${maxTtsChars} chars max)...`);
         const targetLabel = languageLabelMap[language] || "English";
-        const translateResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+        const translateResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
           method: "POST",
           headers: {
-            "Authorization": `Bearer ${LOVABLE_API_KEY}`,
+            "Authorization": `Bearer ${OPENROUTER_API_KEY}`,
             "Content-Type": "application/json",
+            "HTTP-Referer": "https://www.talkpdf.online",
+            "X-Title": "TalkPDF AI",
           },
           body: JSON.stringify({
-            model: "google/gemini-2.5-flash",
+            model: "google/gemini-flash-1.5",
             messages: [
               {
                 role: "system",
@@ -613,7 +619,6 @@ Create ${userPlan === "pro" ? "8-10" : (userPlan === "plus" ? "5-7" : "3-5")} st
     }
 
     // Fallback to OpenRouter TTS using Gemini 2.5 Flash (supports native TTS)
-    const OPENROUTER_API_KEY = Deno.env.get("OPENROUTER_API_KEY");
     if (!audioBuffer && OPENROUTER_API_KEY) {
       try {
         console.log("Falling back to OpenRouter Gemini TTS...");
@@ -679,19 +684,21 @@ Create ${userPlan === "pro" ? "8-10" : (userPlan === "plus" ? "5-7" : "3-5")} st
       }
     }
 
-    // Final fallback: Use Lovable AI Gateway for TTS if available
-    if (!audioBuffer && LOVABLE_API_KEY) {
+    // Final fallback: Use OpenRouter for TTS if available
+    if (!audioBuffer && OPENROUTER_API_KEY) {
       try {
-        console.log("Falling back to Lovable AI Gateway for TTS...");
+        console.log("Falling back to OpenRouter Gemini for TTS...");
         
-        const lovableTTSResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+        const openRouterTTSResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
           method: "POST",
           headers: {
-            "Authorization": `Bearer ${LOVABLE_API_KEY}`,
+            "Authorization": `Bearer ${OPENROUTER_API_KEY}`,
             "Content-Type": "application/json",
+            "HTTP-Referer": "https://www.talkpdf.online",
+            "X-Title": "TalkPDF AI",
           },
           body: JSON.stringify({
-            model: "google/gemini-2.5-flash",
+            model: "google/gemini-flash-1.5",
             messages: [
               {
                 role: "system",
@@ -710,8 +717,8 @@ Create ${userPlan === "pro" ? "8-10" : (userPlan === "plus" ? "5-7" : "3-5")} st
           }),
         });
 
-        if (lovableTTSResponse.ok) {
-          const responseData = await lovableTTSResponse.json();
+        if (openRouterTTSResponse.ok) {
+          const responseData = await openRouterTTSResponse.json();
           const audioData = responseData.choices?.[0]?.message?.audio?.data;
           
           if (audioData) {
@@ -721,21 +728,21 @@ Create ${userPlan === "pro" ? "8-10" : (userPlan === "plus" ? "5-7" : "3-5")} st
               bytes[i] = binaryString.charCodeAt(i);
             }
             audioBuffer = bytes.buffer;
-            ttsProvider = "lovable-gemini";
+            ttsProvider = "openrouter-gemini";
             voiceUsed = "Kore";
             chunksGenerated = 1;
-            console.log("Lovable AI Gateway TTS successful");
+            console.log("OpenRouter Gemini TTS successful");
           } else {
-            failedProviders.push("lovable (no audio data)");
+            failedProviders.push("openrouter-final (no audio data)");
           }
         } else {
-          const errorText = await lovableTTSResponse.text();
-          console.warn("Lovable AI Gateway TTS failed:", lovableTTSResponse.status, errorText.substring(0, 200));
-          failedProviders.push(`lovable (${lovableTTSResponse.status})`);
+          const errorText = await openRouterTTSResponse.text();
+          console.warn("OpenRouter Gemini TTS failed:", openRouterTTSResponse.status, errorText.substring(0, 200));
+          failedProviders.push(`openrouter-final (${openRouterTTSResponse.status})`);
         }
-      } catch (lovableError) {
-        console.warn("Lovable AI Gateway TTS error:", lovableError instanceof Error ? lovableError.message : String(lovableError));
-        failedProviders.push("lovable (error)");
+      } catch (openRouterError) {
+        console.warn("OpenRouter Gemini TTS error:", openRouterError instanceof Error ? openRouterError.message : String(openRouterError));
+        failedProviders.push("openrouter-final (error)");
       }
     }
 

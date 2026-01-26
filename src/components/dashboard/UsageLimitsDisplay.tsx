@@ -46,13 +46,9 @@ const UsageLimitsDisplay = ({ onUpgrade }: UsageLimitsDisplayProps) => {
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <div>
-            <CardTitle className="text-lg">
-              {plan === "free" ? "Daily Usage" : "Usage Limits"}
-            </CardTitle>
+            <CardTitle className="text-lg">Daily Usage</CardTitle>
             <CardDescription>
-              {plan === "free" 
-                ? "Your usage resets at midnight" 
-                : "PDFs reset monthly, audio resets daily"}
+              Your usage resets at midnight
             </CardDescription>
           </div>
           {plan !== "pro" && (

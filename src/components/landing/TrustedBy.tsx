@@ -2,10 +2,9 @@ const TrustedBy = () => {
   // TechCabal-style trusted by section with logo placeholders
   const partners = [
     { name: "TechCabal", initials: "TC" },
-    { name: "Paystack", initials: "PS" },
     { name: "Flutterwave", initials: "FW" },
-    { name: "Andela", initials: "AN" },
-    { name: "Cowrywise", initials: "CW" },
+    { name: "Hadu", initials: "HD" },
+    { name: "Mexc", initials: "MX" },
   ];
 
   return (

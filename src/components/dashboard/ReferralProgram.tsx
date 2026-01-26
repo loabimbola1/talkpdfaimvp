@@ -3,7 +3,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Gift, Users, Copy, Check, Loader2, Share2 } from "lucide-react";
+import { Progress } from "@/components/ui/progress";
+import { Gift, Users, Copy, Check, Loader2, Share2, CalendarClock } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
@@ -13,6 +14,8 @@ interface ReferralStats {
   completedReferrals: number;
   pendingReferrals: number;
   creditsPerReferral: number;
+  dailyCap: number;
+  todayReferrals: number;
 }
 
 export function ReferralProgram() {
@@ -128,6 +131,9 @@ export function ReferralProgram() {
     );
   }
 
+  const dailyReferralsPercentage = stats ? (stats.todayReferrals / stats.dailyCap) * 100 : 0;
+  const dailyReferralsRemaining = stats ? Math.max(0, stats.dailyCap - stats.todayReferrals) : 0;
+
   return (
     <div className="space-y-6">
       {/* Your Referral Code */}
@@ -158,7 +164,7 @@ export function ReferralProgram() {
       </Card>
 
       {/* Stats */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card>
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
@@ -191,6 +197,32 @@ export function ReferralProgram() {
                 <p className="text-2xl font-bold text-green-600">{stats?.creditsPerReferral || 5}</p>
               </div>
               <Badge variant="secondary">PDF Credits</Badge>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Daily Referrals Remaining - New Card */}
+        <Card className={dailyReferralsRemaining === 0 ? "border-yellow-500/50" : ""}>
+          <CardContent className="pt-6">
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-muted-foreground">Referrals Today</p>
+                  <p className="text-2xl font-bold">
+                    {stats?.todayReferrals || 0} / {stats?.dailyCap || 5}
+                  </p>
+                </div>
+                <CalendarClock className="h-8 w-8 text-muted-foreground/20" />
+              </div>
+              <Progress 
+                value={dailyReferralsPercentage} 
+                className={dailyReferralsRemaining === 0 ? "[&>div]:bg-yellow-500" : ""}
+              />
+              {dailyReferralsRemaining === 0 ? (
+                <p className="text-xs text-yellow-600">Daily limit reached. Resets at midnight.</p>
+              ) : (
+                <p className="text-xs text-muted-foreground">{dailyReferralsRemaining} remaining today</p>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -240,6 +272,12 @@ export function ReferralProgram() {
               <span>You both get {stats?.creditsPerReferral || 5} bonus PDF credits instantly!</span>
             </li>
           </ol>
+          <div className="mt-4 p-3 bg-muted/50 rounded-lg">
+            <p className="text-xs text-muted-foreground">
+              <strong>Note:</strong> You can complete up to {stats?.dailyCap || 5} referrals per day to prevent abuse. 
+              New users must verify their email and have an account at least 24 hours old to apply a referral code.
+            </p>
+          </div>
         </CardContent>
       </Card>
     </div>

@@ -16,6 +16,8 @@ interface CreditsData {
   usedCredits: number;
   referralCredits: number;
   subscriptionStartedAt: string | null;
+  billingPeriodStart: string | null;
+  billingPeriodEnd: string | null;
 }
 
 const PLAN_CREDITS: Record<string, number> = {
@@ -40,6 +42,8 @@ const CreditsUsageTracker = ({ onUpgrade }: CreditsUsageTrackerProps) => {
     usedCredits: 0,
     referralCredits: 0,
     subscriptionStartedAt: null,
+    billingPeriodStart: null,
+    billingPeriodEnd: null,
   });
   const [loading, setLoading] = useState(true);
 
@@ -64,35 +68,43 @@ const CreditsUsageTracker = ({ onUpgrade }: CreditsUsageTrackerProps) => {
       const planCredits = PLAN_CREDITS[plan] || 0;
       const subscriptionStartedAt = profile?.subscription_started_at;
 
-      // CRITICAL FIX: Calculate usage from subscription start date, NOT start of month
-      // This ensures credits reset when user upgrades
-      let startDate: string;
+      // CRITICAL FIX: Calculate billing period based on subscription start date
+      // This ensures credits reset correctly on the user's billing anniversary
+      const now = new Date();
+      let periodStart: Date;
+      let periodEnd: Date;
       
-      if (subscriptionStartedAt) {
-        // Use subscription start date for credit calculation
+      if (subscriptionStartedAt && plan !== "free") {
         const subStart = new Date(subscriptionStartedAt);
-        const now = new Date();
+        const subscriptionDay = subStart.getDate();
         
-        // If subscription started in current month, use subscription date
-        // Otherwise, use start of current month (monthly billing cycle)
-        const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+        // Calculate current billing period
+        // Start with this month's billing date
+        periodStart = new Date(now.getFullYear(), now.getMonth(), subscriptionDay);
         
-        if (subStart > startOfMonth) {
-          startDate = subscriptionStartedAt;
-        } else {
-          startDate = startOfMonth.toISOString();
+        // If we haven't reached this month's billing date yet, billing period started last month
+        if (periodStart > now) {
+          periodStart = new Date(now.getFullYear(), now.getMonth() - 1, subscriptionDay);
         }
+        
+        // Period ends one month after start
+        periodEnd = new Date(periodStart.getFullYear(), periodStart.getMonth() + 1, subscriptionDay);
       } else {
-        // Fallback to start of month for free users or legacy
-        const now = new Date();
-        startDate = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+        // Fallback for free users or those without subscription date
+        periodStart = new Date(now.getFullYear(), now.getMonth(), 1);
+        periodEnd = new Date(now.getFullYear(), now.getMonth() + 1, 1);
       }
+
+      const startDate = periodStart.toISOString();
+      const endDate = periodEnd.toISOString();
       
+      // Query usage within the billing period only
       const { data: usageData } = await supabase
         .from("usage_tracking")
         .select("action_type, audio_minutes_used")
         .eq("user_id", user.id)
-        .gte("created_at", startDate);
+        .gte("created_at", startDate)
+        .lt("created_at", endDate);
 
       // Calculate credits used with proper cost structure
       let usedCredits = 0;
@@ -114,12 +126,18 @@ const CreditsUsageTracker = ({ onUpgrade }: CreditsUsageTrackerProps) => {
         }
       });
 
+      // Safeguard: Never show more used credits than available
+      const totalAvailable = planCredits + referralCredits;
+      const actualUsedCredits = Math.min(usedCredits, totalAvailable);
+
       setCreditsData({
         plan,
-        totalCredits: planCredits + referralCredits,
-        usedCredits: Math.min(usedCredits, planCredits + referralCredits),
+        totalCredits: totalAvailable,
+        usedCredits: actualUsedCredits,
         referralCredits,
         subscriptionStartedAt,
+        billingPeriodStart: startDate,
+        billingPeriodEnd: endDate,
       });
     } catch (error) {
       console.error("Error fetching credits:", error);
@@ -139,6 +157,15 @@ const CreditsUsageTracker = ({ onUpgrade }: CreditsUsageTrackerProps) => {
 
   const isLow = usagePercentage > 80;
   const isDepleted = remainingCredits === 0 && creditsData.totalCredits > 0;
+
+  // Format billing period dates for display
+  const formatDate = (dateStr: string | null) => {
+    if (!dateStr) return "";
+    return new Date(dateStr).toLocaleDateString("en-NG", { 
+      month: "short", 
+      day: "numeric" 
+    });
+  };
 
   // Free plan shows upgrade prompt instead of credits
   if (creditsData.plan === "free") {
@@ -186,11 +213,15 @@ const CreditsUsageTracker = ({ onUpgrade }: CreditsUsageTrackerProps) => {
           </div>
           <div className="flex items-center gap-1 text-xs text-muted-foreground">
             <Calendar className="h-3 w-3" />
-            Resets monthly
+            {creditsData.billingPeriodStart && creditsData.billingPeriodEnd && (
+              <span>
+                {formatDate(creditsData.billingPeriodStart)} - {formatDate(creditsData.billingPeriodEnd)}
+              </span>
+            )}
           </div>
         </div>
         <CardDescription>
-          Track your credit usage for the current billing period
+          Credits reset on your billing anniversary
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -244,7 +275,7 @@ const CreditsUsageTracker = ({ onUpgrade }: CreditsUsageTrackerProps) => {
         {/* Warning states */}
         {isDepleted && (
           <div className="flex items-center justify-between p-3 bg-destructive/10 rounded-lg">
-            <span className="text-sm text-destructive">Credits depleted for this month</span>
+            <span className="text-sm text-destructive">Credits depleted for this period</span>
             {creditsData.plan !== "pro" && (
               <Button size="sm" variant="outline" onClick={onUpgrade} className="gap-1">
                 <Crown className="h-3 w-3" />

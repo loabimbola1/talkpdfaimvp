@@ -25,8 +25,8 @@ export const PLAN_LIMITS: Record<string, UsageLimits> = {
     can_download: false,
   },
   plus: {
-    pdfs_per_day: -1,    // Plus uses monthly limits
-    pdfs_per_month: 20,
+    pdfs_per_day: 20,    // Changed from monthly to daily
+    pdfs_per_month: -1,  // Not applicable anymore
     audio_minutes_per_day: 60,
     explain_back_per_day: 20,
     can_download: false,
@@ -130,16 +130,10 @@ export function useUsageLimits() {
     // Pro plan has unlimited uploads
     if (plan === "pro") return true;
     
-    // Plus plan uses monthly limits
-    if (plan === "plus") {
-      if (limits.pdfs_per_month === -1) return true;
-      return usage.pdfs_uploaded_month < limits.pdfs_per_month;
-    }
-    
-    // Free plan uses daily limits
+    // Both Free and Plus now use daily limits
     if (limits.pdfs_per_day === -1) return true;
     return usage.pdfs_uploaded < limits.pdfs_per_day;
-  }, [plan, usage.pdfs_uploaded, usage.pdfs_uploaded_month, limits.pdfs_per_day, limits.pdfs_per_month]);
+  }, [plan, usage.pdfs_uploaded, limits.pdfs_per_day]);
 
   const canUseAudio = useCallback(() => {
     if (limits.audio_minutes_per_day === -1) return true;
@@ -156,16 +150,10 @@ export function useUsageLimits() {
     // Pro plan has unlimited
     if (plan === "pro") return Infinity;
     
-    // Plus plan uses monthly limits
-    if (plan === "plus") {
-      if (limits.pdfs_per_month === -1) return Infinity;
-      return Math.max(0, limits.pdfs_per_month - usage.pdfs_uploaded_month);
-    }
-    
-    // Free plan uses daily limits
+    // Both Free and Plus now use daily limits
     if (limits.pdfs_per_day === -1) return Infinity;
     return Math.max(0, limits.pdfs_per_day - usage.pdfs_uploaded);
-  }, [plan, usage.pdfs_uploaded, usage.pdfs_uploaded_month, limits.pdfs_per_day, limits.pdfs_per_month]);
+  }, [plan, usage.pdfs_uploaded, limits.pdfs_per_day]);
 
   const getRemainingAudioMinutes = useCallback(() => {
     if (limits.audio_minutes_per_day === -1) return Infinity;
@@ -174,10 +162,10 @@ export function useUsageLimits() {
 
   // Helper to get the appropriate PDF limit display
   const getPdfLimitDisplay = useCallback(() => {
-    if (plan === "pro") return { used: usage.pdfs_uploaded_month, limit: -1, period: "month" };
-    if (plan === "plus") return { used: usage.pdfs_uploaded_month, limit: limits.pdfs_per_month, period: "month" };
+    if (plan === "pro") return { used: 0, limit: -1, period: "day" };
+    // Both Free and Plus now use daily limits
     return { used: usage.pdfs_uploaded, limit: limits.pdfs_per_day, period: "day" };
-  }, [plan, usage.pdfs_uploaded, usage.pdfs_uploaded_month, limits.pdfs_per_day, limits.pdfs_per_month]);
+  }, [plan, usage.pdfs_uploaded, limits.pdfs_per_day]);
 
   return {
     plan,

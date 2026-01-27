@@ -79,9 +79,9 @@ serve(async (req) => {
       throw new Error("Document summary is required");
     }
 
-    const OPENROUTER_API_KEY = Deno.env.get("OPENROUTER_API_KEY");
-    if (!OPENROUTER_API_KEY) {
-      throw new Error("OPENROUTER_API_KEY is not configured");
+    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+    if (!LOVABLE_API_KEY) {
+      throw new Error("LOVABLE_API_KEY is not configured");
     }
 
     const quizTypeInstructions = {
@@ -115,16 +115,14 @@ ${JSON.stringify(studyPrompts)}` : ""}
 
 Generate a quiz with ${quizType || "mixed"} question type(s).`;
 
-    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${OPENROUTER_API_KEY}`,
+        Authorization: `Bearer ${LOVABLE_API_KEY}`,
         "Content-Type": "application/json",
-        "HTTP-Referer": "https://www.talkpdf.online",
-        "X-Title": "TalkPDF AI",
       },
       body: JSON.stringify({
-        model: "openai/gpt-4-turbo",
+        model: "google/gemini-2.5-pro",
         messages: [
           { role: "system", content: systemPrompt },
           { role: "user", content: userPrompt },

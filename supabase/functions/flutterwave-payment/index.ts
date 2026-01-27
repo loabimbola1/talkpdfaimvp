@@ -15,9 +15,10 @@ interface PaymentRequest {
 }
 
 // Strict plan/price mapping - single source of truth
+// Updated Jan 2026: Plus ₦3,500/₦36,000, Pro ₦7,500/₦84,000
 const PRICE_MAP: Record<string, Record<BillingCycle, number>> = {
-  plus: { monthly: 2000, yearly: 20000 },
-  pro: { monthly: 3500, yearly: 40000 },
+  plus: { monthly: 3500, yearly: 36000 },
+  pro: { monthly: 7500, yearly: 84000 },
 };
 
 // Valid plans list for validation

@@ -86,9 +86,9 @@ serve(async (req) => {
 
     const userPlan = profile?.subscription_plan || "free";
 
-    const OPENROUTER_API_KEY = Deno.env.get("OPENROUTER_API_KEY");
+    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     
-    if (!OPENROUTER_API_KEY) {
+    if (!LOVABLE_API_KEY) {
       return new Response(
         JSON.stringify({ error: "Service not configured" }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -128,10 +128,10 @@ TalkPDF AI Key Information:
 - Has "Explain-Back Mode" where students explain concepts back and AI evaluates their understanding
 - Designed for WAEC, JAMB, and other exam preparation
 
-Pricing Plans:
+Pricing Plans (Updated Jan 2026):
 - Free: 5 audio minutes/day, 2 PDFs/day, no Explain-Back Mode
-- Plus (₦2,500/month or ₦24,000/year): 30 minutes, 10 PDFs, Explain-Back Mode
-- Pro (₦4,500/month or ₦43,200/year): Unlimited everything, offline downloads, priority support
+- Plus (₦3,500/month or ₦36,000/year): 60 minutes, 20 PDFs/day, Explain-Back Mode, 2 Nigerian languages
+- Pro (₦7,500/month or ₦84,000/year): Unlimited everything, all 5 languages, offline downloads, priority support
 
 Current User: ${isPremium ? `Premium (${userPlan}) subscriber - provide VIP treatment` : "Free tier user"}
 
@@ -151,16 +151,14 @@ If you don't know something specific, direct them to the Help Center or contact 
       { role: "user", content: message.trim() }
     ];
 
-    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: {
-        "Authorization": `Bearer ${OPENROUTER_API_KEY}`,
+        "Authorization": `Bearer ${LOVABLE_API_KEY}`,
         "Content-Type": "application/json",
-        "HTTP-Referer": "https://www.talkpdf.online",
-        "X-Title": "TalkPDF AI",
       },
       body: JSON.stringify({
-        model: "google/gemini-flash-1.5",
+        model: "google/gemini-2.5-flash",
         messages,
         max_tokens: 500,
         temperature: 0.7
@@ -170,6 +168,20 @@ If you don't know something specific, direct them to the Help Center or contact 
     if (!response.ok) {
       const errorText = await response.text();
       console.error("AI response error:", errorText);
+      
+      if (response.status === 429) {
+        return new Response(JSON.stringify({ error: "Rate limit exceeded. Please try again later." }), {
+          status: 429,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      if (response.status === 402) {
+        return new Response(JSON.stringify({ error: "Service temporarily unavailable. Please try again later." }), {
+          status: 402,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      
       throw new Error("Failed to get AI response");
     }
 

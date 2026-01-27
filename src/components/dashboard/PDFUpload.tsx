@@ -25,7 +25,7 @@ interface UploadedFile {
 const languages = [
   { value: "en", label: "English", planRequired: "free" as const },
   { value: "yo", label: "Yoruba", planRequired: "plus" as const },
-  { value: "ig", label: "Igbo", planRequired: "plus" as const },
+  { value: "ig", label: "Igbo", planRequired: "pro" as const },
   { value: "pcm", label: "Pidgin", planRequired: "plus" as const },
   { value: "ha", label: "Hausa", planRequired: "pro" as const },
 ];

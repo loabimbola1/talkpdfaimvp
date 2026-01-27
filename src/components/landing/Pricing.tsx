@@ -48,16 +48,17 @@ const plans: PricingPlan[] = [
   },
   {
     name: "Plus",
-    description: "Great value for everyday learners",
-    monthlyPrice: 2000,
-    yearlyPrice: 20000,
+    description: "Great value for serious learners",
+    monthlyPrice: 3500,
+    yearlyPrice: 36000,
     priceLabel: "/month",
     planId: "plus",
+    popular: true,
     features: [
       { text: "100 monthly credits", included: true },
       { text: "60 minutes audio per day", included: true },
       { text: "20 PDF uploads per day", included: true },
-      { text: "3 Nigerian languages (Yoruba, Igbo, Pidgin)", included: true },
+      { text: "2 Nigerian languages (Yoruba, Pidgin)", included: true },
       { text: "Voice Q&A with explanations (Explain-Back)", included: true },
       { text: "Quiz & Quiz Leaderboard access", included: true },
       { text: "Bronze & Silver badges", included: true },
@@ -65,21 +66,20 @@ const plans: PricingPlan[] = [
       { text: "Email support", included: true },
     ],
     ctaText: "Get Plus",
-    ctaVariant: "outline",
+    ctaVariant: "default",
   },
   {
     name: "Pro",
     description: "For serious learners who want to excel",
-    monthlyPrice: 3500,
-    yearlyPrice: 40000,
+    monthlyPrice: 7500,
+    yearlyPrice: 84000,
     priceLabel: "/month",
     planId: "pro",
-    popular: true,
     features: [
       { text: "500 monthly credits", included: true },
       { text: "Unlimited audio generation", included: true },
       { text: "Unlimited PDF uploads", included: true },
-      { text: "All 5 Nigerian languages", included: true },
+      { text: "All 5 Nigerian languages (including Igbo, Hausa)", included: true },
       { text: "Real-time explanation validation (Explain-Back)", included: true },
       { text: "Quiz & Quiz Leaderboard access", included: true },
       { text: "1-Minute Mastery micro-lessons", included: true },
@@ -90,7 +90,7 @@ const plans: PricingPlan[] = [
       { text: "Priority support", included: true },
     ],
     ctaText: "Get Pro",
-    ctaVariant: "default",
+    ctaVariant: "outline",
   },
 ];
 
@@ -213,7 +213,7 @@ const Pricing = () => {
             Annually
             <span className="inline-flex items-center gap-1 bg-primary/10 text-primary px-2 py-0.5 rounded-full text-xs font-semibold">
               <Sparkles className="h-3 w-3" />
-              Save up to 17%
+              Save up to 14%
             </span>
           </span>
         </div>
@@ -240,7 +240,7 @@ const Pricing = () => {
                   <div className="absolute -top-3 left-1/2 -translate-x-1/2">
                     <span className="inline-flex items-center gap-1 bg-primary text-primary-foreground px-3 py-1 rounded-full text-xs font-semibold shadow-lg">
                       <Sparkles className="h-3 w-3" />
-                      Most Popular
+                      Popular
                     </span>
                   </div>
                 )}

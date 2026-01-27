@@ -7,7 +7,7 @@ export type SubscriptionPlan = "free" | "plus" | "pro";
 export const LANGUAGE_ACCESS: Record<string, SubscriptionPlan[]> = {
   en: ["free", "plus", "pro"],      // English - all plans
   yo: ["plus", "pro"],              // Yoruba - Plus and Pro
-  ig: ["plus", "pro"],              // Igbo - Plus and Pro
+  ig: ["pro"],                      // Igbo - Pro only (locked)
   pcm: ["plus", "pro"],             // Pidgin - Plus and Pro
   ha: ["pro"],                      // Hausa - Pro only
 };
@@ -53,7 +53,7 @@ export const PLAN_FEATURES: Record<SubscriptionPlan, PlanFeatures> = {
   plus: {
     audioMinutesPerDay: 60,
     pdfUploadsPerDay: 20,
-    languages: ["en", "yo", "ig", "pcm"], // 3 Nigerian languages + English
+    languages: ["en", "yo", "pcm"], // 2 Nigerian languages + English (Igbo moved to Pro)
     explainBack: true,
     microLessons: true,
     advancedMicroLessons: false,

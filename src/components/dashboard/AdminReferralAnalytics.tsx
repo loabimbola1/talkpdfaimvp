@@ -159,12 +159,24 @@ const AdminReferralAnalytics = () => {
   const handleRevokeCredits = async (referral: SuspiciousReferral) => {
     setProcessingId(referral.id);
     try {
-      // Revoke credits from referrer
+      // First, fetch the current referral_credits for the referrer
+      const { data: profileData, error: fetchError } = await supabase
+        .from("profiles")
+        .select("referral_credits")
+        .eq("user_id", referral.referrer_id)
+        .single();
+
+      if (fetchError) throw fetchError;
+
+      const currentCredits = profileData?.referral_credits ?? 0;
+      const creditsToRevoke = referral.credits_awarded ?? 0;
+      // Calculate new credits, ensuring we don't go below 0
+      const newCredits = Math.max(0, currentCredits - creditsToRevoke);
+
+      // Revoke credits from referrer with properly calculated value
       const { error: profileError } = await supabase
         .from("profiles")
-        .update({ 
-          referral_credits: supabase.rpc ? 0 : 0 // Reset to 0 or decrement
-        })
+        .update({ referral_credits: newCredits })
         .eq("user_id", referral.referrer_id);
 
       // Update referral status
@@ -179,7 +191,7 @@ const AdminReferralAnalytics = () => {
 
       if (profileError || refError) throw profileError || refError;
       
-      toast.success("Credits revoked and referral flagged");
+      toast.success(`Revoked ${creditsToRevoke} credits from referrer`);
       await fetchReferralData();
     } catch (error) {
       console.error("Error revoking credits:", error);

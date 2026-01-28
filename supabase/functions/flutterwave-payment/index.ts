@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { PRICE_MAP, VALID_PLANS, CURRENCY, type BillingCycle } from "../_shared/pricing.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -7,22 +8,10 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type",
 };
 
-type BillingCycle = "monthly" | "yearly";
-
 interface PaymentRequest {
   plan: string;
   billingCycle: BillingCycle;
 }
-
-// Strict plan/price mapping - single source of truth
-// Updated Jan 2026: Plus ₦3,500/₦36,000, Pro ₦7,500/₦84,000
-const PRICE_MAP: Record<string, Record<BillingCycle, number>> = {
-  plus: { monthly: 3500, yearly: 36000 },
-  pro: { monthly: 7500, yearly: 84000 },
-};
-
-// Valid plans list for validation
-const VALID_PLANS = Object.keys(PRICE_MAP);
 
 serve(async (req) => {
   // Handle CORS preflight requests

@@ -642,9 +642,9 @@ Create ${userPlan === "pro" ? "8-10" : (userPlan === "plus" ? "5-7" : "3-5")} st
           }),
         });
 
-        if (openRouterResponse.ok) {
-          const responseData = await openRouterResponse.json();
-          console.log("OpenRouter response structure:", JSON.stringify(responseData, null, 2).substring(0, 500));
+        if (lovableResponse.ok) {
+          const responseData = await lovableResponse.json();
+          console.log("Lovable AI response structure:", JSON.stringify(responseData, null, 2).substring(0, 500));
           
           // Check multiple possible locations for audio data
           const audioData = responseData.choices?.[0]?.message?.audio?.data 
@@ -659,22 +659,22 @@ Create ${userPlan === "pro" ? "8-10" : (userPlan === "plus" ? "5-7" : "3-5")} st
               bytes[i] = binaryString.charCodeAt(i);
             }
             audioBuffer = bytes.buffer;
-            ttsProvider = "openrouter-gemini";
+            ttsProvider = "lovable-gemini";
             voiceUsed = "Kore";
             chunksGenerated = 1;
-            console.log("OpenRouter Gemini TTS successful");
+            console.log("Lovable AI Gemini TTS successful");
           } else {
-            console.warn("OpenRouter Gemini TTS: No audio data found in response. Keys:", Object.keys(responseData));
-            failedProviders.push("openrouter (no audio data)");
+            console.warn("Lovable AI Gemini TTS: No audio data found in response. Keys:", Object.keys(responseData));
+            failedProviders.push("lovable (no audio data)");
           }
         } else {
-          const errorText = await openRouterResponse.text();
-          console.warn("OpenRouter Gemini TTS failed:", openRouterResponse.status, errorText.substring(0, 500));
-          failedProviders.push(`openrouter (${openRouterResponse.status})`);
+          const errorText = await lovableResponse.text();
+          console.warn("Lovable AI Gemini TTS failed:", lovableResponse.status, errorText.substring(0, 500));
+          failedProviders.push(`lovable (${lovableResponse.status})`);
         }
-      } catch (openRouterError) {
-        console.warn("OpenRouter Gemini TTS error:", openRouterError instanceof Error ? openRouterError.message : String(openRouterError));
-        failedProviders.push("openrouter (error)");
+      } catch (lovableError) {
+        console.warn("Lovable AI Gemini TTS error:", lovableError instanceof Error ? lovableError.message : String(lovableError));
+        failedProviders.push("lovable (error)");
       }
     }
 
@@ -711,8 +711,8 @@ Create ${userPlan === "pro" ? "8-10" : (userPlan === "plus" ? "5-7" : "3-5")} st
           }),
         });
 
-        if (openRouterTTSResponse.ok) {
-          const responseData = await openRouterTTSResponse.json();
+        if (lovableTTSResponse.ok) {
+          const responseData = await lovableTTSResponse.json();
           const audioData = responseData.choices?.[0]?.message?.audio?.data;
           
           if (audioData) {
@@ -722,21 +722,21 @@ Create ${userPlan === "pro" ? "8-10" : (userPlan === "plus" ? "5-7" : "3-5")} st
               bytes[i] = binaryString.charCodeAt(i);
             }
             audioBuffer = bytes.buffer;
-            ttsProvider = "openrouter-gemini";
+            ttsProvider = "lovable-gemini";
             voiceUsed = "Kore";
             chunksGenerated = 1;
-            console.log("OpenRouter Gemini TTS successful");
+            console.log("Lovable AI Gemini TTS successful");
           } else {
-            failedProviders.push("openrouter-final (no audio data)");
+            failedProviders.push("lovable-final (no audio data)");
           }
         } else {
-          const errorText = await openRouterTTSResponse.text();
-          console.warn("OpenRouter Gemini TTS failed:", openRouterTTSResponse.status, errorText.substring(0, 200));
-          failedProviders.push(`openrouter-final (${openRouterTTSResponse.status})`);
+          const errorText = await lovableTTSResponse.text();
+          console.warn("Lovable AI Gemini TTS failed:", lovableTTSResponse.status, errorText.substring(0, 200));
+          failedProviders.push(`lovable-final (${lovableTTSResponse.status})`);
         }
-      } catch (openRouterError) {
-        console.warn("OpenRouter Gemini TTS error:", openRouterError instanceof Error ? openRouterError.message : String(openRouterError));
-        failedProviders.push("openrouter-final (error)");
+      } catch (lovableError) {
+        console.warn("Lovable AI Gemini TTS error:", lovableError instanceof Error ? lovableError.message : String(lovableError));
+        failedProviders.push("lovable-final (error)");
       }
     }
 

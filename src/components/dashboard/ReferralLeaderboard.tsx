@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Trophy, Medal, Award, Users, TrendingUp, Star } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -9,7 +9,7 @@ import { cn } from "@/lib/utils";
 interface ReferrerEntry {
   user_id: string;
   full_name: string | null;
-  avatar_url: string | null;
+  university: string | null;
   referral_credits: number;
   referral_count: number;
 }
@@ -31,11 +31,10 @@ const ReferralLeaderboard = () => {
         setCurrentUserId(user.id);
       }
 
-      // Get profiles with referral credits (opted-in users)
+      // Get profiles with referral credits from secure leaderboard view (only shows opted-in users)
       const { data: profiles, error: profileError } = await supabase
-        .from("profiles")
-        .select("user_id, full_name, avatar_url, referral_credits, leaderboard_opt_in")
-        .eq("leaderboard_opt_in", true)
+        .from("leaderboard_profiles")
+        .select("user_id, full_name, university, referral_credits")
         .gt("referral_credits", 0)
         .order("referral_credits", { ascending: false })
         .limit(20);
@@ -57,7 +56,7 @@ const ReferralLeaderboard = () => {
       const leaderboardData = (profiles || []).map(p => ({
         user_id: p.user_id,
         full_name: p.full_name,
-        avatar_url: p.avatar_url,
+        university: p.university,
         referral_credits: p.referral_credits || 0,
         referral_count: referralCounts[p.user_id] || 0,
       }));
@@ -81,11 +80,11 @@ const ReferralLeaderboard = () => {
   const getRankIcon = (rank: number) => {
     switch (rank) {
       case 1:
-        return <Trophy className="h-5 w-5 text-yellow-500" />;
+        return <Trophy className="h-5 w-5 text-chart-4" />;
       case 2:
-        return <Medal className="h-5 w-5 text-gray-400" />;
+        return <Medal className="h-5 w-5 text-muted-foreground" />;
       case 3:
-        return <Award className="h-5 w-5 text-amber-600" />;
+        return <Award className="h-5 w-5 text-chart-5" />;
       default:
         return <span className="w-5 text-center text-muted-foreground font-medium">{rank}</span>;
     }
@@ -144,11 +143,10 @@ const ReferralLeaderboard = () => {
               <div className="flex items-end justify-center gap-4 pb-4 border-b">
                 {/* 2nd Place */}
                 <div className="flex flex-col items-center">
-                  <Avatar className="h-12 w-12 border-2 border-gray-400">
-                    <AvatarImage src={topReferrers[1]?.avatar_url || undefined} />
-                    <AvatarFallback>{getInitials(topReferrers[1]?.full_name)}</AvatarFallback>
+                  <Avatar className="h-12 w-12 border-2 border-muted-foreground">
+                    <AvatarFallback className="bg-secondary">{getInitials(topReferrers[1]?.full_name)}</AvatarFallback>
                   </Avatar>
-                  <Medal className="h-5 w-5 text-gray-400 -mt-2" />
+                  <Medal className="h-5 w-5 text-muted-foreground -mt-2" />
                   <p className="text-xs font-medium mt-1 text-center max-w-16 truncate">
                     {getDisplayName(topReferrers[1])}
                   </p>
@@ -160,28 +158,26 @@ const ReferralLeaderboard = () => {
                 {/* 1st Place */}
                 <div className="flex flex-col items-center -mb-2">
                   <div className="relative">
-                    <Avatar className="h-16 w-16 border-2 border-yellow-500">
-                      <AvatarImage src={topReferrers[0]?.avatar_url || undefined} />
-                      <AvatarFallback className="bg-yellow-500/20">{getInitials(topReferrers[0]?.full_name)}</AvatarFallback>
+                    <Avatar className="h-16 w-16 border-2 border-chart-4">
+                      <AvatarFallback className="bg-chart-4/20">{getInitials(topReferrers[0]?.full_name)}</AvatarFallback>
                     </Avatar>
-                    <Star className="h-5 w-5 text-yellow-500 absolute -top-1 -right-1 fill-yellow-500" />
+                    <Star className="h-5 w-5 text-chart-4 absolute -top-1 -right-1 fill-chart-4" />
                   </div>
-                  <Trophy className="h-6 w-6 text-yellow-500 -mt-2" />
+                  <Trophy className="h-6 w-6 text-chart-4 -mt-2" />
                   <p className="text-sm font-semibold mt-1 text-center max-w-20 truncate">
                     {getDisplayName(topReferrers[0])}
                   </p>
-                  <Badge className="mt-1 bg-yellow-500/20 text-yellow-600 border-yellow-500/30">
+                  <Badge className="mt-1 bg-chart-4/20 text-chart-4 border-chart-4/30">
                     {topReferrers[0]?.referral_count} referrals
                   </Badge>
                 </div>
 
                 {/* 3rd Place */}
                 <div className="flex flex-col items-center">
-                  <Avatar className="h-12 w-12 border-2 border-amber-600">
-                    <AvatarImage src={topReferrers[2]?.avatar_url || undefined} />
-                    <AvatarFallback>{getInitials(topReferrers[2]?.full_name)}</AvatarFallback>
+                  <Avatar className="h-12 w-12 border-2 border-chart-5">
+                    <AvatarFallback className="bg-chart-5/20">{getInitials(topReferrers[2]?.full_name)}</AvatarFallback>
                   </Avatar>
-                  <Award className="h-5 w-5 text-amber-600 -mt-2" />
+                  <Award className="h-5 w-5 text-chart-5 -mt-2" />
                   <p className="text-xs font-medium mt-1 text-center max-w-16 truncate">
                     {getDisplayName(topReferrers[2])}
                   </p>
@@ -210,8 +206,7 @@ const ReferralLeaderboard = () => {
                       {getRankIcon(rank)}
                     </div>
                     <Avatar className="h-8 w-8">
-                      <AvatarImage src={referrer.avatar_url || undefined} />
-                      <AvatarFallback className="text-xs">{getInitials(referrer.full_name)}</AvatarFallback>
+                      <AvatarFallback className="text-xs bg-secondary">{getInitials(referrer.full_name)}</AvatarFallback>
                     </Avatar>
                     <div className="flex-1 min-w-0">
                       <p className={cn(

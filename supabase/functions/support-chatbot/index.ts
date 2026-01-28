@@ -130,8 +130,8 @@ TalkPDF AI Key Information:
 
 Pricing Plans (Updated Jan 2026):
 - Free: 5 audio minutes/day, 2 PDFs/day, no Explain-Back Mode
-- Plus (₦3,500/month or ₦36,000/year): 60 minutes, 20 PDFs/day, Explain-Back Mode, 2 Nigerian languages
-- Pro (₦7,500/month or ₦84,000/year): Unlimited everything, all 5 languages, offline downloads, priority support
+- Plus (₦3,500/month or ₦36,000/year - Save ₦6,000 annually): 60 minutes, 20 PDFs/day, Explain-Back Mode, 3 Nigerian languages (Yoruba, Igbo, Pidgin)
+- Pro (₦8,500/month or ₦84,000/year - Save ₦18,000 annually): Unlimited everything, all 5 languages, offline downloads, priority support
 
 Current User: ${isPremium ? `Premium (${userPlan}) subscriber - provide VIP treatment` : "Free tier user"}
 

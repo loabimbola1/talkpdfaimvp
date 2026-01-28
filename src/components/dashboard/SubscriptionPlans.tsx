@@ -26,6 +26,7 @@ interface PricingPlan {
   ctaText: string;
   ctaVariant: "default" | "outline" | "secondary";
   planId: string;
+  annualSavings?: number;
 }
 
 const plans: PricingPlan[] = [
@@ -49,14 +50,15 @@ const plans: PricingPlan[] = [
   {
     name: "Plus",
     description: "Great value for everyday learners",
-    monthlyPrice: 2000,
-    yearlyPrice: 20000,
+    monthlyPrice: 3500,
+    yearlyPrice: 36000,
     priceLabel: "/month",
     planId: "plus",
+    annualSavings: 6000,
     features: [
       { text: "100 monthly credits", included: true },
       { text: "60 minutes audio per day", included: true },
-      { text: "20 PDF uploads per month", included: true },
+      { text: "20 PDF uploads per day", included: true },
       { text: "3 Nigerian languages (Yoruba, Igbo, Pidgin)", included: true },
       { text: "Voice Q&A with explanations (Explain-Back)", included: true },
       { text: "Quiz & Quiz Leaderboard access", included: true },
@@ -70,16 +72,17 @@ const plans: PricingPlan[] = [
   {
     name: "Pro",
     description: "For serious learners who want to excel",
-    monthlyPrice: 3500,
-    yearlyPrice: 40000,
+    monthlyPrice: 8500,
+    yearlyPrice: 84000,
     priceLabel: "/month",
     planId: "pro",
     popular: true,
+    annualSavings: 18000,
     features: [
       { text: "500 monthly credits", included: true },
       { text: "Unlimited audio generation", included: true },
       { text: "Unlimited PDF uploads", included: true },
-      { text: "All 5 Nigerian languages", included: true },
+      { text: "All 5 Nigerian languages (including Igbo, Hausa)", included: true },
       { text: "Real-time explanation validation (Explain-Back)", included: true },
       { text: "Quiz & Quiz Leaderboard access", included: true },
       { text: "1-Minute Mastery micro-lessons", included: true },
@@ -282,14 +285,14 @@ const SubscriptionPlans = ({ currentPlan = "free" }: SubscriptionPlansProps) => 
                     {price === 0 ? plan.priceLabel : (isAnnual ? "/year" : "/month")}
                   </span>
                 </div>
-                {isAnnual && savings > 0 && (
+                {isAnnual && plan.annualSavings && (
                   <p
                     className={cn(
-                      "text-xs mt-1",
+                      "text-xs mt-1 font-semibold",
                       plan.popular ? "text-primary" : "text-primary"
                     )}
                   >
-                    Save {savings}%
+                    Save {formatPrice(plan.annualSavings)}
                   </p>
                 )}
               </div>

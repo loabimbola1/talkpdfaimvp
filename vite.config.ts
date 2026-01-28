@@ -57,7 +57,7 @@ export default defineConfig(({ mode }) => ({
             urlPattern: /^https:\/\/.*\.supabase\.co\/storage\/v1\/object\/.*/i,
             handler: "CacheFirst",
             options: {
-              cacheName: "supabase-storage",
+              cacheName: "supabase-storage-v2",
               expiration: {
                 maxEntries: 50,
                 maxAgeSeconds: 60 * 60 * 24 * 7 // 7 days
@@ -68,15 +68,32 @@ export default defineConfig(({ mode }) => ({
             }
           },
           {
-            // Cache document list API calls for offline with StaleWhileRevalidate
+            // Cache document list API calls - NetworkFirst to prevent stale data
             urlPattern: /^https:\/\/.*\.supabase\.co\/rest\/v1\/documents.*/i,
-            handler: "StaleWhileRevalidate",
+            handler: "NetworkFirst",
             options: {
-              cacheName: "supabase-documents",
+              cacheName: "supabase-documents-v2",
               expiration: {
                 maxEntries: 10,
-                maxAgeSeconds: 60 * 60 * 24 * 7 // 7 days
+                maxAgeSeconds: 60 * 60 * 4 // 4 hours instead of 7 days
               },
+              networkTimeoutSeconds: 5,
+              cacheableResponse: {
+                statuses: [0, 200]
+              }
+            }
+          },
+          {
+            // Cache profiles and usage data - NetworkFirst for freshness
+            urlPattern: /^https:\/\/.*\.supabase\.co\/rest\/v1\/(profiles|daily_usage_summary|usage_tracking).*/i,
+            handler: "NetworkFirst",
+            options: {
+              cacheName: "supabase-user-data-v2",
+              expiration: {
+                maxEntries: 20,
+                maxAgeSeconds: 60 * 60 * 2 // 2 hours
+              },
+              networkTimeoutSeconds: 5,
               cacheableResponse: {
                 statuses: [0, 200]
               }
@@ -87,12 +104,12 @@ export default defineConfig(({ mode }) => ({
             urlPattern: /^https:\/\/.*\.supabase\.co\/rest\/v1\/.*/i,
             handler: "NetworkFirst",
             options: {
-              cacheName: "supabase-api",
+              cacheName: "supabase-api-v2",
               expiration: {
                 maxEntries: 100,
-                maxAgeSeconds: 60 * 60 * 24 // 1 day
+                maxAgeSeconds: 60 * 60 * 4 // 4 hours
               },
-              networkTimeoutSeconds: 10,
+              networkTimeoutSeconds: 8,
               cacheableResponse: {
                 statuses: [0, 200]
               }
@@ -117,6 +134,21 @@ export default defineConfig(({ mode }) => ({
       }
     })
   ].filter(Boolean),
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          vendor: ['react', 'react-dom', 'react-router-dom'],
+          ui: ['@radix-ui/react-dialog', '@radix-ui/react-dropdown-menu', '@radix-ui/react-tabs'],
+          query: ['@tanstack/react-query'],
+          supabase: ['@supabase/supabase-js'],
+        }
+      }
+    },
+    target: 'es2020',
+    minify: 'esbuild',
+    cssMinify: true,
+  },
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),

@@ -1,9 +1,136 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { encode as base64Encode } from "https://deno.land/std@0.168.0/encoding/base64.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
+
+// YarnGPT voice mapping for Nigerian languages
+const YARNGPT_VOICES: Record<string, string> = {
+  "en": "idera",      // Nigerian-accented English
+  "yo": "yoruba_female2",
+  "ig": "igbo_female2",
+  "ha": "hausa_female1",
+  "pcm": "tayo",      // Nigerian Pidgin
+};
+
+async function generateYarnGPTAudio(text: string, language: string): Promise<ArrayBuffer | null> {
+  const YARNGPT_API_KEY = Deno.env.get("YARNGPT_API_KEY");
+  if (!YARNGPT_API_KEY) {
+    console.log("YarnGPT API key not configured");
+    return null;
+  }
+
+  const voice = YARNGPT_VOICES[language] || YARNGPT_VOICES["en"];
+  
+  try {
+    // Chunk text if over 2000 chars
+    const chunks: string[] = [];
+    let remaining = text;
+    while (remaining.length > 0) {
+      if (remaining.length <= 2000) {
+        chunks.push(remaining);
+        break;
+      }
+      
+      // Find last sentence end within limit
+      let splitPoint = remaining.lastIndexOf('. ', 1900);
+      if (splitPoint === -1) splitPoint = remaining.lastIndexOf(' ', 1900);
+      if (splitPoint === -1) splitPoint = 1900;
+      
+      chunks.push(remaining.substring(0, splitPoint + 1));
+      remaining = remaining.substring(splitPoint + 1).trim();
+    }
+
+    const audioBuffers: ArrayBuffer[] = [];
+    
+    for (const chunk of chunks) {
+      const response = await fetch("https://api.yarngpt.com/v1/text-to-speech", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${YARNGPT_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          text: chunk,
+          voice: voice,
+          output_format: "mp3",
+        }),
+      });
+
+      if (!response.ok) {
+        console.error(`YarnGPT error: ${response.status}`);
+        return null;
+      }
+
+      const audioData = await response.arrayBuffer();
+      audioBuffers.push(audioData);
+    }
+
+    // Concatenate audio buffers
+    if (audioBuffers.length === 1) {
+      return audioBuffers[0];
+    }
+
+    const totalLength = audioBuffers.reduce((sum, buf) => sum + buf.byteLength, 0);
+    const combined = new Uint8Array(totalLength);
+    let offset = 0;
+    for (const buf of audioBuffers) {
+      combined.set(new Uint8Array(buf), offset);
+      offset += buf.byteLength;
+    }
+    
+    return combined.buffer;
+  } catch (error) {
+    console.error("YarnGPT TTS error:", error);
+    return null;
+  }
+}
+
+async function generateElevenLabsAudio(text: string): Promise<ArrayBuffer | null> {
+  const ELEVENLABS_API_KEY = Deno.env.get("ELEVENLABS_API_KEY");
+  if (!ELEVENLABS_API_KEY) {
+    console.log("ElevenLabs API key not configured");
+    return null;
+  }
+
+  try {
+    // Use a Nigerian-sounding voice (George has a neutral accent that works)
+    const voiceId = "JBFqnCBsd6RMkjVDRZzb"; // George voice
+    
+    const response = await fetch(
+      `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}?output_format=mp3_44100_128`,
+      {
+        method: "POST",
+        headers: {
+          "xi-api-key": ELEVENLABS_API_KEY,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          text: text.substring(0, 5000), // ElevenLabs limit
+          model_id: "eleven_multilingual_v2",
+          voice_settings: {
+            stability: 0.5,
+            similarity_boost: 0.75,
+            style: 0.4,
+            use_speaker_boost: true,
+          },
+        }),
+      }
+    );
+
+    if (!response.ok) {
+      console.error(`ElevenLabs error: ${response.status}`);
+      return null;
+    }
+
+    return await response.arrayBuffer();
+  } catch (error) {
+    console.error("ElevenLabs TTS error:", error);
+    return null;
+  }
+}
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -26,6 +153,14 @@ serve(async (req) => {
     }
 
     // Generate AI explanation for the concept
+    const languageInstructions = {
+      "en": "Use clear English with Nigerian cultural references and examples.",
+      "pcm": "Use Nigerian Pidgin English for the explanation. Make it natural and conversational.",
+      "yo": "Include Yoruba phrases and proverbs where natural. Primary explanation in English with Yoruba flavor.",
+      "ig": "Include Igbo phrases and proverbs where natural. Primary explanation in English with Igbo flavor.",
+      "ha": "Include Hausa phrases and proverbs where natural. Primary explanation in English with Hausa flavor.",
+    };
+
     const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -45,11 +180,8 @@ serve(async (req) => {
             4. Ends with a memorable summary
             
             Keep it conversational and engaging - like a friendly senior student explaining to a junior.
-            The explanation should take about 60 seconds when read aloud at normal pace.
-            ${language === "pcm" ? "Use Nigerian Pidgin English for the explanation." : ""}
-            ${language === "yo" ? "Include some Yoruba phrases where natural." : ""}
-            ${language === "ig" ? "Include some Igbo phrases where natural." : ""}
-            ${language === "ha" ? "Include some Hausa phrases where natural." : ""}`,
+            The explanation should take about 60 seconds when read aloud at normal pace (approximately 150-180 words).
+            ${languageInstructions[language as keyof typeof languageInstructions] || languageInstructions["en"]}`,
           },
           {
             role: "user",
@@ -83,6 +215,26 @@ serve(async (req) => {
 
     const aiData = await aiResponse.json();
     const explanation = aiData.choices?.[0]?.message?.content || "";
+
+    // Generate TTS audio with Nigerian accent
+    let audioBase64: string | null = null;
+    let audioProvider = "none";
+
+    // Try YarnGPT first for Nigerian accent
+    const yarnAudio = await generateYarnGPTAudio(explanation, language);
+    if (yarnAudio) {
+      audioBase64 = base64Encode(yarnAudio);
+      audioProvider = "yarngpt";
+      console.log(`Generated audio with YarnGPT for language: ${language}`);
+    } else {
+      // Fallback to ElevenLabs
+      const elevenAudio = await generateElevenLabsAudio(explanation);
+      if (elevenAudio) {
+        audioBase64 = base64Encode(elevenAudio);
+        audioProvider = "elevenlabs";
+        console.log("Generated audio with ElevenLabs fallback");
+      }
+    }
 
     // Generate quiz question for the concept
     const quizResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
@@ -127,6 +279,9 @@ serve(async (req) => {
         explanation,
         quiz,
         estimatedDuration: 60,
+        audioBase64,
+        audioProvider,
+        language,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );

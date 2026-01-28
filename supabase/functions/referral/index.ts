@@ -261,6 +261,42 @@ serve(async (req) => {
           flagged_suspicious: isSuspicious
         });
 
+      // Send admin notification for suspicious referrals
+      if (isSuspicious) {
+        const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
+        if (RESEND_API_KEY) {
+          try {
+            await fetch("https://api.resend.com/emails", {
+              method: "POST",
+              headers: {
+                "Authorization": `Bearer ${RESEND_API_KEY}`,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                from: "TalkPDF AI <alerts@talkpdf.online>",
+                to: ["asktalkpdfai@gmail.com"],
+                subject: "⚠️ Suspicious Referral Detected - Action Required",
+                html: `
+                  <h2>🚨 Suspicious Referral Activity Detected</h2>
+                  <p>A new referral has been flagged for review:</p>
+                  <ul>
+                    <li><strong>Referral Code:</strong> ${referralCode.toUpperCase()}</li>
+                    <li><strong>IP Address:</strong> ${clientIP}</li>
+                    <li><strong>Same IP referrals in 24h:</strong> ${sameIPReferrals}</li>
+                    <li><strong>Time:</strong> ${new Date().toISOString()}</li>
+                  </ul>
+                  <p>Please review this in the <a href="https://www.talkpdf.online/admin">Admin Panel</a>.</p>
+                  <p style="color: #666; font-size: 12px;">This is an automated alert from TalkPDF AI.</p>
+                `,
+              }),
+            });
+            console.log("Admin notification sent for suspicious referral");
+          } catch (emailError) {
+            console.error("Failed to send admin notification:", emailError);
+          }
+        }
+      }
+
       if (insertError) {
         console.error("Failed to create referral:", insertError);
         

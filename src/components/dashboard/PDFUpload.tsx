@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Upload, FileText, X, CheckCircle, AlertCircle, Loader2, Crown, AlertTriangle, Lock } from "lucide-react";
+import { Upload, FileText, X, CheckCircle, AlertCircle, Loader2, Crown, AlertTriangle, Lock, Volume2, Languages } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
@@ -23,9 +23,9 @@ interface UploadedFile {
 }
 
 const languages = [
-  { value: "en", label: "English", planRequired: "free" as const },
+  { value: "en", label: "English (Nigerian Accent)", planRequired: "free" as const },
   { value: "yo", label: "Yoruba", planRequired: "plus" as const },
-  { value: "ig", label: "Igbo", planRequired: "pro" as const },
+  { value: "ig", label: "Igbo", planRequired: "plus" as const },
   { value: "pcm", label: "Pidgin", planRequired: "plus" as const },
   { value: "ha", label: "Hausa", planRequired: "pro" as const },
 ];
@@ -39,7 +39,8 @@ const PDFUpload = ({ onDocumentProcessed, onUpgrade }: PDFUploadProps) => {
   const [files, setFiles] = useState<UploadedFile[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [selectedLanguage, setSelectedLanguage] = useState("en");
+  const [selectedLanguage, setSelectedLanguage] = useState("");
+  const [hasConfirmedLanguage, setHasConfirmedLanguage] = useState(false);
   
   const { 
     plan, 
@@ -63,6 +64,32 @@ const PDFUpload = ({ onDocumentProcessed, onUpgrade }: PDFUploadProps) => {
       .replace(/[^\w\s.-]/g, '') // Remove other special characters
       .replace(/\s+/g, '_')     // Replace spaces with underscores
       .substring(0, 100);        // Limit length
+  };
+
+  const handleLanguageSelect = (value: string) => {
+    if (canAccessLanguage(value)) {
+      setSelectedLanguage(value);
+    } else {
+      toast.error(getLanguageUpgradeMessage(value), {
+        action: onUpgrade ? {
+          label: "Upgrade",
+          onClick: onUpgrade,
+        } : undefined,
+      });
+    }
+  };
+
+  const confirmLanguageSelection = () => {
+    if (!selectedLanguage) {
+      toast.error("Please select an audio language first");
+      return;
+    }
+    setHasConfirmedLanguage(true);
+    toast.success(`Audio language set to ${languages.find(l => l.value === selectedLanguage)?.label}`);
+  };
+
+  const changeLanguage = () => {
+    setHasConfirmedLanguage(false);
   };
 
   // Capture selected language at function creation time to avoid stale closures
@@ -241,6 +268,7 @@ const PDFUpload = ({ onDocumentProcessed, onUpgrade }: PDFUploadProps) => {
     },
     maxSize: 20 * 1024 * 1024,
     multiple: true,
+    disabled: !hasConfirmedLanguage,
   });
 
   const removeFile = async (fileName: string, fileId?: string) => {
@@ -358,100 +386,159 @@ const PDFUpload = ({ onDocumentProcessed, onUpgrade }: PDFUploadProps) => {
         );
       })()}
 
-      {/* Language Selection */}
-      <div className="flex items-center gap-4">
-        <label className="text-sm font-medium text-foreground">Audio Language:</label>
-        <Select 
-          value={selectedLanguage} 
-          onValueChange={(value) => {
-            if (canAccessLanguage(value)) {
-              setSelectedLanguage(value);
-            } else {
-              toast.error(getLanguageUpgradeMessage(value), {
-                action: onUpgrade ? {
-                  label: "Upgrade",
-                  onClick: onUpgrade,
-                } : undefined,
-              });
-            }
-          }}
-        >
-          <SelectTrigger className="w-48">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {languages.map((lang) => {
-              const hasAccess = canAccessLanguage(lang.value);
-              return (
-                <SelectItem 
-                  key={lang.value} 
-                  value={lang.value}
-                  disabled={!hasAccess}
-                  className={cn(!hasAccess && "opacity-60")}
-                >
-                  <div className="flex items-center gap-2">
-                    <span>{lang.label}</span>
-                    {!hasAccess && (
-                      <Lock className="h-3 w-3 text-muted-foreground" />
-                    )}
-                    {lang.planRequired === "pro" && !hasAccess && (
-                      <span className="text-xs text-muted-foreground">(Pro)</span>
-                    )}
-                    {lang.planRequired === "plus" && !hasAccess && (
-                      <span className="text-xs text-muted-foreground">(Plus+)</span>
-                    )}
-                  </div>
-                </SelectItem>
-              );
-            })}
-          </SelectContent>
-        </Select>
-      </div>
+      {/* Step-by-Step Language Selection */}
+      {!hasConfirmedLanguage ? (
+        <div className="bg-gradient-to-br from-primary/5 to-primary/10 rounded-2xl p-6 border-2 border-primary/20">
+          <div className="text-center mb-6">
+            <div className="w-16 h-16 rounded-2xl bg-primary/20 flex items-center justify-center mx-auto mb-4">
+              <Languages className="h-8 w-8 text-primary" />
+            </div>
+            <h3 className="font-display text-xl font-bold text-foreground mb-2">
+              Step 1: Select Your Audio Language
+            </h3>
+            <p className="text-muted-foreground text-sm">
+              Choose the language for your document's audio before uploading
+            </p>
+          </div>
 
-      {/* Dropzone */}
-      <div
-        {...getRootProps()}
-        className={cn(
-          "border-2 border-dashed rounded-xl p-8 md:p-12 text-center transition-all duration-200",
-          !canUpload && "opacity-50 pointer-events-none",
-          isDragActive
-            ? "border-primary bg-primary/5"
-            : "border-border hover:border-primary/50 hover:bg-secondary/30",
-          canUpload && "cursor-pointer"
-        )}
-      >
-        <input {...getInputProps()} disabled={!canUpload} />
-        <div className="flex flex-col items-center gap-4">
+          <div className="max-w-sm mx-auto space-y-4">
+            <Select value={selectedLanguage} onValueChange={handleLanguageSelect}>
+              <SelectTrigger className="w-full h-12 text-base">
+                <SelectValue placeholder="Select audio language..." />
+              </SelectTrigger>
+              <SelectContent>
+                {languages.map((lang) => {
+                  const hasAccess = canAccessLanguage(lang.value);
+                  return (
+                    <SelectItem 
+                      key={lang.value} 
+                      value={lang.value}
+                      disabled={!hasAccess}
+                      className={cn(!hasAccess && "opacity-60")}
+                    >
+                      <div className="flex items-center gap-2">
+                        <Volume2 className="h-4 w-4" />
+                        <span>{lang.label}</span>
+                        {!hasAccess && (
+                          <Lock className="h-3 w-3 text-muted-foreground" />
+                        )}
+                        {lang.planRequired === "pro" && !hasAccess && (
+                          <span className="text-xs text-muted-foreground">(Pro)</span>
+                        )}
+                        {lang.planRequired === "plus" && !hasAccess && (
+                          <span className="text-xs text-muted-foreground">(Plus+)</span>
+                        )}
+                      </div>
+                    </SelectItem>
+                  );
+                })}
+              </SelectContent>
+            </Select>
+
+            {selectedLanguage && (
+              <div className="bg-secondary/50 rounded-lg p-3 text-center">
+                <p className="text-sm text-muted-foreground">
+                  <Volume2 className="h-4 w-4 inline mr-1" />
+                  Your document will be converted to{" "}
+                  <span className="font-medium text-foreground">
+                    {languages.find(l => l.value === selectedLanguage)?.label}
+                  </span>{" "}
+                  audio with Nigerian accent
+                </p>
+              </div>
+            )}
+
+            <Button 
+              onClick={confirmLanguageSelection}
+              disabled={!selectedLanguage}
+              className="w-full h-12"
+              size="lg"
+            >
+              <CheckCircle className="h-5 w-5 mr-2" />
+              Confirm & Continue to Upload
+            </Button>
+          </div>
+
+          {plan !== "pro" && (
+            <div className="mt-6 text-center">
+              <p className="text-xs text-muted-foreground mb-2">
+                Want more languages? Upgrade your plan for access to all 5 Nigerian languages.
+              </p>
+              {onUpgrade && (
+                <Button variant="ghost" size="sm" onClick={onUpgrade} className="gap-1">
+                  <Crown className="h-3 w-3" />
+                  View Plans
+                </Button>
+              )}
+            </div>
+          )}
+        </div>
+      ) : (
+        <>
+          {/* Language Selection Confirmed Banner */}
+          <div className="flex items-center justify-between bg-primary/10 rounded-xl p-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-lg bg-primary/20 flex items-center justify-center">
+                <Volume2 className="h-5 w-5 text-primary" />
+              </div>
+              <div>
+                <p className="font-medium text-foreground">
+                  Audio Language: {languages.find(l => l.value === selectedLanguage)?.label}
+                </p>
+                <p className="text-xs text-muted-foreground">Step 2: Upload your document below</p>
+              </div>
+            </div>
+            <Button variant="ghost" size="sm" onClick={changeLanguage}>
+              Change
+            </Button>
+          </div>
+
+          {/* Dropzone */}
           <div
+            {...getRootProps()}
             className={cn(
-              "w-16 h-16 rounded-2xl flex items-center justify-center transition-colors",
-              isDragActive ? "bg-primary/20" : "bg-secondary"
+              "border-2 border-dashed rounded-xl p-8 md:p-12 text-center transition-all duration-200",
+              !canUpload && "opacity-50 pointer-events-none",
+              isDragActive
+                ? "border-primary bg-primary/5"
+                : "border-border hover:border-primary/50 hover:bg-secondary/30",
+              canUpload && "cursor-pointer"
             )}
           >
-            <Upload
-              className={cn(
-                "h-8 w-8 transition-colors",
-                isDragActive ? "text-primary" : "text-muted-foreground"
-              )}
-            />
+            <input {...getInputProps()} disabled={!canUpload} />
+            <div className="flex flex-col items-center gap-4">
+              <div
+                className={cn(
+                  "w-16 h-16 rounded-2xl flex items-center justify-center transition-colors",
+                  isDragActive ? "bg-primary/20" : "bg-secondary"
+                )}
+              >
+                <Upload
+                  className={cn(
+                    "h-8 w-8 transition-colors",
+                    isDragActive ? "text-primary" : "text-muted-foreground"
+                  )}
+                />
+              </div>
+              <div>
+                <p className="font-medium text-foreground mb-1">
+                  {!canUpload 
+                    ? "Daily limit reached" 
+                    : isDragActive 
+                      ? "Drop your document here" 
+                      : "Drag & drop your PDF or Word document here"}
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  {canUpload ? "or click to browse (max 20MB)" : "Upgrade to continue uploading"}
+                </p>
+              </div>
+              <Button variant="outline" size="sm" type="button" disabled={!canUpload}>
+                Browse Files
+              </Button>
+            </div>
           </div>
-          <div>
-            <p className="font-medium text-foreground mb-1">
-              {!canUpload 
-                ? "Daily limit reached" 
-                : isDragActive 
-                  ? "Drop your document here" 
-                  : "Drag & drop your PDF or Word document here"}
-            </p>
-            <p className="text-sm text-muted-foreground">
-              {canUpload ? "or click to browse (max 20MB)" : "Upgrade to continue uploading"}
-            </p>
-          </div>
-          <Button variant="outline" size="sm" type="button" disabled={!canUpload}>
-            Browse Files
-          </Button>
-        </div>
-      </div>
+        </>
+      )}
 
       {/* Uploaded Files */}
       {files.length > 0 && (

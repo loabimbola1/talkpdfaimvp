@@ -1,386 +1,294 @@
 
 
-# Implementation Plan: 5 Critical Updates
+# Implementation Plan: 7 Feature Updates and Bug Fixes
 
-## Issue 1: Admin Panel - Suspicious Referral Moderation Section
-
-### Problem
-Admins need to review flagged suspicious referral activity for manual moderation.
-
-### Files to Modify
-- `src/components/dashboard/AdminReferralAnalytics.tsx`
-
-### Solution
-Add a new "Suspicious Activity" section to the AdminReferralAnalytics component that:
-1. Fetches referrals where `flagged_suspicious = true` or where patterns indicate abuse (same IP multiple times, rapid signups)
-2. Displays a table showing:
-   - Referral code used
-   - Referrer email
-   - Referred user email  
-   - IP address
-   - User agent
-   - Created date
-   - Status (flagged/suspicious)
-3. Add action buttons to:
-   - Dismiss flag (mark as legitimate)
-   - Revoke credits (if abuse confirmed)
-   - Ban user (for severe cases)
-
-### Code Changes
-```typescript
-// Add new state for suspicious referrals
-const [suspiciousReferrals, setSuspiciousReferrals] = useState<any[]>([]);
-
-// Add new fetch for suspicious activity
-const { data: suspicious } = await supabase
-  .from("referrals")
-  .select("*")
-  .or("flagged_suspicious.eq.true")
-  .order("created_at", { ascending: false });
-
-// Add IP frequency check
-const ipCounts: Record<string, number> = {};
-referrals?.forEach(r => {
-  if (r.ip_address) {
-    ipCounts[r.ip_address] = (ipCounts[r.ip_address] || 0) + 1;
-  }
-});
-
-// Flag referrals from IPs with 3+ occurrences
-const suspiciousIPs = Object.entries(ipCounts)
-  .filter(([_, count]) => count >= 3)
-  .map(([ip]) => ip);
-```
-
-### New Tab in Admin Panel
-Add a dedicated "Suspicious" sub-section within the Referrals tab showing:
-- Flagged referrals count badge
-- Table with IP tracking columns
-- Action buttons for moderation
+## Overview
+This plan addresses 7 items: audio language selection improvements, micro-lesson audio quality, performance optimization, pricing updates, caching issues, and admin notifications. Here's a detailed breakdown of each task.
 
 ---
 
-## Issue 2: Revert to Lovable AI from OpenRouter
+## 1. Pre-Upload Audio Language Selection Prompt
 
-### Problem
-The app was migrated to OpenRouter in a previous update. Now we need to revert back to Lovable AI Gateway.
+**Current State**: Language selection exists in PDFUpload.tsx but is not prominently positioned as a required step before upload.
 
-### Current State (OpenRouter)
-All 6 edge functions use:
-- Endpoint: `https://openrouter.ai/api/v1/chat/completions`
-- API Key: `OPENROUTER_API_KEY`
-- Models: `openai/gpt-4-turbo` and `google/gemini-flash-1.5`
+**Changes Required**:
 
-### Target State (Lovable AI)
-- Endpoint: `https://ai.gateway.lovable.dev/v1/chat/completions`
-- API Key: `LOVABLE_API_KEY`
-- Models:
-  - `google/gemini-2.5-flash` for fast tasks (summarization, support chat, TTS)
-  - `google/gemini-2.5-pro` for complex reasoning (quiz generation, evaluation)
+**File: `src/components/dashboard/PDFUpload.tsx`**
+- Add a visual step indicator showing "Step 1: Select Language → Step 2: Upload"
+- Make language selection more prominent with a card-style UI
+- Add validation to require explicit language selection before allowing file drop
+- Keep the Nigerian accent as default (English with Nigerian accent via "idera" voice)
 
-### Files to Modify
-1. `supabase/functions/process-pdf/index.ts` - Text extraction, summarization
-2. `supabase/functions/generate-quiz/index.ts` - Quiz generation
-3. `supabase/functions/explain-back-evaluate/index.ts` - Evaluation
-4. `supabase/functions/generate-lesson-audio/index.ts` - Micro-lessons
-5. `supabase/functions/support-chatbot/index.ts` - Support chat
-6. `supabase/functions/voice-to-text/index.ts` - Transcription
-
-### Code Changes (for each function)
-```typescript
-// BEFORE (OpenRouter):
-const OPENROUTER_API_KEY = Deno.env.get("OPENROUTER_API_KEY");
-const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-  method: "POST",
-  headers: {
-    Authorization: `Bearer ${OPENROUTER_API_KEY}`,
-    "Content-Type": "application/json",
-    "HTTP-Referer": "https://www.talkpdf.online",
-    "X-Title": "TalkPDF AI",
-  },
-  body: JSON.stringify({
-    model: "google/gemini-flash-1.5", // or "openai/gpt-4-turbo"
-    // ...
-  }),
-});
-
-// AFTER (Lovable AI):
-const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-  method: "POST",
-  headers: {
-    Authorization: `Bearer ${LOVABLE_API_KEY}`,
-    "Content-Type": "application/json",
-  },
-  body: JSON.stringify({
-    model: "google/gemini-2.5-flash", // or "google/gemini-2.5-pro"
-    // ...
-  }),
-});
-```
-
-### Model Selection Strategy (Lovable AI)
-| Function | Use Case | Model |
-|----------|----------|-------|
-| process-pdf | Text extraction & summarization | `google/gemini-2.5-flash` |
-| generate-quiz | Structured quiz generation | `google/gemini-2.5-pro` |
-| explain-back-evaluate | Nuanced feedback | `google/gemini-2.5-pro` |
-| generate-lesson-audio | Fast micro-lessons | `google/gemini-2.5-flash` |
-| support-chatbot | Conversational support | `google/gemini-2.5-flash` |
-| voice-to-text | Audio transcription | `google/gemini-2.5-flash` |
+**Technical Approach**:
+- Add a `hasSelectedLanguage` state initialized to `false`
+- Show a language selection card before the dropzone is enabled
+- Once language is selected, enable the dropzone
+- Add clear messaging: "Select your preferred audio language first"
 
 ---
 
-## Issue 3: Fix Stale Data / Browser Caching Issues
+## 2. Nigerian-Accented Audio for "1 Minute Lessons"
 
-### Problem
-Data appears stale after site updates until users use incognito mode or re-login. Affects:
-- Daily usage counters (PDFs Uploaded)
-- Credit balance
-- Subscription status
+**Current State**: The `generate-lesson-audio` edge function only generates text explanations, not audio. The MicroLessons component uses browser `speechSynthesis` which has generic voices.
 
-### Root Cause
-React Query and Supabase client cache responses. The supabase client also persists sessions in localStorage. When the app is redeployed, cached data may conflict with fresh server data.
+**Changes Required**:
 
-### Files to Modify
-- `src/hooks/useUsageLimits.ts`
-- `src/hooks/useFeatureAccess.ts`
-- `src/hooks/useDocuments.ts`
-- `src/components/dashboard/CreditsUsageTracker.tsx`
-- `src/main.tsx` (add cache invalidation)
+**File: `supabase/functions/generate-lesson-audio/index.ts`**
+- Add TTS audio generation using YarnGPT/Spitch (same providers as process-pdf)
+- Return base64-encoded audio in the response
+- Use Nigerian accent voices ("idera" for English, native voices for other languages)
 
-### Solution
-1. **Add `staleTime: 0` to critical React Query calls** - Force fresh data every time
-2. **Add version-based cache invalidation** - Clear localStorage on app version change
-3. **Add explicit cache control headers** - Prevent browser caching of API responses
-4. **Refetch on window focus** - Auto-refresh when user returns to tab
+**File: `src/components/dashboard/MicroLessons.tsx`**
+- Add language selection dropdown for micro-lessons
+- Replace browser `speechSynthesis` with audio player using generated audio
+- Store and cache generated audio in the database
+- Add loading state while audio is being generated
 
-### Code Changes
+**Technical Approach**:
+- Import the YarnGPT voice mapping from process-pdf logic
+- Generate audio server-side with the explanation text
+- Return audio as base64 in the response
+- Play using HTML5 Audio element on the frontend
 
-**1. Add version tracking in `src/main.tsx`:**
+---
+
+## 3. Performance Optimization for Low-Spec Devices
+
+**Current State**: The app loads all components eagerly, which can be heavy for devices with limited RAM (1GB).
+
+**Changes Required**:
+
+**File: `src/App.tsx`**
+- Implement React.lazy() for route-based code splitting
+- Add Suspense boundaries with lightweight loading fallbacks
+
+**File: `src/pages/Index.tsx`**
+- Lazy load heavy landing page sections (Pricing, Testimonials, Features)
+- Defer non-critical third-party scripts
+
+**File: `vite.config.ts`**
+- Add build optimization: `build.rollupOptions.output.manualChunks` for vendor splitting
+- Enable compression and minification optimizations
+
+**File: `index.html`**
+- Add `loading="lazy"` to images
+- Add font-display: swap for web fonts
+- Consider preconnect hints for Supabase
+
+**Technical Approach**:
 ```typescript
-// Clear stale cache on version update
-const APP_VERSION = "2.0.0"; // Increment on each deploy
-const cachedVersion = localStorage.getItem("app_version");
+// Example lazy loading pattern
+const Dashboard = lazy(() => import("./pages/Dashboard"));
+const Admin = lazy(() => import("./pages/Admin"));
+
+// In routes
+<Suspense fallback={<PageLoader />}>
+  <Routes>
+    <Route path="/dashboard" element={<Dashboard />} />
+  </Routes>
+</Suspense>
+```
+
+---
+
+## 4. Update Pro Subscription Pricing
+
+**Current State**: 
+- Landing page Pricing.tsx: Pro = ₦7,500/₦84,000 ✓ (correct)
+- Dashboard SubscriptionPlans.tsx: Pro = ₦3,500/₦40,000 ✗ (WRONG - needs update)
+- User request: Pro = ₦8,500/₦84,000 with "Save ₦18,000"
+
+**Changes Required**:
+
+**File: `src/components/landing/Pricing.tsx`**
+- Update Pro monthly price from ₦7,500 to ₦8,500
+- Add explicit savings indicators:
+  - Plus annual: "Save ₦6,000" (₦3,500 × 12 = ₦42,000 - ₦36,000 = ₦6,000)
+  - Pro annual: "Save ₦18,000" (₦8,500 × 12 = ₦102,000 - ₦84,000 = ₦18,000)
+
+**File: `src/components/dashboard/SubscriptionPlans.tsx`**
+- Update Plus monthly: ₦2,000 → ₦3,500
+- Update Plus yearly: ₦20,000 → ₦36,000
+- Update Pro monthly: ₦3,500 → ₦8,500
+- Update Pro yearly: ₦40,000 → ₦84,000
+- Add savings indicators matching landing page
+- Ensure Plus includes "3 Nigerian languages (Yoruba, Igbo, Pidgin)"
+
+**File: `supabase/functions/_shared/pricing.ts`**
+- Update Pro monthly from 7500 to 8500
+
+**File: `supabase/functions/support-chatbot/index.ts`**
+- Update pricing reference in chatbot context
+
+---
+
+## 5. Fix Upgrade Button Pricing Consistency
+
+**Current State**: Dashboard upgrade buttons, daily usage section, and settings still show old pricing.
+
+**Changes Required**:
+
+**File: `src/components/dashboard/SubscriptionPlans.tsx`**
+- Completely align with landing page pricing
+- Ensure Plus features include "3 Nigerian languages (Yoruba, Igbo, Pidgin)" not "2"
+
+**File: `src/components/dashboard/UsageLimitsDisplay.tsx`**
+- No pricing displayed here, but verify upgrade button works correctly
+
+**File: `src/components/dashboard/SubscriptionStatus.tsx`**
+- Verify upgrade button navigates correctly
+
+**Technical Approach**:
+- Create a shared pricing constant file for frontend consistency
+- Reference the same prices across all components
+
+---
+
+## 6. Fix Data Caching Issues (Service Worker Cache)
+
+**Current State**: Users see stale data after updates. Works in incognito (fresh cache). The current `main.tsx` clears localStorage but the service worker cache in `vite.config.ts` uses `StaleWhileRevalidate` and `CacheFirst` strategies that can serve stale data.
+
+**Root Cause**: The PWA service worker caches API responses (`supabase-documents`, `supabase-api`) with long expiration (7 days for documents, 1 day for API). On update, stale cached responses are served.
+
+**Changes Required**:
+
+**File: `vite.config.ts`**
+- Change `StaleWhileRevalidate` to `NetworkFirst` for documents API
+- Reduce cache expiration for dynamic data
+- Add cache versioning
+
+**File: `src/main.tsx`**
+- Increment APP_VERSION to "2.2.0" to trigger cache clear
+- Add service worker cache clearing on version change
+- Clear caches using `caches.delete()` API for service worker caches
+
+**Technical Approach**:
+```typescript
+// In main.tsx, add service worker cache clearing
 if (cachedVersion !== APP_VERSION) {
-  // Clear specific caches that may be stale
-  localStorage.removeItem("sb-jpcdklqqhoewdnpgpjep-auth-token");
-  localStorage.setItem("app_version", APP_VERSION);
-  // Force page reload to get fresh data
-  window.location.reload();
+  // Clear service worker caches
+  if ('caches' in window) {
+    caches.keys().then(cacheNames => {
+      cacheNames.forEach(cacheName => {
+        if (cacheName.startsWith('supabase-')) {
+          caches.delete(cacheName);
+        }
+      });
+    });
+  }
+  // ... existing localStorage clearing
 }
 ```
 
-**2. Update `useUsageLimits.ts`:**
+**File: `vite.config.ts`** (workbox configuration)
 ```typescript
-// Add dependency on a timestamp to force fresh fetches
-const [lastFetch, setLastFetch] = useState(Date.now());
-
-// In fetchUsageData, add cache-busting
-const fetchUsageData = useCallback(async () => {
-  try {
-    // Force fresh auth state
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session?.user) {
-      setLoading(false);
-      return;
+runtimeCaching: [
+  {
+    urlPattern: /^https:\/\/.*\.supabase\.co\/rest\/v1\/documents.*/i,
+    handler: "NetworkFirst", // Changed from StaleWhileRevalidate
+    options: {
+      cacheName: "supabase-documents-v2", // Versioned cache name
+      expiration: {
+        maxEntries: 10,
+        maxAgeSeconds: 60 * 60 * 4 // 4 hours instead of 7 days
+      },
+      // ...
     }
-    // ... rest of fetch with fresh data
   }
-}, [lastFetch]); // Add lastFetch dependency
-```
-
-**3. Add refetch on focus in components:**
-```typescript
-useEffect(() => {
-  const handleFocus = () => {
-    refetch();
-  };
-  window.addEventListener("focus", handleFocus);
-  return () => window.removeEventListener("focus", handleFocus);
-}, [refetch]);
+]
 ```
 
 ---
 
-## Issue 4: Lock Igbo and Hausa Voices to Pro Only
+## 7. Admin Notification System for Suspicious Referrals
 
-### Current State
-From `useFeatureAccess.ts`:
+**Current State**: AdminReferralAnalytics.tsx shows suspicious referrals but doesn't notify admins proactively.
+
+**Changes Required**:
+
+**File: `supabase/functions/referral/index.ts`**
+- Add logic to send notification to admins when a referral is flagged as suspicious
+- Use Resend to send email notification to admin email addresses
+
+**File: `src/components/dashboard/AdminReferralAnalytics.tsx`**
+- Add a visual notification badge/counter at the top
+- Add real-time subscription to referrals table for live updates
+- Show toast notification when new suspicious referral is detected
+
+**Database Migration**:
+- Consider adding an `admin_notifications` table to track seen/unseen notifications
+- Or use a simpler approach: badge count based on unflagged suspicious referrals
+
+**Technical Approach**:
 ```typescript
-export const LANGUAGE_ACCESS: Record<string, SubscriptionPlan[]> = {
-  en: ["free", "plus", "pro"],  // English - all plans
-  yo: ["plus", "pro"],          // Yoruba - Plus and Pro
-  ig: ["plus", "pro"],          // Igbo - Plus and Pro ← Change to Pro only
-  pcm: ["plus", "pro"],         // Pidgin - Plus and Pro
-  ha: ["pro"],                  // Hausa - Pro only ✅ Already correct
-};
-```
-
-### Target State
-```typescript
-export const LANGUAGE_ACCESS: Record<string, SubscriptionPlan[]> = {
-  en: ["free", "plus", "pro"],  // English - all plans
-  yo: ["plus", "pro"],          // Yoruba - Plus and Pro
-  ig: ["pro"],                  // Igbo - Pro only ← CHANGE
-  pcm: ["plus", "pro"],         // Pidgin - Plus and Pro  
-  ha: ["pro"],                  // Hausa - Pro only ✅
-};
-```
-
-### Files to Modify
-1. `src/hooks/useFeatureAccess.ts` - Change LANGUAGE_ACCESS
-2. `src/components/dashboard/PDFUpload.tsx` - Update UI labels
-3. `src/components/landing/Pricing.tsx` - Update feature descriptions
-
-### Code Changes
-
-**`useFeatureAccess.ts`:**
-```typescript
-export const LANGUAGE_ACCESS: Record<string, SubscriptionPlan[]> = {
-  en: ["free", "plus", "pro"],
-  yo: ["plus", "pro"],
-  ig: ["pro"],    // Changed from ["plus", "pro"]
-  pcm: ["plus", "pro"],
-  ha: ["pro"],
-};
-
-// Also update PLAN_FEATURES
-plus: {
-  languages: ["en", "yo", "pcm"], // Remove "ig"
-  // ...
-},
-pro: {
-  languages: ["en", "yo", "ig", "pcm", "ha"], // All 5
-  // ...
-},
-```
-
-**`PDFUpload.tsx`:**
-```typescript
-const languages = [
-  { value: "en", label: "English", planRequired: "free" as const },
-  { value: "yo", label: "Yoruba", planRequired: "plus" as const },
-  { value: "ig", label: "Igbo", planRequired: "pro" as const },    // Changed
-  { value: "pcm", label: "Pidgin", planRequired: "plus" as const },
-  { value: "ha", label: "Hausa", planRequired: "pro" as const },
-];
-```
-
-**`Pricing.tsx` - Plus plan features:**
-```typescript
-{ text: "2 Nigerian languages (Yoruba, Pidgin)", included: true },  // Remove Igbo
+// In referral edge function, after flagging suspicious
+if (flaggedSuspicious) {
+  // Send email to admin
+  await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${RESEND_API_KEY}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      from: 'TalkPDF AI <alerts@talkpdf.online>',
+      to: ['admin@talkpdf.online'],
+      subject: '⚠️ Suspicious Referral Detected',
+      html: `<p>A suspicious referral was detected...</p>`
+    })
+  });
+}
 ```
 
 ---
 
-## Issue 5: Update Subscription Pricing
+## Implementation Order
 
-### Current Pricing
-| Plan | Monthly | Annual |
-|------|---------|--------|
-| Plus | ₦2,000 | ₦20,000 |
-| Pro | ₦3,500 | ₦40,000 |
-
-### New Pricing
-| Plan | Monthly | Annual | Badge |
-|------|---------|--------|-------|
-| Plus | ₦3,500 | ₦36,000 | "Popular" |
-| Pro | ₦7,500 | ₦84,000 | (remove "Most Popular") |
-
-### Files to Modify
-1. `src/components/landing/Pricing.tsx` - Frontend pricing display
-2. `supabase/functions/flutterwave-payment/index.ts` - Payment price map (server-side truth)
-
-### Code Changes
-
-**`Pricing.tsx`:**
-```typescript
-const plans: PricingPlan[] = [
-  {
-    name: "Free",
-    // ... unchanged
-  },
-  {
-    name: "Plus",
-    description: "Great value for serious learners",
-    monthlyPrice: 3500,     // Changed from 2000
-    yearlyPrice: 36000,     // Changed from 20000
-    priceLabel: "/month",
-    planId: "plus",
-    popular: true,          // ADD - Mark as Popular
-    features: [
-      { text: "100 monthly credits", included: true },
-      { text: "60 minutes audio per day", included: true },
-      { text: "20 PDF uploads per day", included: true },
-      { text: "2 Nigerian languages (Yoruba, Pidgin)", included: true }, // Updated
-      // ... rest unchanged
-    ],
-    ctaText: "Get Plus",
-    ctaVariant: "default",  // Make primary button for popular
-  },
-  {
-    name: "Pro",
-    description: "For serious learners who want to excel",
-    monthlyPrice: 7500,     // Changed from 3500
-    yearlyPrice: 84000,     // Changed from 40000
-    priceLabel: "/month",
-    planId: "pro",
-    popular: false,         // REMOVE Most Popular
-    features: [
-      { text: "500 monthly credits", included: true },
-      { text: "All 5 Nigerian languages (including Igbo, Hausa)", included: true },
-      // ... rest unchanged
-    ],
-    ctaText: "Get Pro",
-    ctaVariant: "outline",  // Secondary button
-  },
-];
-```
-
-**`flutterwave-payment/index.ts` (CRITICAL - Server-side pricing):**
-```typescript
-// PRICE_MAP must match frontend exactly
-const PRICE_MAP: Record<string, Record<BillingCycle, number>> = {
-  plus: { monthly: 3500, yearly: 36000 },   // Updated
-  pro: { monthly: 7500, yearly: 84000 },    // Updated
-};
-```
-
-### Annual Savings Calculation
-- Plus: ₦3,500 × 12 = ₦42,000 → ₦36,000 annual = **14% savings** (₦6,000 off)
-- Pro: ₦7,500 × 12 = ₦90,000 → ₦84,000 annual = **7% savings** (₦6,000 off)
-
-Note: The "Save up to 17%" text in the billing toggle should be updated to "Save up to 14%".
+1. **Phase 1 - Quick Wins (Pricing & Caching)**
+   - Fix pricing inconsistencies across all files
+   - Fix service worker caching issues
+   
+2. **Phase 2 - Audio Improvements**
+   - Add pre-upload language selection prompt
+   - Update generate-lesson-audio with TTS
+   
+3. **Phase 3 - Performance**
+   - Implement lazy loading
+   - Add code splitting
+   
+4. **Phase 4 - Admin Features**
+   - Add suspicious referral notifications
 
 ---
 
-## Summary of Changes
+## Files to Modify
 
-| Issue | Files Modified | Type |
-|-------|----------------|------|
-| 1. Admin referral moderation | `AdminReferralAnalytics.tsx` | Frontend |
-| 2. Revert to Lovable AI | 6 edge functions | Edge Functions |
-| 3. Fix stale data caching | `main.tsx`, hooks | Frontend |
-| 4. Lock Igbo/Hausa to Pro | `useFeatureAccess.ts`, `PDFUpload.tsx`, `Pricing.tsx` | Frontend |
-| 5. Update pricing | `Pricing.tsx`, `flutterwave-payment/index.ts` | Frontend + Edge Function |
+| File | Changes |
+|------|---------|
+| `src/components/landing/Pricing.tsx` | Update Pro to ₦8,500, add savings indicators |
+| `src/components/dashboard/SubscriptionPlans.tsx` | Sync all pricing, fix Plus languages |
+| `supabase/functions/_shared/pricing.ts` | Update Pro from 7500 to 8500 |
+| `supabase/functions/support-chatbot/index.ts` | Update pricing text |
+| `src/main.tsx` | Increment version, add cache clearing |
+| `vite.config.ts` | Change caching strategy, version caches |
+| `src/components/dashboard/PDFUpload.tsx` | Add prominent language selection step |
+| `supabase/functions/generate-lesson-audio/index.ts` | Add YarnGPT TTS audio generation |
+| `src/components/dashboard/MicroLessons.tsx` | Replace speechSynthesis with audio player, add language selection |
+| `src/App.tsx` | Add React.lazy() and Suspense |
+| `supabase/functions/referral/index.ts` | Add admin email notification |
+| `src/components/dashboard/AdminReferralAnalytics.tsx` | Add notification badge and real-time updates |
 
 ---
 
-## Technical Notes
+## Testing Checklist
 
-### Lovable AI vs OpenRouter
-- **Lovable AI** uses `LOVABLE_API_KEY` (auto-provisioned)
-- No additional API key setup required
-- Supports `google/gemini-2.5-flash` and `google/gemini-2.5-pro`
-- Rate limits apply per workspace
-
-### Caching Fix Priority
-The stale data issue is critical and affects user trust. The solution involves:
-1. App version tracking in localStorage
-2. Force-clearing auth tokens on version mismatch
-3. Adding `refetchOnWindowFocus` pattern to hooks
-
-### Pricing Update Impact
-Existing subscribers are NOT affected - their current plan continues at old pricing. New pricing only applies to new subscriptions.
+- [ ] Verify Pro plan shows ₦8,500/month on landing page
+- [ ] Verify "Save ₦18,000" appears for Pro annual billing
+- [ ] Verify "Save ₦6,000" appears for Plus annual billing
+- [ ] Verify Plus shows "3 Nigerian languages" in features
+- [ ] Test PDF upload requires language selection first
+- [ ] Test micro-lessons play Nigerian-accented audio
+- [ ] Test site loads on 1GB RAM device
+- [ ] Test data updates immediately after site changes (no stale data)
+- [ ] Test admin receives email for suspicious referrals
 

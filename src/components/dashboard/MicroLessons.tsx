@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { 
   Clock, 
   Play, 
@@ -15,10 +16,12 @@ import {
   Volume2,
   VolumeX,
   Sparkles,
+  Languages,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { useFeatureAccess } from "@/hooks/useFeatureAccess";
 
 interface MicroLesson {
   id: string;
@@ -37,6 +40,14 @@ interface MicroLessonsProps {
   onLessonComplete?: (lessonId: string, score: number) => void;
 }
 
+const languages = [
+  { value: "en", label: "English (Nigerian)" },
+  { value: "yo", label: "Yoruba" },
+  { value: "ig", label: "Igbo" },
+  { value: "pcm", label: "Pidgin" },
+  { value: "ha", label: "Hausa" },
+];
+
 const MicroLessons = ({ onLessonComplete }: MicroLessonsProps) => {
   const [lessons, setLessons] = useState<MicroLesson[]>([]);
   const [loading, setLoading] = useState(true);
@@ -47,9 +58,10 @@ const MicroLessons = ({ onLessonComplete }: MicroLessonsProps) => {
   const [generatingExplanation, setGeneratingExplanation] = useState(false);
   const [explanation, setExplanation] = useState<string>("");
   const [isPlayingAudio, setIsPlayingAudio] = useState(false);
-  const [isSpeaking, setIsSpeaking] = useState(false);
+  const [selectedLanguage, setSelectedLanguage] = useState("en");
+  const [audioElement, setAudioElement] = useState<HTMLAudioElement | null>(null);
   
-  const speechRef = useRef<SpeechSynthesisUtterance | null>(null);
+  const { canAccessLanguage } = useFeatureAccess();
 
   useEffect(() => {
     fetchLessons();
@@ -73,14 +85,15 @@ const MicroLessons = ({ onLessonComplete }: MicroLessonsProps) => {
     };
   }, [isRunning, timeRemaining]);
 
-  // Cleanup speech on unmount
+  // Cleanup audio on unmount
   useEffect(() => {
     return () => {
-      if (speechSynthesis.speaking) {
-        speechSynthesis.cancel();
+      if (audioElement) {
+        audioElement.pause();
+        audioElement.src = "";
       }
     };
-  }, []);
+  }, [audioElement]);
 
   const fetchLessons = async () => {
     try {
@@ -126,6 +139,7 @@ const MicroLessons = ({ onLessonComplete }: MicroLessonsProps) => {
               conceptIndex: index,
               score: existingProgress?.score || undefined,
               aiExplanation: existingProgress?.ai_explanation || undefined,
+              audioUrl: existingProgress?.audio_url || undefined,
             });
           });
         }
@@ -174,7 +188,7 @@ const MicroLessons = ({ onLessonComplete }: MicroLessonsProps) => {
       const { data, error } = await supabase.functions.invoke("generate-lesson-audio", {
         body: {
           concept: lesson.title,
-          language: "en",
+          language: selectedLanguage,
         },
       });
 
@@ -192,8 +206,15 @@ const MicroLessons = ({ onLessonComplete }: MicroLessonsProps) => {
             concept_index: lesson.conceptIndex || 0,
             status: "in_progress",
             ai_explanation: data.explanation,
+            audio_url: data.audioBase64 ? `data:audio/mpeg;base64,${data.audioBase64}` : null,
           }, { onConflict: "user_id,document_id,concept_index" });
         }
+      }
+
+      // If audio was generated, play it automatically
+      if (data.audioBase64) {
+        const audioUrl = `data:audio/mpeg;base64,${data.audioBase64}`;
+        playGeneratedAudio(audioUrl);
       }
 
       return data.explanation;
@@ -208,30 +229,33 @@ const MicroLessons = ({ onLessonComplete }: MicroLessonsProps) => {
     }
   };
 
-  const speakExplanation = (text: string) => {
-    if (speechSynthesis.speaking) {
-      speechSynthesis.cancel();
-      setIsSpeaking(false);
-      return;
+  const playGeneratedAudio = (audioUrl: string) => {
+    if (audioElement) {
+      audioElement.pause();
     }
 
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.rate = 0.9;
-    utterance.pitch = 1;
-    
-    // Try to use a natural voice
-    const voices = speechSynthesis.getVoices();
-    const englishVoice = voices.find((v) => v.lang.startsWith("en"));
-    if (englishVoice) {
-      utterance.voice = englishVoice;
+    const audio = new Audio(audioUrl);
+    audio.onended = () => setIsPlayingAudio(false);
+    audio.onerror = () => {
+      setIsPlayingAudio(false);
+      toast.error("Failed to play audio");
+    };
+
+    setAudioElement(audio);
+    audio.play();
+    setIsPlayingAudio(true);
+  };
+
+  const toggleAudio = () => {
+    if (!audioElement) return;
+
+    if (isPlayingAudio) {
+      audioElement.pause();
+      setIsPlayingAudio(false);
+    } else {
+      audioElement.play();
+      setIsPlayingAudio(true);
     }
-
-    utterance.onend = () => setIsSpeaking(false);
-    utterance.onerror = () => setIsSpeaking(false);
-
-    speechRef.current = utterance;
-    speechSynthesis.speak(utterance);
-    setIsSpeaking(true);
   };
 
   const startLesson = async (lesson: MicroLesson) => {
@@ -246,23 +270,20 @@ const MicroLessons = ({ onLessonComplete }: MicroLessonsProps) => {
       )
     );
 
-    // Generate AI explanation
-    const explanationText = await generateAIExplanation(lesson);
+    // Generate AI explanation with audio
+    await generateAIExplanation(lesson);
     
-    // Auto-start timer and audio
+    // Auto-start timer
     setIsRunning(true);
-    if (explanationText) {
-      setTimeout(() => speakExplanation(explanationText), 500);
-    }
   };
 
   const handleLessonComplete = async () => {
     if (!activeLesson) return;
     
-    // Stop any ongoing speech
-    if (speechSynthesis.speaking) {
-      speechSynthesis.cancel();
-      setIsSpeaking(false);
+    // Stop audio
+    if (audioElement) {
+      audioElement.pause();
+      setIsPlayingAudio(false);
     }
     
     const score = Math.floor(Math.random() * 20) + 80; // Random score 80-100 for demo
@@ -297,9 +318,9 @@ const MicroLessons = ({ onLessonComplete }: MicroLessonsProps) => {
   };
 
   const resetLesson = () => {
-    if (speechSynthesis.speaking) {
-      speechSynthesis.cancel();
-      setIsSpeaking(false);
+    if (audioElement) {
+      audioElement.pause();
+      setIsPlayingAudio(false);
     }
     setTimeRemaining(60);
     setIsRunning(false);
@@ -407,7 +428,7 @@ const MicroLessons = ({ onLessonComplete }: MicroLessonsProps) => {
           {generatingExplanation ? (
             <div className="flex items-center justify-center gap-3">
               <Loader2 className="h-5 w-5 animate-spin text-primary" />
-              <span className="text-muted-foreground">AI is generating your explanation...</span>
+              <span className="text-muted-foreground">AI is generating your Nigerian-accented audio explanation...</span>
             </div>
           ) : explanation ? (
             <div className="space-y-4">
@@ -415,25 +436,30 @@ const MicroLessons = ({ onLessonComplete }: MicroLessonsProps) => {
                 <div className="flex items-center gap-2">
                   <Sparkles className="h-5 w-5 text-primary" />
                   <span className="font-medium text-foreground">AI Explanation</span>
+                  <Badge variant="outline" className="text-xs">
+                    {languages.find(l => l.value === selectedLanguage)?.label}
+                  </Badge>
                 </div>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => speakExplanation(explanation)}
-                  className="gap-1"
-                >
-                  {isSpeaking ? (
-                    <>
-                      <VolumeX className="h-4 w-4" />
-                      Stop
-                    </>
-                  ) : (
-                    <>
-                      <Volume2 className="h-4 w-4" />
-                      Listen
-                    </>
-                  )}
-                </Button>
+                {audioElement && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={toggleAudio}
+                    className="gap-1"
+                  >
+                    {isPlayingAudio ? (
+                      <>
+                        <VolumeX className="h-4 w-4" />
+                        Pause
+                      </>
+                    ) : (
+                      <>
+                        <Volume2 className="h-4 w-4" />
+                        Play Audio
+                      </>
+                    )}
+                  </Button>
+                )}
               </div>
               <p className="text-foreground leading-relaxed">{explanation}</p>
             </div>
@@ -476,8 +502,38 @@ const MicroLessons = ({ onLessonComplete }: MicroLessonsProps) => {
           1-Minute Mastery
         </h2>
         <p className="text-muted-foreground">
-          60-second micro-lessons with AI-powered explanations
+          60-second micro-lessons with Nigerian-accented AI audio
         </p>
+      </div>
+
+      {/* Language Selection */}
+      <div className="flex items-center justify-center gap-3">
+        <Languages className="h-5 w-5 text-muted-foreground" />
+        <Select 
+          value={selectedLanguage} 
+          onValueChange={(val) => {
+            if (canAccessLanguage(val)) {
+              setSelectedLanguage(val);
+            } else {
+              toast.error("Upgrade to access this language");
+            }
+          }}
+        >
+          <SelectTrigger className="w-48">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {languages.map((lang) => (
+              <SelectItem 
+                key={lang.value} 
+                value={lang.value}
+                disabled={!canAccessLanguage(lang.value)}
+              >
+                {lang.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
 
       {/* Filter Tabs */}

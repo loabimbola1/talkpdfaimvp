@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { PRICE_MAP, CURRENCY, type BillingCycle } from "../_shared/pricing.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -11,12 +12,6 @@ interface VerifyRequest {
   transaction_id: string;
   tx_ref: string;
 }
-
-// Strict plan/price mapping - must match flutterwave-payment
-const PRICE_MAP: Record<string, Record<string, number>> = {
-  plus: { monthly: 2000, yearly: 20000 },
-  pro: { monthly: 3500, yearly: 40000 },
-};
 
 serve(async (req) => {
   // Handle CORS preflight requests
@@ -193,16 +188,17 @@ serve(async (req) => {
 
     // Verify against our strict price map as well
     const planPrices = PRICE_MAP[payment.plan];
+    const billingCycle = payment.billing_cycle as BillingCycle;
     const validPriceForPlan = planPrices 
-      ? (planPrices[payment.billing_cycle] === expectedAmount)
+      ? (planPrices[billingCycle] === expectedAmount)
       : false;
 
     if (!validPriceForPlan) {
       console.error(logPrefix, "Plan/price validation failed", {
         plan: payment.plan,
-        billingCycle: payment.billing_cycle,
+        billingCycle: billingCycle,
         storedAmount: expectedAmount,
-        expectedFromMap: planPrices?.[payment.billing_cycle],
+        expectedFromMap: planPrices?.[billingCycle],
       });
       
       await supabaseAdmin.from("payments").update({ status: "failed" }).eq("id", payment.id);

@@ -1,263 +1,214 @@
 
+# Implementation Plan: 6 Tasks
 
-# Implementation Plan: 7 Feature Updates and Bug Fixes
-
-## Overview
-This plan addresses 7 items: audio language selection improvements, micro-lesson audio quality, performance optimization, pricing updates, caching issues, and admin notifications. Here's a detailed breakdown of each task.
-
----
-
-## 1. Pre-Upload Audio Language Selection Prompt
-
-**Current State**: Language selection exists in PDFUpload.tsx but is not prominently positioned as a required step before upload.
-
-**Changes Required**:
-
-**File: `src/components/dashboard/PDFUpload.tsx`**
-- Add a visual step indicator showing "Step 1: Select Language → Step 2: Upload"
-- Make language selection more prominent with a card-style UI
-- Add validation to require explicit language selection before allowing file drop
-- Keep the Nigerian accent as default (English with Nigerian accent via "idera" voice)
-
-**Technical Approach**:
-- Add a `hasSelectedLanguage` state initialized to `false`
-- Show a language selection card before the dropzone is enabled
-- Once language is selected, enable the dropzone
-- Add clear messaging: "Select your preferred audio language first"
+## Summary
+Based on my analysis, I need to address:
+1. Test leaderboard functionality (already using secure views - functioning correctly)
+2. Add rate limiting to edge functions missing it
+3. Frontend deployment issue (user needs to publish)
+4. Test admin dashboard 
+5. Fix Word document processing error
+6. Remove "7-day free trial" text
 
 ---
 
-## 2. Nigerian-Accented Audio for "1 Minute Lessons"
+## Task 1: Leaderboard Security Testing
 
-**Current State**: The `generate-lesson-audio` edge function only generates text explanations, not audio. The MicroLessons component uses browser `speechSynthesis` which has generic voices.
+**Status**: Already working correctly with secure views
 
-**Changes Required**:
+The leaderboard components are correctly using secure database views:
+- `ReferralLeaderboard.tsx` queries `leaderboard_profiles` view
+- `QuizLeaderboard.tsx` queries `leaderboard_quiz_scores` view  
+- `Leaderboard.tsx` queries `leaderboard_badges` view
 
-**File: `supabase/functions/generate-lesson-audio/index.ts`**
-- Add TTS audio generation using YarnGPT/Spitch (same providers as process-pdf)
-- Return base64-encoded audio in the response
-- Use Nigerian accent voices ("idera" for English, native voices for other languages)
+The views use `security_invoker = true` and only expose: `user_id`, `full_name`, `university`, `referral_credits`, and scores. No PII (emails, avatars) is exposed.
 
-**File: `src/components/dashboard/MicroLessons.tsx`**
-- Add language selection dropdown for micro-lessons
-- Replace browser `speechSynthesis` with audio player using generated audio
-- Store and cache generated audio in the database
-- Add loading state while audio is being generated
+From the network logs, I can see that when authenticated, the request to `leaderboard_profiles` succeeds (Status 200), and when the session expired it returned 401 (correctly blocking anonymous access).
 
-**Technical Approach**:
-- Import the YarnGPT voice mapping from process-pdf logic
-- Generate audio server-side with the explanation text
-- Return audio as base64 in the response
-- Play using HTML5 Audio element on the frontend
+**No code changes needed** - the system is working as designed.
 
 ---
 
-## 3. Performance Optimization for Low-Spec Devices
+## Task 2: Add Rate Limiting to Edge Functions
 
-**Current State**: The app loads all components eagerly, which can be heavy for devices with limited RAM (1GB).
+**Current State Analysis**:
+
+Functions WITH rate limiting:
+- `process-pdf` - 5 requests/minute
+- `contact-form` - 5 requests/hour
+- `explain-back-evaluate` - has rate limiting
+- `generate-quiz` - has rate limiting
+- `voice-to-text` - has rate limiting  
+- `support-chatbot` - 20 requests/minute
+- `generate-lesson-audio` - has rate limiting
+- `spitch-tts` - has rate limiting
+- `elevenlabs-tts` - has rate limiting
+
+Functions MISSING rate limiting:
+- `flutterwave-payment` - needs rate limiting
+- `flutterwave-verify` - needs rate limiting
+- `send-payment-email` - internal only, skip
+- `admin-dashboard-data` - needs rate limiting
+- `verify-admin` - needs rate limiting
+- `weekly-digest` - scheduled/internal, skip
+- `referral-notification` - internal only, skip
+- `referral` - needs rate limiting
 
 **Changes Required**:
 
-**File: `src/App.tsx`**
-- Implement React.lazy() for route-based code splitting
-- Add Suspense boundaries with lightweight loading fallbacks
+### File: `supabase/functions/flutterwave-payment/index.ts`
+- Import rate limiter from shared module
+- Add rate limit: 5 payment attempts per minute per user
+- Return 429 if exceeded
 
-**File: `src/pages/Index.tsx`**
-- Lazy load heavy landing page sections (Pricing, Testimonials, Features)
-- Defer non-critical third-party scripts
+### File: `supabase/functions/flutterwave-verify/index.ts`
+- Import rate limiter from shared module
+- Add rate limit: 10 verifications per minute per user
+- Return 429 if exceeded
 
-**File: `vite.config.ts`**
-- Add build optimization: `build.rollupOptions.output.manualChunks` for vendor splitting
-- Enable compression and minification optimizations
+### File: `supabase/functions/admin-dashboard-data/index.ts`
+- Import rate limiter from shared module
+- Add rate limit: 30 requests per minute per admin
+- Return 429 if exceeded
 
-**File: `index.html`**
-- Add `loading="lazy"` to images
-- Add font-display: swap for web fonts
-- Consider preconnect hints for Supabase
+### File: `supabase/functions/verify-admin/index.ts`
+- Import rate limiter from shared module
+- Add rate limit: 30 requests per minute per user
+- Return 429 if exceeded
 
-**Technical Approach**:
-```typescript
-// Example lazy loading pattern
-const Dashboard = lazy(() => import("./pages/Dashboard"));
-const Admin = lazy(() => import("./pages/Admin"));
+### File: `supabase/functions/referral/index.ts`
+- Import rate limiter from shared module
+- Add rate limit: 10 referral operations per minute per user
+- Return 429 if exceeded
 
-// In routes
-<Suspense fallback={<PageLoader />}>
-  <Routes>
-    <Route path="/dashboard" element={<Dashboard />} />
-  </Routes>
-</Suspense>
+---
+
+## Task 3: Frontend Deployment Issue
+
+**Root Cause**: The user is seeing the preview updates but not the live site because frontend changes require clicking "Update" in the publish dialog.
+
+**Solution**: Inform user to publish the changes - no code changes needed.
+
+**User Action Required**: 
+- Click the Publish button in the top right corner of the editor
+- Click "Update" to push changes to the live domain (talkpdf.online)
+
+---
+
+## Task 4: Admin Dashboard Testing
+
+**Status**: Already implemented with server-side authorization via `admin-dashboard-data` edge function.
+
+The admin dashboard now:
+1. Calls `supabase.functions.invoke('admin-dashboard-data')`
+2. The edge function validates the JWT token
+3. Checks `user_roles` table for admin role
+4. Returns data only if admin verified
+
+**Admin Access**:
+- Email: lukmanabimb@gmail.com
+- URL: /admin (requires login first at /auth)
+
+---
+
+## Task 5: Fix Word Document Processing Error
+
+**Root Cause** (from edge function logs):
+```
+AI extraction failed: {"error":{"message":"Invalid file type: application/vnd.openxmlformats-officedocument.wordprocessingml.document","code":400...
 ```
 
----
+The Lovable AI Gateway (Gemini) is rejecting the Word document MIME type. The current implementation sends Word documents using the `file` content type which the AI API doesn't support for Word files.
 
-## 4. Update Pro Subscription Pricing
-
-**Current State**: 
-- Landing page Pricing.tsx: Pro = ₦7,500/₦84,000 ✓ (correct)
-- Dashboard SubscriptionPlans.tsx: Pro = ₦3,500/₦40,000 ✗ (WRONG - needs update)
-- User request: Pro = ₦8,500/₦84,000 with "Save ₦18,000"
+**Solution**: Convert Word document to text using a different approach before sending to AI for summarization.
 
 **Changes Required**:
 
-**File: `src/components/landing/Pricing.tsx`**
-- Update Pro monthly price from ₦7,500 to ₦8,500
-- Add explicit savings indicators:
-  - Plus annual: "Save ₦6,000" (₦3,500 × 12 = ₦42,000 - ₦36,000 = ₦6,000)
-  - Pro annual: "Save ₦18,000" (₦8,500 × 12 = ₦102,000 - ₦84,000 = ₦18,000)
+### File: `supabase/functions/process-pdf/index.ts`
+For Word documents, use a text extraction library or convert the Word document differently:
 
-**File: `src/components/dashboard/SubscriptionPlans.tsx`**
-- Update Plus monthly: ₦2,000 → ₦3,500
-- Update Plus yearly: ₦20,000 → ₦36,000
-- Update Pro monthly: ₦3,500 → ₦8,500
-- Update Pro yearly: ₦40,000 → ₦84,000
-- Add savings indicators matching landing page
-- Ensure Plus includes "3 Nigerian languages (Yoruba, Igbo, Pidgin)"
-
-**File: `supabase/functions/_shared/pricing.ts`**
-- Update Pro monthly from 7500 to 8500
-
-**File: `supabase/functions/support-chatbot/index.ts`**
-- Update pricing reference in chatbot context
-
----
-
-## 5. Fix Upgrade Button Pricing Consistency
-
-**Current State**: Dashboard upgrade buttons, daily usage section, and settings still show old pricing.
-
-**Changes Required**:
-
-**File: `src/components/dashboard/SubscriptionPlans.tsx`**
-- Completely align with landing page pricing
-- Ensure Plus features include "3 Nigerian languages (Yoruba, Igbo, Pidgin)" not "2"
-
-**File: `src/components/dashboard/UsageLimitsDisplay.tsx`**
-- No pricing displayed here, but verify upgrade button works correctly
-
-**File: `src/components/dashboard/SubscriptionStatus.tsx`**
-- Verify upgrade button navigates correctly
-
-**Technical Approach**:
-- Create a shared pricing constant file for frontend consistency
-- Reference the same prices across all components
-
----
-
-## 6. Fix Data Caching Issues (Service Worker Cache)
-
-**Current State**: Users see stale data after updates. Works in incognito (fresh cache). The current `main.tsx` clears localStorage but the service worker cache in `vite.config.ts` uses `StaleWhileRevalidate` and `CacheFirst` strategies that can serve stale data.
-
-**Root Cause**: The PWA service worker caches API responses (`supabase-documents`, `supabase-api`) with long expiration (7 days for documents, 1 day for API). On update, stale cached responses are served.
-
-**Changes Required**:
-
-**File: `vite.config.ts`**
-- Change `StaleWhileRevalidate` to `NetworkFirst` for documents API
-- Reduce cache expiration for dynamic data
-- Add cache versioning
-
-**File: `src/main.tsx`**
-- Increment APP_VERSION to "2.2.0" to trigger cache clear
-- Add service worker cache clearing on version change
-- Clear caches using `caches.delete()` API for service worker caches
-
-**Technical Approach**:
 ```typescript
-// In main.tsx, add service worker cache clearing
-if (cachedVersion !== APP_VERSION) {
-  // Clear service worker caches
-  if ('caches' in window) {
-    caches.keys().then(cacheNames => {
-      cacheNames.forEach(cacheName => {
-        if (cacheName.startsWith('supabase-')) {
-          caches.delete(cacheName);
-        }
-      });
-    });
-  }
-  // ... existing localStorage clearing
-}
+// Option 1: Use Gemini with explicit text extraction prompt
+// Option 2: Use a Word document parser library
+
+// The issue is that gemini-2.5-flash may not natively support .docx files
+// Need to extract text from Word document before sending to AI
+
+// Add mammoth.js for Word document extraction
+import * as mammoth from "https://esm.sh/mammoth@1.6.0";
 ```
 
-**File: `vite.config.ts`** (workbox configuration)
-```typescript
-runtimeCaching: [
-  {
-    urlPattern: /^https:\/\/.*\.supabase\.co\/rest\/v1\/documents.*/i,
-    handler: "NetworkFirst", // Changed from StaleWhileRevalidate
-    options: {
-      cacheName: "supabase-documents-v2", // Versioned cache name
-      expiration: {
-        maxEntries: 10,
-        maxAgeSeconds: 60 * 60 * 4 // 4 hours instead of 7 days
-      },
-      // ...
-    }
-  }
-]
-```
+However, `mammoth` requires Node.js filesystem APIs not available in Deno. 
+
+**Alternative Solution**: Use Google's Gemini file API differently or convert to PDF first.
+
+**Recommended Approach**:
+1. For Word documents, use a different API call format
+2. Or inform the user that only PDF files are supported
+3. Or use a web service to convert DOCX to text
+
+**Technical Details**:
+- The current code correctly detects Word documents
+- The issue is the AI gateway doesn't accept DOCX as a file attachment
+- We need to extract text from DOCX before sending to AI
+
+### Implementation:
+Add DOCX text extraction using a Deno-compatible library or fetch from a conversion service.
 
 ---
 
-## 7. Admin Notification System for Suspicious Referrals
+## Task 6: Remove "7-day Free Trial" Text
 
-**Current State**: AdminReferralAnalytics.tsx shows suspicious referrals but doesn't notify admins proactively.
+**Files to Modify**:
 
-**Changes Required**:
+### File: `src/components/landing/Pricing.tsx`
+- Remove line 373-375: "All plans include a 7-day free trial. Cancel anytime. No hidden fees."
 
-**File: `supabase/functions/referral/index.ts`**
-- Add logic to send notification to admins when a referral is flagged as suspicious
-- Use Resend to send email notification to admin email addresses
+### File: `src/components/SupportChatbot.tsx`
+- Line 28: Remove "All paid plans include a 7-day free trial!" from the pricing answer
 
-**File: `src/components/dashboard/AdminReferralAnalytics.tsx`**
-- Add a visual notification badge/counter at the top
-- Add real-time subscription to referrals table for live updates
-- Show toast notification when new suspicious referral is detected
-
-**Database Migration**:
-- Consider adding an `admin_notifications` table to track seen/unseen notifications
-- Or use a simpler approach: badge count based on unflagged suspicious referrals
-
-**Technical Approach**:
-```typescript
-// In referral edge function, after flagging suspicious
-if (flaggedSuspicious) {
-  // Send email to admin
-  await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${RESEND_API_KEY}`,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
-      from: 'TalkPDF AI <alerts@talkpdf.online>',
-      to: ['admin@talkpdf.online'],
-      subject: '⚠️ Suspicious Referral Detected',
-      html: `<p>A suspicious referral was detected...</p>`
-    })
-  });
-}
-```
+### File: `src/pages/FAQ.tsx`
+- Line 51: Update answer to remove 7-day trial mention
 
 ---
 
 ## Implementation Order
 
-1. **Phase 1 - Quick Wins (Pricing & Caching)**
-   - Fix pricing inconsistencies across all files
-   - Fix service worker caching issues
+1. **Phase 1 - Quick Text Removal** (Task 6)
+   - Remove 7-day trial text from 3 files
    
-2. **Phase 2 - Audio Improvements**
-   - Add pre-upload language selection prompt
-   - Update generate-lesson-audio with TTS
+2. **Phase 2 - Rate Limiting** (Task 2)
+   - Add rate limiting to 5 edge functions
    
-3. **Phase 3 - Performance**
-   - Implement lazy loading
-   - Add code splitting
-   
-4. **Phase 4 - Admin Features**
-   - Add suspicious referral notifications
+3. **Phase 3 - Word Document Fix** (Task 5)
+   - Implement DOCX text extraction workaround
+
+4. **Phase 4 - User Actions** (Tasks 3, 4)
+   - User publishes to deploy frontend changes
+   - User tests admin dashboard at /admin
+
+---
+
+## Technical Details
+
+### Rate Limiter Import Pattern
+```typescript
+import { checkRateLimit, cleanupRateLimits, rateLimitResponse } from "../_shared/rate-limiter.ts";
+
+// At start of handler:
+cleanupRateLimits();
+
+// After auth:
+const rateLimit = checkRateLimit(userId, "function-name", { windowMs: 60000, maxRequests: 5 });
+if (!rateLimit.allowed) {
+  return rateLimitResponse(rateLimit.resetIn, corsHeaders);
+}
+```
+
+### Word Document Fix Options
+1. **Best**: Use a DOCX parsing library that works in Deno
+2. **Alternative**: Send the raw text to AI for summarization without file attachment
+3. **Fallback**: Inform users to convert to PDF before upload
 
 ---
 
@@ -265,30 +216,24 @@ if (flaggedSuspicious) {
 
 | File | Changes |
 |------|---------|
-| `src/components/landing/Pricing.tsx` | Update Pro to ₦8,500, add savings indicators |
-| `src/components/dashboard/SubscriptionPlans.tsx` | Sync all pricing, fix Plus languages |
-| `supabase/functions/_shared/pricing.ts` | Update Pro from 7500 to 8500 |
-| `supabase/functions/support-chatbot/index.ts` | Update pricing text |
-| `src/main.tsx` | Increment version, add cache clearing |
-| `vite.config.ts` | Change caching strategy, version caches |
-| `src/components/dashboard/PDFUpload.tsx` | Add prominent language selection step |
-| `supabase/functions/generate-lesson-audio/index.ts` | Add YarnGPT TTS audio generation |
-| `src/components/dashboard/MicroLessons.tsx` | Replace speechSynthesis with audio player, add language selection |
-| `src/App.tsx` | Add React.lazy() and Suspense |
-| `supabase/functions/referral/index.ts` | Add admin email notification |
-| `src/components/dashboard/AdminReferralAnalytics.tsx` | Add notification badge and real-time updates |
+| `src/components/landing/Pricing.tsx` | Remove 7-day trial text |
+| `src/components/SupportChatbot.tsx` | Remove 7-day trial mention |
+| `src/pages/FAQ.tsx` | Update FAQ answer |
+| `supabase/functions/flutterwave-payment/index.ts` | Add rate limiting |
+| `supabase/functions/flutterwave-verify/index.ts` | Add rate limiting |
+| `supabase/functions/admin-dashboard-data/index.ts` | Add rate limiting |
+| `supabase/functions/verify-admin/index.ts` | Add rate limiting |
+| `supabase/functions/referral/index.ts` | Add rate limiting |
+| `supabase/functions/process-pdf/index.ts` | Fix Word document handling |
 
 ---
 
 ## Testing Checklist
 
-- [ ] Verify Pro plan shows ₦8,500/month on landing page
-- [ ] Verify "Save ₦18,000" appears for Pro annual billing
-- [ ] Verify "Save ₦6,000" appears for Plus annual billing
-- [ ] Verify Plus shows "3 Nigerian languages" in features
-- [ ] Test PDF upload requires language selection first
-- [ ] Test micro-lessons play Nigerian-accented audio
-- [ ] Test site loads on 1GB RAM device
-- [ ] Test data updates immediately after site changes (no stale data)
-- [ ] Test admin receives email for suspicious referrals
-
+- [ ] Verify trial text removed from pricing page
+- [ ] Verify trial text removed from chatbot responses
+- [ ] Verify trial text removed from FAQ
+- [ ] Test rate limiting on payment functions
+- [ ] Test Word document upload after fix
+- [ ] Verify admin dashboard loads data correctly
+- [ ] User publishes and verifies live site updates

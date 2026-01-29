@@ -1,10 +1,14 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { checkRateLimit, cleanupRateLimits, rateLimitResponse } from "../_shared/rate-limiter.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
+
+// Rate limit: 30 requests per minute per admin
+const RATE_LIMIT_CONFIG = { windowMs: 60 * 1000, maxRequests: 30 };
 
 serve(async (req) => {
   // Handle CORS preflight requests
@@ -90,6 +94,13 @@ serve(async (req) => {
           headers: { ...corsHeaders, "Content-Type": "application/json" }
         }
       );
+    }
+
+    // Rate limiting check (after admin verification to avoid leaking user info)
+    cleanupRateLimits();
+    const rateLimit = checkRateLimit(user.id, "admin-dashboard-data", RATE_LIMIT_CONFIG);
+    if (!rateLimit.allowed) {
+      return rateLimitResponse(rateLimit.resetIn, corsHeaders);
     }
 
     console.log("Admin dashboard: Fetching data for admin user:", user.id);

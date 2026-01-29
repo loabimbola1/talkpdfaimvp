@@ -47,8 +47,8 @@ const faqs = [
     category: "Pricing & Billing",
     items: [
       {
-        question: "Is there a free trial?",
-        answer: "Yes! All paid plans come with a 7-day free trial. You can also use our Free plan indefinitely with limited features (5 minutes of audio per day)."
+        question: "Is there a free plan?",
+        answer: "Yes! You can use our Free plan indefinitely with limited features (5 minutes of audio per day, 2 PDFs per day). Upgrade anytime to unlock more features."
       },
       {
         question: "What payment methods do you accept?",

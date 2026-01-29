@@ -25,7 +25,7 @@ const knowledgeBase = [
   },
   {
     keywords: ["price", "pricing", "cost", "subscription", "plan", "free"],
-    answer: "We offer 3 plans:\n• Free: 5 audio minutes/day, 2 PDFs/day\n• Plus (₦2,500/month): 30 minutes, 10 PDFs, Explain-Back Mode\n• Pro (₦4,500/month): Unlimited audio, PDFs, and downloads\n\nAll paid plans include a 7-day free trial!"
+    answer: "We offer 3 plans:\n• Free: 5 audio minutes/day, 2 PDFs/day\n• Plus (₦3,500/month): 60 minutes, 20 PDFs, Explain-Back Mode\n• Pro (₦8,500/month): Unlimited audio, PDFs, and downloads"
   },
   {
     keywords: ["explain back", "explain-back", "test", "understanding"],

@@ -642,6 +642,39 @@ export type Database = {
         }
         Relationships: []
       }
+      user_referrals_safe: {
+        Row: {
+          completed_at: string | null
+          created_at: string | null
+          credits_awarded: number | null
+          id: string | null
+          referral_code: string | null
+          referred_id: string | null
+          referrer_id: string | null
+          status: string | null
+        }
+        Insert: {
+          completed_at?: string | null
+          created_at?: string | null
+          credits_awarded?: number | null
+          id?: string | null
+          referral_code?: string | null
+          referred_id?: string | null
+          referrer_id?: string | null
+          status?: string | null
+        }
+        Update: {
+          completed_at?: string | null
+          created_at?: string | null
+          credits_awarded?: number | null
+          id?: string | null
+          referral_code?: string | null
+          referred_id?: string | null
+          referrer_id?: string | null
+          status?: string | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
       has_role: {

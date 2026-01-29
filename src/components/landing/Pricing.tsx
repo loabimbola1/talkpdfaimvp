@@ -371,7 +371,7 @@ const Pricing = () => {
 
         {/* Trust Note */}
         <p className="text-center text-muted-foreground text-sm mt-10">
-          All plans include a 7-day free trial. Cancel anytime. No hidden fees.
+          Cancel anytime. No hidden fees.
         </p>
       </div>
     </section>

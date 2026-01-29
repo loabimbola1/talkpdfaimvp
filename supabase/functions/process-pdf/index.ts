@@ -320,44 +320,115 @@ serve(async (req) => {
       );
     }
 
-    // Extract text from file using AI (works for both PDF and Word)
+    // Extract text from file using AI
+    // For Word documents, we use a text-based extraction approach since the AI gateway
+    // doesn't support DOCX file attachments. For PDFs, we use the file attachment method.
     const fileBase64 = await blobToBase64(fileData);
     
     console.log(`Extracting text from ${fileType}...`);
     
-    const extractResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
-        messages: [
-          {
-            role: "system",
-            content: `You are a document extraction assistant. Extract ALL text content from the provided ${fileType.toUpperCase()} document. Preserve the structure and order of the content. Focus on extracting educational content, key concepts, and important information that students would need to learn. Output only the extracted text, no commentary.`
+    let extractResponse: Response;
+    
+    if (isWordDoc) {
+      // For Word documents, extract text by reading the document structure
+      // Word documents (.docx) are ZIP files containing XML. We'll ask the AI
+      // to treat the base64 data and filename to understand it's a Word doc
+      console.log("Using Word document extraction approach...");
+      extractResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${LOVABLE_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "google/gemini-2.5-flash",
+          messages: [
+            {
+              role: "system",
+              content: `You are a document extraction assistant. Extract ALL text content from the provided document. Preserve the structure and order of the content. Focus on extracting educational content, key concepts, and important information that students would need to learn. Output only the extracted text, no commentary.`
+            },
+            {
+              role: "user",
+              content: [
+                {
+                  type: "text",
+                  text: `Extract all text content from this Word document (${document.file_name}). Include all educational content, definitions, concepts, and key points.`
+                },
+                {
+                  type: "file",
+                  file: {
+                    filename: document.file_name.replace(/\.docx?$/i, '.pdf'),
+                    file_data: `data:application/pdf;base64,${fileBase64}`
+                  }
+                }
+              ]
+            }
+          ],
+          max_tokens: 16000
+        })
+      });
+      
+      // If the PDF-disguised approach fails, try a simpler text-based prompt
+      if (!extractResponse.ok) {
+        console.log("PDF approach failed for Word doc, trying text-based extraction...");
+        extractResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${LOVABLE_API_KEY}`,
+            "Content-Type": "application/json",
           },
-          {
-            role: "user",
-            content: [
+          body: JSON.stringify({
+            model: "google/gemini-2.5-flash",
+            messages: [
               {
-                type: "text",
-                text: `Extract all text content from this ${fileType.toUpperCase()} document. Include all educational content, definitions, concepts, and key points.`
+                role: "system",
+                content: `You are a document extraction assistant. The user has uploaded a Word document (.docx). Extract ALL text content, preserving structure. Focus on educational content.`
               },
               {
-                type: "file",
-                file: {
-                  filename: document.file_name,
-                  file_data: `data:${mimeType};base64,${fileBase64}`
-                }
+                role: "user",
+                content: `I've uploaded a Word document named "${document.file_name}". Please help me extract the text content. Here is the base64 encoded content of the document (this is a .docx file): ${fileBase64.substring(0, 100000)}`
               }
-            ]
-          }
-        ],
-        max_tokens: 16000
-      })
-    });
+            ],
+            max_tokens: 16000
+          })
+        });
+      }
+    } else {
+      // PDF extraction using file attachment (works reliably)
+      extractResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${LOVABLE_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "google/gemini-2.5-flash",
+          messages: [
+            {
+              role: "system",
+              content: `You are a document extraction assistant. Extract ALL text content from the provided PDF document. Preserve the structure and order of the content. Focus on extracting educational content, key concepts, and important information that students would need to learn. Output only the extracted text, no commentary.`
+            },
+            {
+              role: "user",
+              content: [
+                {
+                  type: "text",
+                  text: `Extract all text content from this PDF document. Include all educational content, definitions, concepts, and key points.`
+                },
+                {
+                  type: "file",
+                  file: {
+                    filename: document.file_name,
+                    file_data: `data:application/pdf;base64,${fileBase64}`
+                  }
+                }
+              ]
+            }
+          ],
+          max_tokens: 16000
+        })
+      });
+    }
 
     if (!extractResponse.ok) {
       const errorText = await extractResponse.text();

@@ -1,10 +1,14 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { checkRateLimit, cleanupRateLimits, rateLimitResponse } from "../_shared/rate-limiter.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
+
+// Rate limit: 10 referral operations per minute per user
+const RATE_LIMIT_CONFIG = { windowMs: 60 * 1000, maxRequests: 10 };
 
 interface ReferralRequest {
   action: "validate" | "apply" | "get-stats";
@@ -50,6 +54,14 @@ serve(async (req) => {
     }
 
     const userId = userData.user.id;
+
+    // Rate limiting check
+    cleanupRateLimits();
+    const rateLimit = checkRateLimit(userId, "referral", RATE_LIMIT_CONFIG);
+    if (!rateLimit.allowed) {
+      return rateLimitResponse(rateLimit.resetIn, corsHeaders);
+    }
+
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
     const { action, referralCode }: ReferralRequest = await req.json();
 

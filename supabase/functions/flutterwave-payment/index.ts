@@ -1,12 +1,16 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { PRICE_MAP, VALID_PLANS, CURRENCY, type BillingCycle } from "../_shared/pricing.ts";
+import { checkRateLimit, cleanupRateLimits, rateLimitResponse } from "../_shared/rate-limiter.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
     "authorization, x-client-info, apikey, content-type",
 };
+
+// Rate limit: 5 payment attempts per minute per user
+const RATE_LIMIT_CONFIG = { windowMs: 60 * 1000, maxRequests: 5 };
 
 interface PaymentRequest {
   plan: string;
@@ -69,6 +73,14 @@ serve(async (req) => {
         status: 401,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
+    }
+
+    // Rate limiting check
+    cleanupRateLimits();
+    const rateLimit = checkRateLimit(user.id, "flutterwave-payment", RATE_LIMIT_CONFIG);
+    if (!rateLimit.allowed) {
+      console.warn(logPrefix, "Rate limit exceeded for user:", user.id);
+      return rateLimitResponse(rateLimit.resetIn, corsHeaders);
     }
 
     const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);

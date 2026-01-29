@@ -23,10 +23,10 @@ const Admin = () => {
   const navigate = useNavigate();
 
   useEffect(() => {
-    checkAdminAccess();
+    fetchAdminDashboardData();
   }, []);
 
-  const checkAdminAccess = async () => {
+  const fetchAdminDashboardData = async () => {
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.user) {
@@ -34,38 +34,35 @@ const Admin = () => {
         return;
       }
 
-      // Server-side admin verification via edge function
-      const { data, error } = await supabase.functions.invoke('verify-admin');
+      // All admin verification and data fetching happens server-side
+      // This prevents client-side authorization bypass attacks
+      const { data, error } = await supabase.functions.invoke('admin-dashboard-data');
       
-      if (error || !data?.isAdmin) {
+      if (error) {
+        console.error("Admin dashboard error:", error);
         toast.error("Access denied. Admin privileges required.");
         navigate("/dashboard");
         return;
       }
 
+      if (data.error) {
+        toast.error(data.error);
+        navigate("/dashboard");
+        return;
+      }
+
+      // Set data from server-side response
+      setUsers(data.users || []);
+      setPayments(data.payments || []);
+      setUsageStats(data.usageStats || []);
       setIsAdmin(true);
-      await Promise.all([fetchUsers(), fetchPayments(), fetchUsageStats()]);
     } catch (error) {
-      console.error("Error checking admin access:", error);
+      console.error("Error loading admin dashboard:", error);
+      toast.error("Failed to load admin dashboard");
       navigate("/dashboard");
     } finally {
       setLoading(false);
     }
-  };
-
-  const fetchUsers = async () => {
-    const { data } = await supabase.from("profiles").select("*").order("created_at", { ascending: false }).limit(50);
-    setUsers(data || []);
-  };
-
-  const fetchPayments = async () => {
-    const { data } = await supabase.from("payments").select("*").order("created_at", { ascending: false }).limit(50);
-    setPayments(data || []);
-  };
-
-  const fetchUsageStats = async () => {
-    const { data } = await supabase.from("usage_tracking").select("*").order("created_at", { ascending: false }).limit(100);
-    setUsageStats(data || []);
   };
 
   if (loading) {

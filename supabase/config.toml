@@ -47,3 +47,6 @@ verify_jwt = false
 
 [functions.verify-admin]
 verify_jwt = false
+
+[functions.admin-dashboard-data]
+verify_jwt = false

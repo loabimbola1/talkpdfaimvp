@@ -105,18 +105,22 @@ serve(async (req) => {
       );
     }
 
-    if (message.length > 2000) {
+    if (message.length > 4000) {
       return new Response(
-        JSON.stringify({ error: "Message must be less than 2000 characters" }),
+        JSON.stringify({ error: "Message must be less than 4000 characters" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    // Validate conversation history
+    // Validate and truncate conversation history to prevent token overflow
     const validHistory = Array.isArray(conversationHistory) 
-      ? conversationHistory.slice(-6).filter(m => 
+      ? conversationHistory.slice(-4).filter(m => 
           m && typeof m.role === "string" && typeof m.content === "string"
-        )
+        ).map(m => ({
+          role: m.role,
+          // Truncate long historical messages to keep context manageable
+          content: m.content.length > 1000 ? m.content.slice(0, 1000) + "..." : m.content
+        }))
       : [];
 
     const isPremium = userPlan === "plus" || userPlan === "pro";

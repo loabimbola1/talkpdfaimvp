@@ -20,6 +20,13 @@ import {
   Lightbulb
 } from "lucide-react";
 
+const MAX_SUPPORT_MESSAGE_CHARS = 4000;
+function clampSupportMessage(text: string) {
+  if (text.length <= MAX_SUPPORT_MESSAGE_CHARS) return text;
+  // Keep safely under the backend check (message.length > 4000)
+  return text.slice(0, MAX_SUPPORT_MESSAGE_CHARS - 3) + "...";
+}
+
 interface Document {
   id: string;
   title: string;
@@ -120,9 +127,10 @@ const DocumentReader = ({
     setExplanation("");
 
     try {
+      const rawMessage = `As a Nigerian academic tutor, please explain this concept in simple terms that a secondary school or university student would understand. Use local examples where possible:\n\nTopic: ${currentConcept.title}\n\nContent: ${currentConcept.content}`;
       const { data, error } = await supabase.functions.invoke("support-chatbot", {
         body: {
-          message: `As a Nigerian academic tutor, please explain this concept in simple terms that a secondary school or university student would understand. Use local examples where possible:\n\nTopic: ${currentConcept.title}\n\nContent: ${currentConcept.content}`,
+          message: clampSupportMessage(rawMessage),
           conversationHistory: []
         }
       });
@@ -154,7 +162,7 @@ const DocumentReader = ({
 
       const { data, error } = await supabase.functions.invoke("support-chatbot", {
         body: {
-          message: contextMessage,
+          message: clampSupportMessage(contextMessage),
           conversationHistory: []
         }
       });

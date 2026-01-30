@@ -50,3 +50,6 @@ verify_jwt = false
 
 [functions.admin-dashboard-data]
 verify_jwt = false
+
+[functions.admin-referral-action]
+verify_jwt = false

@@ -1,239 +1,237 @@
 
-# Implementation Plan: 6 Tasks
+# Implementation Plan: 5 Tasks
 
 ## Summary
-Based on my analysis, I need to address:
-1. Test leaderboard functionality (already using secure views - functioning correctly)
-2. Add rate limiting to edge functions missing it
-3. Frontend deployment issue (user needs to publish)
-4. Test admin dashboard 
-5. Fix Word document processing error
-6. Remove "7-day free trial" text
+This plan addresses:
+1. Nigerian academic context AI assistant for WAEC/NECO/UTME
+2. Page-by-page/chapter learning from uploaded documents
+3. Study reminder notification issues
+4. Google Analytics implementation
+5. Payment callback logo replacement
 
 ---
 
-## Task 1: Leaderboard Security Testing
+## Task 1: Nigerian Academic Context AI Assistant
 
-**Status**: Already working correctly with secure views
+**Goal**: Enhance the support chatbot and study features to provide curriculum-aligned academic help for WAEC, NECO, and UTME exam preparation.
 
-The leaderboard components are correctly using secure database views:
-- `ReferralLeaderboard.tsx` queries `leaderboard_profiles` view
-- `QuizLeaderboard.tsx` queries `leaderboard_quiz_scores` view  
-- `Leaderboard.tsx` queries `leaderboard_badges` view
+### Files to Modify
 
-The views use `security_invoker = true` and only expose: `user_id`, `full_name`, `university`, `referral_credits`, and scores. No PII (emails, avatars) is exposed.
+**File: `supabase/functions/support-chatbot/index.ts`**
+- Update the system prompt to include Nigerian university doctorate-level academic context
+- Add knowledge of WAEC, NECO, UTME curricula and local academic terminology
+- Support questions in local languages (Pidgin, Yoruba, Hausa, Igbo)
+- Provide curriculum-aligned explanations and exam tips
 
-From the network logs, I can see that when authenticated, the request to `leaderboard_profiles` succeeds (Status 200), and when the session expired it returned 401 (correctly blocking anonymous access).
+**File: `src/components/SupportChatbot.tsx`**
+- Add new knowledge base entries for Nigerian exam topics
+- Include WAEC, NECO, JAMB/UTME specific keywords and responses
 
-**No code changes needed** - the system is working as designed.
-
----
-
-## Task 2: Add Rate Limiting to Edge Functions
-
-**Current State Analysis**:
-
-Functions WITH rate limiting:
-- `process-pdf` - 5 requests/minute
-- `contact-form` - 5 requests/hour
-- `explain-back-evaluate` - has rate limiting
-- `generate-quiz` - has rate limiting
-- `voice-to-text` - has rate limiting  
-- `support-chatbot` - 20 requests/minute
-- `generate-lesson-audio` - has rate limiting
-- `spitch-tts` - has rate limiting
-- `elevenlabs-tts` - has rate limiting
-
-Functions MISSING rate limiting:
-- `flutterwave-payment` - needs rate limiting
-- `flutterwave-verify` - needs rate limiting
-- `send-payment-email` - internal only, skip
-- `admin-dashboard-data` - needs rate limiting
-- `verify-admin` - needs rate limiting
-- `weekly-digest` - scheduled/internal, skip
-- `referral-notification` - internal only, skip
-- `referral` - needs rate limiting
-
-**Changes Required**:
-
-### File: `supabase/functions/flutterwave-payment/index.ts`
-- Import rate limiter from shared module
-- Add rate limit: 5 payment attempts per minute per user
-- Return 429 if exceeded
-
-### File: `supabase/functions/flutterwave-verify/index.ts`
-- Import rate limiter from shared module
-- Add rate limit: 10 verifications per minute per user
-- Return 429 if exceeded
-
-### File: `supabase/functions/admin-dashboard-data/index.ts`
-- Import rate limiter from shared module
-- Add rate limit: 30 requests per minute per admin
-- Return 429 if exceeded
-
-### File: `supabase/functions/verify-admin/index.ts`
-- Import rate limiter from shared module
-- Add rate limit: 30 requests per minute per user
-- Return 429 if exceeded
-
-### File: `supabase/functions/referral/index.ts`
-- Import rate limiter from shared module
-- Add rate limit: 10 referral operations per minute per user
-- Return 429 if exceeded
-
----
-
-## Task 3: Frontend Deployment Issue
-
-**Root Cause**: The user is seeing the preview updates but not the live site because frontend changes require clicking "Update" in the publish dialog.
-
-**Solution**: Inform user to publish the changes - no code changes needed.
-
-**User Action Required**: 
-- Click the Publish button in the top right corner of the editor
-- Click "Update" to push changes to the live domain (talkpdf.online)
-
----
-
-## Task 4: Admin Dashboard Testing
-
-**Status**: Already implemented with server-side authorization via `admin-dashboard-data` edge function.
-
-The admin dashboard now:
-1. Calls `supabase.functions.invoke('admin-dashboard-data')`
-2. The edge function validates the JWT token
-3. Checks `user_roles` table for admin role
-4. Returns data only if admin verified
-
-**Admin Access**:
-- Email: lukmanabimb@gmail.com
-- URL: /admin (requires login first at /auth)
-
----
-
-## Task 5: Fix Word Document Processing Error
-
-**Root Cause** (from edge function logs):
+### Key Changes to System Prompt
 ```
-AI extraction failed: {"error":{"message":"Invalid file type: application/vnd.openxmlformats-officedocument.wordprocessingml.document","code":400...
+You are a Nigerian academic tutor with doctorate-level expertise. You understand:
+- WAEC, NECO, UTME/JAMB curricula and examination patterns
+- Nigerian educational system from secondary to university level
+- Local academic terminology and Nigerian English expressions
+- Pre-university exam preparation strategies
+
+Assist students with:
+- Coursework and study materials
+- Exam preparation and past question patterns
+- Understanding academic concepts in local context
+- Study tips tailored to Nigerian exam systems
 ```
 
-The Lovable AI Gateway (Gemini) is rejecting the Word document MIME type. The current implementation sends Word documents using the `file` content type which the AI API doesn't support for Word files.
+---
 
-**Solution**: Convert Word document to text using a different approach before sending to AI for summarization.
+## Task 2: Page-by-Page/Chapter Learning Feature
 
-**Changes Required**:
+**Goal**: Allow users to study uploaded textbooks, PDFs, or course materials one page or chapter at a time.
 
-### File: `supabase/functions/process-pdf/index.ts`
-For Word documents, use a text extraction library or convert the Word document differently:
+### New Component Required
+
+**File: `src/components/dashboard/DocumentReader.tsx` (New)**
+- Document viewer with page/chapter navigation
+- AI-powered explanation for each section
+- Integration with existing documents from the database
+- Language selection for explanations
+
+### Implementation Approach
+
+1. **Document Structure Detection**: Use AI to detect chapters/sections in uploaded documents during processing
+2. **Chunked Content Storage**: Store extracted sections in a new database field or table
+3. **Reader Interface**: Create a focused reading mode with:
+   - Page/chapter navigation (prev/next buttons)
+   - AI explanation panel for current section
+   - Ask questions about the current page/chapter
+   - Highlight key concepts
+   - Audio playback for current section
+
+### Database Changes
+Add to documents table or create new table:
+```sql
+-- Option: Add sections array to documents
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS 
+  content_sections jsonb DEFAULT '[]'::jsonb;
+```
+
+### UI Flow
+1. User selects a document from "My Documents"
+2. Click "Read & Learn" to open the reader
+3. Navigate through pages/chapters
+4. Click "Explain This" to get AI explanation
+5. Use voice or text to ask questions about the current content
+
+---
+
+## Task 3: Fix Study Reminder Notifications
+
+**Root Cause Analysis**:
+1. The push notifications rely on `sw.js` (service worker) but no `sw.js` file exists in the `public` folder
+2. VitePWA generates a service worker, but it's named differently (`sw.js` vs generated name)
+3. The notification permission might be blocked or the browser doesn't support it
+4. The PWA service worker registration path may not match
+
+### Files to Modify
+
+**File: `src/hooks/usePushNotifications.ts`**
+- Fix service worker registration to use the VitePWA generated worker
+- Add better fallback for browsers without service worker support
+- Improve error handling and user feedback
+- Use `navigator.serviceWorker.ready` properly
+
+**File: `vite.config.ts`**
+- Ensure service worker filename is consistent
+- Add explicit service worker scope configuration
+
+### Key Fixes
 
 ```typescript
-// Option 1: Use Gemini with explicit text extraction prompt
-// Option 2: Use a Word document parser library
+// In usePushNotifications.ts - fix SW registration
+// VitePWA generates a service worker at /sw.js by default
+// But we need to wait for it to be ready
 
-// The issue is that gemini-2.5-flash may not natively support .docx files
-// Need to extract text from Word document before sending to AI
+// Current issue: trying to register '/sw.js' manually when VitePWA already handles this
+// Fix: Use the existing registration from VitePWA
 
-// Add mammoth.js for Word document extraction
-import * as mammoth from "https://esm.sh/mammoth@1.6.0";
+let registration = await navigator.serviceWorker.getRegistration('/');
+if (!registration) {
+  // Wait for VitePWA to register
+  registration = await navigator.serviceWorker.ready;
+}
 ```
 
-However, `mammoth` requires Node.js filesystem APIs not available in Deno. 
-
-**Alternative Solution**: Use Google's Gemini file API differently or convert to PDF first.
-
-**Recommended Approach**:
-1. For Word documents, use a different API call format
-2. Or inform the user that only PDF files are supported
-3. Or use a web service to convert DOCX to text
-
-**Technical Details**:
-- The current code correctly detects Word documents
-- The issue is the AI gateway doesn't accept DOCX as a file attachment
-- We need to extract text from DOCX before sending to AI
-
-### Implementation:
-Add DOCX text extraction using a Deno-compatible library or fetch from a conversion service.
+### Additional Improvements
+- Add debug logging to help diagnose notification issues
+- Add a test notification on the settings page that shows browser-level support status
+- Show clearer error messages when notifications fail
 
 ---
 
-## Task 6: Remove "7-day Free Trial" Text
+## Task 4: Google Analytics Implementation
 
-**Files to Modify**:
+**Goal**: Add Google Analytics tracking to all pages using the provided Measurement ID: G-385KRYXR2X
 
-### File: `src/components/landing/Pricing.tsx`
-- Remove line 373-375: "All plans include a 7-day free trial. Cancel anytime. No hidden fees."
+### File to Modify
 
-### File: `src/components/SupportChatbot.tsx`
-- Line 28: Remove "All paid plans include a 7-day free trial!" from the pricing answer
+**File: `index.html`**
+Add the Google tag immediately after the `<head>` element:
 
-### File: `src/pages/FAQ.tsx`
-- Line 51: Update answer to remove 7-day trial mention
+```html
+<!doctype html>
+<html lang="en">
+  <head>
+    <!-- Google tag (gtag.js) -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-385KRYXR2X"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+      gtag('config', 'G-385KRYXR2X');
+    </script>
+    <meta charset="UTF-8" />
+    <!-- rest of head content -->
+  </head>
+</html>
+```
+
+### Notes
+- Single Page App (SPA) considerations: The current gtag.js setup will track initial page loads
+- For route change tracking, React Router navigation is handled automatically by GA4's enhanced measurement
+- No additional code changes needed since GA4 automatically tracks SPA navigation
+
+---
+
+## Task 5: Payment Callback Logo Replacement
+
+**Goal**: Replace the icon-based logo on the payment cancellation page with text-based "TalkPDF AI" branding.
+
+### File to Modify
+
+**File: `src/pages/PaymentCallback.tsx`**
+
+### Current Code (Lines 88-95)
+```tsx
+<Link to="/" className="inline-flex items-center gap-1.5 justify-center mb-6">
+  <div className="w-10 h-10 rounded-lg bg-primary flex items-center justify-center">
+    <span className="text-primary-foreground font-bold text-lg">T</span>
+  </div>
+  <span className="font-display text-2xl font-bold text-foreground tracking-tight">
+    TalkPDF
+  </span>
+</Link>
+```
+
+### Updated Code
+```tsx
+<Link to="/" className="inline-flex items-center justify-center mb-6">
+  <span className="font-display text-2xl font-bold text-foreground tracking-tight">
+    TalkPDF AI
+  </span>
+</Link>
+```
+
+This removes the icon box with "T" and uses consistent text-only branding matching other pages.
 
 ---
 
 ## Implementation Order
 
-1. **Phase 1 - Quick Text Removal** (Task 6)
-   - Remove 7-day trial text from 3 files
-   
-2. **Phase 2 - Rate Limiting** (Task 2)
-   - Add rate limiting to 5 edge functions
-   
-3. **Phase 3 - Word Document Fix** (Task 5)
-   - Implement DOCX text extraction workaround
+1. **Phase 1 - Quick Fixes**
+   - Task 4: Add Google Analytics (simple HTML change)
+   - Task 5: Update PaymentCallback logo (simple UI change)
 
-4. **Phase 4 - User Actions** (Tasks 3, 4)
-   - User publishes to deploy frontend changes
-   - User tests admin dashboard at /admin
+2. **Phase 2 - Notification Fix**
+   - Task 3: Fix push notification service worker issues
 
----
+3. **Phase 3 - AI Enhancements**
+   - Task 1: Enhance chatbot with Nigerian academic context
 
-## Technical Details
-
-### Rate Limiter Import Pattern
-```typescript
-import { checkRateLimit, cleanupRateLimits, rateLimitResponse } from "../_shared/rate-limiter.ts";
-
-// At start of handler:
-cleanupRateLimits();
-
-// After auth:
-const rateLimit = checkRateLimit(userId, "function-name", { windowMs: 60000, maxRequests: 5 });
-if (!rateLimit.allowed) {
-  return rateLimitResponse(rateLimit.resetIn, corsHeaders);
-}
-```
-
-### Word Document Fix Options
-1. **Best**: Use a DOCX parsing library that works in Deno
-2. **Alternative**: Send the raw text to AI for summarization without file attachment
-3. **Fallback**: Inform users to convert to PDF before upload
+4. **Phase 4 - New Feature**
+   - Task 2: Implement page-by-page document reader (larger feature)
 
 ---
 
-## Files to Modify
+## Files Summary
 
-| File | Changes |
-|------|---------|
-| `src/components/landing/Pricing.tsx` | Remove 7-day trial text |
-| `src/components/SupportChatbot.tsx` | Remove 7-day trial mention |
-| `src/pages/FAQ.tsx` | Update FAQ answer |
-| `supabase/functions/flutterwave-payment/index.ts` | Add rate limiting |
-| `supabase/functions/flutterwave-verify/index.ts` | Add rate limiting |
-| `supabase/functions/admin-dashboard-data/index.ts` | Add rate limiting |
-| `supabase/functions/verify-admin/index.ts` | Add rate limiting |
-| `supabase/functions/referral/index.ts` | Add rate limiting |
-| `supabase/functions/process-pdf/index.ts` | Fix Word document handling |
+| Task | File | Action |
+|------|------|--------|
+| 1 | `supabase/functions/support-chatbot/index.ts` | Update system prompt |
+| 1 | `src/components/SupportChatbot.tsx` | Add knowledge base entries |
+| 2 | `src/components/dashboard/DocumentReader.tsx` | Create new component |
+| 2 | `src/pages/Dashboard.tsx` | Add reader tab/mode |
+| 2 | `supabase/functions/process-pdf/index.ts` | Add section extraction |
+| 3 | `src/hooks/usePushNotifications.ts` | Fix SW registration |
+| 3 | `src/components/dashboard/NotificationSettings.tsx` | Improve diagnostics |
+| 4 | `index.html` | Add Google Analytics script |
+| 5 | `src/pages/PaymentCallback.tsx` | Update logo to text-only |
 
 ---
 
 ## Testing Checklist
 
-- [ ] Verify trial text removed from pricing page
-- [ ] Verify trial text removed from chatbot responses
-- [ ] Verify trial text removed from FAQ
-- [ ] Test rate limiting on payment functions
-- [ ] Test Word document upload after fix
-- [ ] Verify admin dashboard loads data correctly
-- [ ] User publishes and verifies live site updates
+- [ ] Verify Google Analytics tracking appears in GA4 dashboard
+- [ ] Test PaymentCallback page shows "TalkPDF AI" text logo
+- [ ] Test notification toggle in dashboard settings
+- [ ] Test chatbot responds with Nigerian academic context
+- [ ] Test page-by-page reading flow (once implemented)

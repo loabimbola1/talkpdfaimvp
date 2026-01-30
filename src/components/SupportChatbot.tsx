@@ -201,10 +201,10 @@ export function SupportChatbot() {
         // Use AI for complex questions
         const { data, error } = await supabase.functions.invoke("support-chatbot", {
           body: {
-            message: userMessage.content,
-            conversationHistory: messages.slice(-6).map(m => ({
+            message: userMessage.content.slice(0, 4000),
+            conversationHistory: messages.slice(-4).map(m => ({
               role: m.role,
-              content: m.content
+              content: m.content.length > 1000 ? m.content.slice(0, 1000) + "..." : m.content
             }))
           }
         });

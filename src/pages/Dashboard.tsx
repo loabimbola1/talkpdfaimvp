@@ -19,6 +19,7 @@ import QuizLeaderboard from "@/components/dashboard/QuizLeaderboard";
 import CampusTab from "@/components/dashboard/CampusTab";
 import QuizMode from "@/components/dashboard/QuizMode";
 import MicroLessons from "@/components/dashboard/MicroLessons";
+import DocumentReader from "@/components/dashboard/DocumentReader";
 import ProgressDashboard from "@/components/dashboard/ProgressDashboard";
 import StudyGroups from "@/components/dashboard/StudyGroups";
 import SpacedRepetition from "@/components/dashboard/SpacedRepetition";
@@ -33,7 +34,7 @@ import { usePdfCompleteNotification } from "@/hooks/usePdfCompleteNotification";
 import { useFeatureAccess } from "@/hooks/useFeatureAccess";
 import type { User as SupabaseUser } from "@supabase/supabase-js";
 
-type TabType = "upload" | "documents" | "listen" | "explain" | "quiz" | "lessons" | "progress" | "badges" | "achievements" | "leaderboard" | "quiz-leaders" | "campus" | "groups" | "review" | "subscription" | "offline" | "referral" | "settings";
+type TabType = "upload" | "documents" | "reader" | "listen" | "explain" | "quiz" | "lessons" | "progress" | "badges" | "achievements" | "leaderboard" | "quiz-leaders" | "campus" | "groups" | "review" | "subscription" | "offline" | "referral" | "settings";
 
 const Dashboard = () => {
   const [user, setUser] = useState<SupabaseUser | null>(null);
@@ -52,7 +53,7 @@ const Dashboard = () => {
     const docId = searchParams.get("doc");
     const promptIndex = searchParams.get("prompt");
     
-    if (tab && ["upload", "documents", "listen", "explain", "quiz", "lessons", "progress", "badges", "achievements", "leaderboard", "subscription", "referral", "settings"].includes(tab)) {
+    if (tab && ["upload", "documents", "reader", "listen", "explain", "quiz", "lessons", "progress", "badges", "achievements", "leaderboard", "subscription", "referral", "settings"].includes(tab)) {
       setActiveTab(tab as TabType);
     }
     if (docId) {
@@ -162,6 +163,7 @@ const Dashboard = () => {
   const tabs = [
     { id: "upload" as TabType, label: "Upload PDF", icon: Upload },
     { id: "documents" as TabType, label: "My Documents", icon: FileText },
+    { id: "reader" as TabType, label: "Read & Learn", icon: BookOpen },
     { id: "listen" as TabType, label: "Listen", icon: Headphones },
     { id: "explain" as TabType, label: "Explain-Back", icon: Brain },
     { id: "quiz" as TabType, label: "Quiz", icon: HelpCircle },
@@ -248,6 +250,16 @@ const Dashboard = () => {
               <div className="bg-card rounded-2xl border border-border p-6 md:p-8 shadow-card">
                 {activeTab === "upload" && <PDFUpload onDocumentProcessed={handleDocumentProcessed} onUpgrade={() => setActiveTab("subscription")} />}
                 {activeTab === "documents" && <MyDocuments onSelectDocument={handleSelectDocument} />}
+                {activeTab === "reader" && (
+                  <DocumentReader 
+                    documentId={selectedDocumentId || undefined}
+                    onNavigateToExplainBack={handleExplainBackTrigger}
+                    onNavigateToListen={(docId) => {
+                      setSelectedDocumentId(docId);
+                      setActiveTab("listen");
+                    }}
+                  />
+                )}
                 {activeTab === "listen" && (
                   <AudioPlayer 
                     selectedDocumentId={selectedDocumentId} 

@@ -85,12 +85,9 @@ const PaymentCallback = () => {
       <div className="w-full max-w-md">
         <div className="bg-card rounded-2xl shadow-elevated p-8 border border-border text-center">
           {/* Logo */}
-          <Link to="/" className="inline-flex items-center gap-1.5 justify-center mb-6">
-            <div className="w-10 h-10 rounded-lg bg-primary flex items-center justify-center">
-              <span className="text-primary-foreground font-bold text-lg">T</span>
-            </div>
+          <Link to="/" className="inline-flex items-center justify-center mb-6">
             <span className="font-display text-2xl font-bold text-foreground tracking-tight">
-              TalkPDF
+              TalkPDF AI
             </span>
           </Link>
 

@@ -139,12 +139,16 @@ const AdminReferralAnalytics = () => {
   const handleDismissFlag = async (referralId: string) => {
     setProcessingId(referralId);
     try {
-      const { error } = await supabase
-        .from("referrals")
-        .update({ flagged_suspicious: false })
-        .eq("id", referralId);
+      // Use secure edge function instead of direct database mutation
+      const { data, error } = await supabase.functions.invoke('admin-referral-action', {
+        body: {
+          action: 'dismiss_flag',
+          referralId
+        }
+      });
 
       if (error) throw error;
+      if (data?.error) throw new Error(data.error);
       
       toast.success("Flag dismissed - marked as legitimate");
       await fetchReferralData();
@@ -159,37 +163,20 @@ const AdminReferralAnalytics = () => {
   const handleRevokeCredits = async (referral: SuspiciousReferral) => {
     setProcessingId(referral.id);
     try {
-      // First, fetch the current referral_credits for the referrer
-      const { data: profileData, error: fetchError } = await supabase
-        .from("profiles")
-        .select("referral_credits")
-        .eq("user_id", referral.referrer_id)
-        .single();
-
-      if (fetchError) throw fetchError;
-
-      const currentCredits = profileData?.referral_credits ?? 0;
       const creditsToRevoke = referral.credits_awarded ?? 0;
-      // Calculate new credits, ensuring we don't go below 0
-      const newCredits = Math.max(0, currentCredits - creditsToRevoke);
 
-      // Revoke credits from referrer with properly calculated value
-      const { error: profileError } = await supabase
-        .from("profiles")
-        .update({ referral_credits: newCredits })
-        .eq("user_id", referral.referrer_id);
+      // Use secure edge function instead of direct database mutation
+      const { data, error } = await supabase.functions.invoke('admin-referral-action', {
+        body: {
+          action: 'revoke_credits',
+          referralId: referral.id,
+          referrerId: referral.referrer_id,
+          creditsToRevoke
+        }
+      });
 
-      // Update referral status
-      const { error: refError } = await supabase
-        .from("referrals")
-        .update({ 
-          status: "revoked",
-          credits_awarded: 0,
-          flagged_suspicious: true
-        })
-        .eq("id", referral.id);
-
-      if (profileError || refError) throw profileError || refError;
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
       
       toast.success(`Revoked ${creditsToRevoke} credits from referrer`);
       await fetchReferralData();

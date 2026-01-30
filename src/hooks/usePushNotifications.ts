@@ -1,10 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { toast } from "sonner";
 
-// For local development, we'll use a placeholder VAPID key
-// In production, you'd generate real VAPID keys
-const VAPID_PUBLIC_KEY = "BEl62iUYgUivxIkv69yViEuiBIa-Ib9-SkvMeAtA3LFgDzkrxZJjSgSnfckjBJuBkr3qBUYIHBQFLXYp5Nksh8U";
-
 export function usePushNotifications() {
   const [isSupported, setIsSupported] = useState(false);
   const [isSubscribed, setIsSubscribed] = useState(false);
@@ -15,7 +11,6 @@ export function usePushNotifications() {
     const checkSupport = async () => {
       // Check if notifications are supported
       const notificationSupported = "Notification" in window;
-      const serviceWorkerSupported = "serviceWorker" in navigator;
       
       setIsSupported(notificationSupported);
 
@@ -32,17 +27,6 @@ export function usePushNotifications() {
 
     checkSupport();
   }, []);
-
-  const urlBase64ToUint8Array = (base64String: string) => {
-    const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
-    const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
-    const rawData = window.atob(base64);
-    const outputArray = new Uint8Array(rawData.length);
-    for (let i = 0; i < rawData.length; ++i) {
-      outputArray[i] = rawData.charCodeAt(i);
-    }
-    return outputArray;
-  };
 
   const subscribe = useCallback(async () => {
     if (!isSupported) {
@@ -63,7 +47,9 @@ export function usePushNotifications() {
       // Request permission if not already granted
       let permission: NotificationPermission = Notification.permission;
       if (permission === "default") {
+        console.log("Requesting notification permission...");
         permission = await Notification.requestPermission();
+        console.log("Permission result:", permission);
       }
       setPermissionState(permission);
       
@@ -75,29 +61,20 @@ export function usePushNotifications() {
         return false;
       }
 
-      // Try to subscribe via service worker if available
+      // Try to use Push API with VitePWA service worker if available
       if ("serviceWorker" in navigator && "PushManager" in window) {
         try {
-          // Register service worker if not already registered
-          let registration = await navigator.serviceWorker.getRegistration();
-          if (!registration) {
-            try {
-              registration = await navigator.serviceWorker.register('/sw.js');
-              await navigator.serviceWorker.ready;
-            } catch (swError) {
-              console.log("Service worker registration not available:", swError);
-            }
-          }
+          // Wait for VitePWA's service worker to be ready
+          // VitePWA registers the service worker automatically
+          console.log("Waiting for service worker to be ready...");
+          const registration = await navigator.serviceWorker.ready;
+          console.log("Service worker ready:", registration.scope);
           
-          if (registration) {
-            const subscription = await registration.pushManager.subscribe({
-              userVisibleOnly: true,
-              applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
-            });
-            localStorage.setItem("talkpdf-push-subscription", JSON.stringify(subscription.toJSON()));
-          }
-        } catch (pushError) {
-          console.log("Push subscription not available, using local notifications only:", pushError);
+          // We don't need actual push subscription for local notifications
+          // The VitePWA service worker handles caching, but we use local Notification API
+          localStorage.setItem("talkpdf-sw-active", "true");
+        } catch (swError) {
+          console.log("Service worker not available, using local notifications only:", swError);
         }
       }
       
@@ -115,21 +92,8 @@ export function usePushNotifications() {
 
   const unsubscribe = useCallback(async () => {
     try {
-      // Try to unsubscribe from push if available
-      if ("serviceWorker" in navigator && "PushManager" in window) {
-        try {
-          const registration = await navigator.serviceWorker.ready;
-          const subscription = await registration.pushManager.getSubscription();
-          if (subscription) {
-            await subscription.unsubscribe();
-          }
-        } catch (error) {
-          console.log("Push unsubscribe error (continuing):", error);
-        }
-      }
-      
       localStorage.removeItem("talkpdf-notifications-enabled");
-      localStorage.removeItem("talkpdf-push-subscription");
+      localStorage.removeItem("talkpdf-sw-active");
       setIsSubscribed(false);
       toast.success("Notifications disabled");
     } catch (error) {
@@ -152,15 +116,33 @@ export function usePushNotifications() {
 
     setTimeout(() => {
       try {
-        new Notification(title, {
+        // Create notification using the Notification API directly
+        const notification = new Notification(title, {
           body,
           icon: "/favicon.png",
           badge: "/favicon.png",
           tag: "study-reminder",
-          requireInteraction: true,
+          requireInteraction: false,
+          silent: false,
         });
+        
+        // Auto-close after 5 seconds
+        setTimeout(() => notification.close(), 5000);
+        
+        console.log("Notification scheduled successfully");
       } catch (error) {
         console.error("Error showing notification:", error);
+        // Fallback: try using service worker if available
+        if ("serviceWorker" in navigator) {
+          navigator.serviceWorker.ready.then((registration) => {
+            registration.showNotification(title, {
+              body,
+              icon: "/favicon.png",
+              badge: "/favicon.png",
+              tag: "study-reminder",
+            }).catch(console.error);
+          }).catch(console.error);
+        }
       }
     }, delay);
   }, [isSupported, isSubscribed]);

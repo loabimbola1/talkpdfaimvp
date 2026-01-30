@@ -17,23 +17,23 @@ interface Message {
 const knowledgeBase = [
   {
     keywords: ["upload", "pdf", "file", "how to upload"],
-    answer: "To upload a PDF, go to your Dashboard and click on the 'Upload PDF' tab. You can drag and drop your PDF file or click to browse. The maximum file size is 20MB."
+    answer: "To upload a PDF, go to your Dashboard and click on the 'Upload PDF' tab. You can drag and drop your PDF file or click to browse. The maximum file size is 20MB. Oya, start uploading! 📚"
   },
   {
     keywords: ["language", "languages", "yoruba", "hausa", "igbo", "pidgin"],
-    answer: "TalkPDF AI supports 5 Nigerian languages: English, Yoruba (Yorùbá), Hausa, Igbo, and Nigerian Pidgin (Naija). Select your preferred language before uploading your PDF."
+    answer: "TalkPDF AI supports 5 Nigerian languages: English, Yoruba (Yorùbá), Hausa, Igbo, and Nigerian Pidgin (Naija). Select your preferred language before uploading your PDF. No wahala!"
   },
   {
     keywords: ["price", "pricing", "cost", "subscription", "plan", "free"],
-    answer: "We offer 3 plans:\n• Free: 5 audio minutes/day, 2 PDFs/day\n• Plus (₦3,500/month): 60 minutes, 20 PDFs, Explain-Back Mode\n• Pro (₦8,500/month): Unlimited audio, PDFs, and downloads"
+    answer: "We offer 3 plans:\n• Free: 5 audio minutes/day, 2 PDFs/day\n• Plus (₦3,500/month): 60 minutes, 20 PDFs, Explain-Back Mode\n• Pro (₦8,500/month): Unlimited audio, PDFs, and downloads\n\nThe annual plans save you money o!"
   },
   {
     keywords: ["explain back", "explain-back", "test", "understanding"],
-    answer: "Explain-Back Mode tests your understanding by asking you to explain concepts in your own words. The AI evaluates your explanation and provides feedback. This feature is available on Plus and Pro plans."
+    answer: "Explain-Back Mode tests your understanding by asking you to explain concepts in your own words. The AI evaluates your explanation and provides feedback - just like a good teacher! This feature is available on Plus and Pro plans."
   },
   {
     keywords: ["offline", "download", "without internet"],
-    answer: "Pro subscribers can download audio files for offline listening. Go to the Audio Player tab and click the download icon next to any processed document."
+    answer: "Pro subscribers can download audio files for offline listening. Go to the Audio Player tab and click the download icon. Study anywhere - even when NEPA takes light! 💡"
   },
   {
     keywords: ["cancel", "subscription", "refund"],
@@ -41,11 +41,11 @@ const knowledgeBase = [
   },
   {
     keywords: ["payment", "pay", "flutterwave", "card", "bank"],
-    answer: "We accept payments via Flutterwave, which supports Nigerian bank cards, bank transfers, USSD, and mobile money. All transactions are secure and encrypted."
+    answer: "We accept payments via Flutterwave, which supports Nigerian bank cards, bank transfers, USSD, and mobile money. All transactions are secure and encrypted. 💳"
   },
   {
     keywords: ["audio", "voice", "tts", "text to speech"],
-    answer: "TalkPDF AI converts your PDF content into natural-sounding audio using advanced AI. Processing typically takes 1-3 minutes depending on document length."
+    answer: "TalkPDF AI converts your PDF content into natural-sounding audio using advanced AI with Nigerian voices. Processing typically takes 1-3 minutes depending on document length."
   },
   {
     keywords: ["account", "login", "sign up", "register"],
@@ -55,9 +55,50 @@ const knowledgeBase = [
     keywords: ["contact", "support", "help", "email"],
     answer: "Need more help? Email us at asktalkpdfai@gmail.com or use the Contact Us page. Pro subscribers get priority support with faster response times!"
   },
+  // WAEC specific keywords
   {
-    keywords: ["waec", "jamb", "exam", "student"],
-    answer: "TalkPDF AI is perfect for exam preparation! Upload your textbooks and past questions, listen on the go, and use Explain-Back Mode to test your knowledge before exams."
+    keywords: ["waec", "wassce", "west african"],
+    answer: "TalkPDF AI is your WAEC prep partner! 📚 Upload your WAEC past questions, textbooks, and study materials. Listen to them in your preferred language, then use Explain-Back Mode to test your understanding before the exam. We support all WAEC subjects!"
+  },
+  // JAMB/UTME specific keywords
+  {
+    keywords: ["jamb", "utme", "post utme", "admission"],
+    answer: "Preparing for JAMB/UTME? TalkPDF AI can help! Upload your JAMB past questions and recommended textbooks. Our AI converts them to audio so you can study on-the-go. Use Quiz Mode to test yourself on Use of English, Mathematics, and your other subjects!"
+  },
+  // NECO specific keywords
+  {
+    keywords: ["neco", "national examination"],
+    answer: "NECO prep made easy! Upload your NECO past questions and textbooks. TalkPDF AI converts them to audio in Nigerian languages so you can study while doing other things. Perfect for revision before your exams!"
+  },
+  // Subject-specific: Sciences
+  {
+    keywords: ["physics", "chemistry", "biology", "science"],
+    answer: "For science subjects, upload your textbook chapters and TalkPDF AI will break them down into audio summaries. The Explain-Back Mode is perfect for testing your understanding of scientific concepts, formulas, and theories!"
+  },
+  // Subject-specific: Mathematics
+  {
+    keywords: ["mathematics", "maths", "math", "calculation"],
+    answer: "Mathematics made easier! While TalkPDF AI focuses on explanations and concepts, upload your maths textbooks to get audio summaries of theorems, formulas, and problem-solving approaches. Use Quiz Mode to test your knowledge!"
+  },
+  // Subject-specific: English
+  {
+    keywords: ["english", "literature", "comprehension", "essay"],
+    answer: "For English and Literature, upload your texts and TalkPDF AI will help you understand themes, literary devices, and comprehension passages. The audio format helps with pronunciation and understanding of complex passages!"
+  },
+  // Study tips
+  {
+    keywords: ["study", "tips", "how to study", "prepare", "revision"],
+    answer: "Study tips for Nigerian exams:\n1. Upload your textbooks chapter by chapter\n2. Listen to audio summaries during free time\n3. Use Explain-Back to test understanding\n4. Take quizzes regularly\n5. Focus on past question patterns\n\nConsistency is key, my friend! 💪"
+  },
+  // Chapter/page learning
+  {
+    keywords: ["chapter", "page", "section", "topic", "understand"],
+    answer: "To study a specific chapter or topic:\n1. Upload the PDF with that content\n2. TalkPDF AI extracts key concepts automatically\n3. Listen to the audio summary\n4. Use Explain-Back Mode to test your understanding of each concept\n\nWe break down complex topics into digestible pieces!"
+  },
+  // Past questions
+  {
+    keywords: ["past question", "past paper", "previous year", "marking scheme"],
+    answer: "Past questions are key to exam success! Upload your WAEC/NECO/JAMB past questions as PDFs. TalkPDF AI will help you understand the answers and explanations. Pro tip: Focus on repeated question patterns - examiners often recycle topics!"
   }
 ];
 

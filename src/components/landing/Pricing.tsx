@@ -40,6 +40,7 @@ const plans: PricingPlan[] = [
     features: [
       { text: "5 minutes audio per day", included: true },
       { text: "2 PDF uploads per day", included: true },
+      { text: "5 AI questions per day (Read & Learn)", included: true },
       { text: "English language only", included: true },
       { text: "Quiz access", included: true },
       { text: "Quiz leaderboard access", included: true },
@@ -57,9 +58,10 @@ const plans: PricingPlan[] = [
     popular: true,
     annualSavings: 6000,
     features: [
-      { text: "100 monthly credits", included: true },
+      { text: "150 monthly credits", included: true },
       { text: "60 minutes audio per day", included: true },
       { text: "20 PDF uploads per day", included: true },
+      { text: "30 AI questions per day (Read & Learn)", included: true },
       { text: "3 Nigerian languages (Yoruba, Igbo, Pidgin)", included: true },
       { text: "Voice Q&A with explanations (Explain-Back)", included: true },
       { text: "Quiz & Quiz Leaderboard access", included: true },
@@ -82,6 +84,7 @@ const plans: PricingPlan[] = [
       { text: "500 monthly credits", included: true },
       { text: "Unlimited audio generation", included: true },
       { text: "Unlimited PDF uploads", included: true },
+      { text: "Unlimited AI questions (Read & Learn)", included: true },
       { text: "All 5 Nigerian languages (including Igbo, Hausa)", included: true },
       { text: "Real-time explanation validation (Explain-Back)", included: true },
       { text: "Quiz & Quiz Leaderboard access", included: true },

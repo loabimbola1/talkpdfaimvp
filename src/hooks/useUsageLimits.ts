@@ -6,6 +6,7 @@ export interface UsageLimits {
   pdfs_per_month: number;      // For paid plans (monthly)
   audio_minutes_per_day: number;
   explain_back_per_day: number;
+  ai_questions_per_day: number; // AI questions in Read & Learn
   can_download: boolean;
 }
 
@@ -14,6 +15,7 @@ export interface DailyUsage {
   pdfs_uploaded_month: number; // Monthly count (for paid)
   audio_minutes_used: number;
   explain_back_count: number;
+  ai_questions_asked: number;  // Daily AI questions count
 }
 
 export const PLAN_LIMITS: Record<string, UsageLimits> = {
@@ -22,6 +24,7 @@ export const PLAN_LIMITS: Record<string, UsageLimits> = {
     pdfs_per_month: -1,  // Not applicable for free
     audio_minutes_per_day: 5,
     explain_back_per_day: 0,
+    ai_questions_per_day: 5, // 5 questions per day for free
     can_download: false,
   },
   plus: {
@@ -29,6 +32,7 @@ export const PLAN_LIMITS: Record<string, UsageLimits> = {
     pdfs_per_month: -1,  // Not applicable anymore
     audio_minutes_per_day: 60,
     explain_back_per_day: 20,
+    ai_questions_per_day: 30, // 30 questions per day for Plus
     can_download: false,
   },
   pro: {
@@ -36,6 +40,7 @@ export const PLAN_LIMITS: Record<string, UsageLimits> = {
     pdfs_per_month: -1,  // Unlimited
     audio_minutes_per_day: -1,
     explain_back_per_day: -1,
+    ai_questions_per_day: -1, // Unlimited for Pro
     can_download: true,
   },
 };
@@ -47,6 +52,7 @@ export function useUsageLimits() {
     pdfs_uploaded_month: 0,
     audio_minutes_used: 0,
     explain_back_count: 0,
+    ai_questions_asked: 0,
   });
   const [loading, setLoading] = useState(true);
   const [subscriptionStartedAt, setSubscriptionStartedAt] = useState<string | null>(null);
@@ -79,6 +85,7 @@ export function useUsageLimits() {
       const pdfsToday = dailyUsage?.pdfs_uploaded || 0;
       const audioMinutesToday = Number(dailyUsage?.audio_minutes_used) || 0;
       const explainBackToday = dailyUsage?.explain_back_count || 0;
+      const aiQuestionsToday = (dailyUsage as { ai_questions_asked?: number })?.ai_questions_asked || 0;
 
       // For paid plans, calculate monthly PDF uploads from usage_tracking
       let pdfsThisMonth = 0;
@@ -112,6 +119,7 @@ export function useUsageLimits() {
         pdfs_uploaded_month: pdfsThisMonth,
         audio_minutes_used: audioMinutesToday,
         explain_back_count: explainBackToday,
+        ai_questions_asked: aiQuestionsToday,
       });
     } catch (error) {
       console.error("Error fetching usage:", error);
@@ -167,6 +175,17 @@ export function useUsageLimits() {
     return { used: usage.pdfs_uploaded, limit: limits.pdfs_per_day, period: "day" };
   }, [plan, usage.pdfs_uploaded, limits.pdfs_per_day]);
 
+  // AI Question limits for Read & Learn feature
+  const canAskAIQuestion = useCallback(() => {
+    if (limits.ai_questions_per_day === -1) return true;
+    return usage.ai_questions_asked < limits.ai_questions_per_day;
+  }, [usage.ai_questions_asked, limits.ai_questions_per_day]);
+
+  const getRemainingAIQuestions = useCallback(() => {
+    if (limits.ai_questions_per_day === -1) return Infinity;
+    return Math.max(0, limits.ai_questions_per_day - usage.ai_questions_asked);
+  }, [usage.ai_questions_asked, limits.ai_questions_per_day]);
+
   return {
     plan,
     usage,
@@ -180,5 +199,7 @@ export function useUsageLimits() {
     getRemainingPdfs,
     getRemainingAudioMinutes,
     getPdfLimitDisplay,
+    canAskAIQuestion,
+    getRemainingAIQuestions,
   };
 }

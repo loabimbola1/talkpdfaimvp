@@ -66,7 +66,7 @@ export const PLAN_FEATURES: Record<SubscriptionPlan, PlanFeatures> = {
     offlineMode: false,
     downloadAudio: false,
     prioritySupport: false,
-    credits: 100,
+    credits: 150, // Updated from 100 (+50% to offset increased costs)
   },
   pro: {
     audioMinutesPerDay: -1, // Unlimited

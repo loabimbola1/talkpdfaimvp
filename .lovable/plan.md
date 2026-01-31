@@ -1,237 +1,220 @@
 
-# Implementation Plan: 5 Tasks
 
-## Summary
-This plan addresses:
-1. Nigerian academic context AI assistant for WAEC/NECO/UTME
-2. Page-by-page/chapter learning from uploaded documents
-3. Study reminder notification issues
-4. Google Analytics implementation
-5. Payment callback logo replacement
+# Implementation Plan: Enhanced Credit System, Validation, and Question Limits
+
+This plan addresses four key improvements to the TalkPDF AI platform to ensure profitability and better user experience.
 
 ---
 
-## Task 1: Nigerian Academic Context AI Assistant
+## Overview
 
-**Goal**: Enhance the support chatbot and study features to provide curriculum-aligned academic help for WAEC, NECO, and UTME exam preparation.
+| Task | Description | Complexity |
+|------|-------------|------------|
+| 1. Character Limit Warning | Real-time warning as users approach 4,000 characters | Low |
+| 2. Credit Usage Optimization | Revised credit costs based on AI/TTS costs | Medium |
+| 3. Smart Truncation | Preserve user questions, truncate context first | Low |
+| 4. Question Limits by Plan | Limit AI questions in Read & Learn by subscription | Medium |
+
+---
+
+## Task 1: Client-Side Character Limit Validation
+
+### What We'll Build
+A visual character counter with color-coded warnings that appears in:
+- Support Chatbot input field
+- Document Reader "Ask a Question" textarea
+
+### User Experience
+- Character count displays below input (e.g., "245 / 4,000")
+- **Green**: Under 3,500 characters
+- **Yellow Warning**: 3,500-3,900 characters
+- **Red Alert**: 3,900-4,000 characters
+- **Disabled send button**: At 4,000+ characters with message "Message too long"
 
 ### Files to Modify
-
-**File: `supabase/functions/support-chatbot/index.ts`**
-- Update the system prompt to include Nigerian university doctorate-level academic context
-- Add knowledge of WAEC, NECO, UTME curricula and local academic terminology
-- Support questions in local languages (Pidgin, Yoruba, Hausa, Igbo)
-- Provide curriculum-aligned explanations and exam tips
-
-**File: `src/components/SupportChatbot.tsx`**
-- Add new knowledge base entries for Nigerian exam topics
-- Include WAEC, NECO, JAMB/UTME specific keywords and responses
-
-### Key Changes to System Prompt
-```
-You are a Nigerian academic tutor with doctorate-level expertise. You understand:
-- WAEC, NECO, UTME/JAMB curricula and examination patterns
-- Nigerian educational system from secondary to university level
-- Local academic terminology and Nigerian English expressions
-- Pre-university exam preparation strategies
-
-Assist students with:
-- Coursework and study materials
-- Exam preparation and past question patterns
-- Understanding academic concepts in local context
-- Study tips tailored to Nigerian exam systems
-```
+- `src/components/SupportChatbot.tsx` - Add character counter below input
+- `src/components/dashboard/DocumentReader.tsx` - Add counter to question textarea
 
 ---
 
-## Task 2: Page-by-Page/Chapter Learning Feature
+## Task 2: Revised Credit Usage Charges
 
-**Goal**: Allow users to study uploaded textbooks, PDFs, or course materials one page or chapter at a time.
+### Current vs. Proposed Credits
 
-### New Component Required
+Based on actual AI costs (Lovable AI, ElevenLabs TTS, YarnGPT):
 
-**File: `src/components/dashboard/DocumentReader.tsx` (New)**
-- Document viewer with page/chapter navigation
-- AI-powered explanation for each section
-- Integration with existing documents from the database
-- Language selection for explanations
+| Action | Current Cost | Proposed Cost | Justification |
+|--------|-------------|---------------|---------------|
+| **PDF Upload** | 1 credit | 2 credits | Gemini text extraction + summary + study prompts generation |
+| **Audio (per 5 min)** | 1 credit | 2 credits | TTS is expensive (ElevenLabs/YarnGPT) |
+| **Explain-Back** | 2 credits | 3 credits | Uses Gemini Pro for evaluation (most expensive model) |
+| **Quiz Generation** | 1 credit | 2 credits | Uses Gemini Pro for structured quiz creation |
+| **Micro Lesson** | 1 credit | 1 credit | Keep affordable for engagement |
+| **AI Question (NEW)** | Not tracked | 1 credit | Uses Gemini Flash for support chatbot |
 
-### Implementation Approach
+### Plan Credit Allocations
 
-1. **Document Structure Detection**: Use AI to detect chapters/sections in uploaded documents during processing
-2. **Chunked Content Storage**: Store extracted sections in a new database field or table
-3. **Reader Interface**: Create a focused reading mode with:
-   - Page/chapter navigation (prev/next buttons)
-   - AI explanation panel for current section
-   - Ask questions about the current page/chapter
-   - Highlight key concepts
-   - Audio playback for current section
+| Plan | Current Credits | Proposed Credits | Reasoning |
+|------|----------------|------------------|-----------|
+| Free | 0 | 0 | No change - limited by daily caps |
+| Plus | 100 | 150 | +50% to offset increased costs |
+| Pro | 500 | 500 | No change |
+
+### Files to Modify
+- `src/components/dashboard/CreditsUsageTracker.tsx` - Update `CREDIT_COSTS` and display
+- `src/hooks/useFeatureAccess.ts` - Update `PLAN_FEATURES.credits`
+- Backend edge functions already track usage; no changes needed there
+
+---
+
+## Task 3: Smart Truncation Strategy
+
+### Problem
+Current approach cuts entire message at 4,000 characters, potentially losing the user's question.
+
+### Solution
+Prioritize keeping the user's question intact while truncating context/document content.
+
+### Algorithm
+```text
+1. Calculate user question length
+2. Reserve space for question + formatting (question + 100 chars buffer)
+3. Truncate document context to fit remaining space
+4. Never truncate user's question
+```
+
+### Example
+If user asks a 500-character question about a 10,000-character document:
+- Reserve: 500 + 100 = 600 chars for question
+- Available for context: 4,000 - 600 = 3,400 chars
+- Truncate document summary to 3,400 chars
+
+### Files to Modify
+- `src/components/dashboard/DocumentReader.tsx` - Update `clampSupportMessage` to smart truncation helper
+
+---
+
+## Task 4: Question Limits in Read & Learn by Subscription
+
+### New Daily Limits
+
+| Plan | Questions per Day | Justification |
+|------|-------------------|---------------|
+| Free | 5 | Enough to try the feature |
+| Plus | 30 | Regular study sessions |
+| Pro | Unlimited | Power users |
 
 ### Database Changes
-Add to documents table or create new table:
+Add `ai_questions_asked` column to `daily_usage_summary` table:
+
 ```sql
--- Option: Add sections array to documents
-ALTER TABLE documents ADD COLUMN IF NOT EXISTS 
-  content_sections jsonb DEFAULT '[]'::jsonb;
+ALTER TABLE daily_usage_summary 
+ADD COLUMN ai_questions_asked INTEGER DEFAULT 0;
 ```
 
-### UI Flow
-1. User selects a document from "My Documents"
-2. Click "Read & Learn" to open the reader
-3. Navigate through pages/chapters
-4. Click "Explain This" to get AI explanation
-5. Use voice or text to ask questions about the current content
+### Frontend Changes
 
----
+1. **Track question count** - Call usage tracking on each AI question
+2. **Check limit before asking** - Verify remaining questions
+3. **Show limit UI** - Display "X / Y questions today" with progress bar
+4. **Upgrade prompt** - When limit reached, show upgrade CTA
 
-## Task 3: Fix Study Reminder Notifications
-
-**Root Cause Analysis**:
-1. The push notifications rely on `sw.js` (service worker) but no `sw.js` file exists in the `public` folder
-2. VitePWA generates a service worker, but it's named differently (`sw.js` vs generated name)
-3. The notification permission might be blocked or the browser doesn't support it
-4. The PWA service worker registration path may not match
+### Backend Changes
+Update `support-chatbot` edge function to:
+1. Check if this is a "read & learn" question (via metadata)
+2. Verify user hasn't exceeded plan limit
+3. Return 403 with upgrade message if exceeded
 
 ### Files to Modify
+- `src/hooks/useUsageLimits.ts` - Add `ai_questions_per_day` limit
+- `src/components/dashboard/DocumentReader.tsx` - Add limit checking and UI
+- `supabase/functions/support-chatbot/index.ts` - Add limit enforcement
+- Database migration for new column
 
-**File: `src/hooks/usePushNotifications.ts`**
-- Fix service worker registration to use the VitePWA generated worker
-- Add better fallback for browsers without service worker support
-- Improve error handling and user feedback
-- Use `navigator.serviceWorker.ready` properly
+---
 
-**File: `vite.config.ts`**
-- Ensure service worker filename is consistent
-- Add explicit service worker scope configuration
+## Technical Details
 
-### Key Fixes
+### New useUsageLimits Hook Updates
 
 ```typescript
-// In usePushNotifications.ts - fix SW registration
-// VitePWA generates a service worker at /sw.js by default
-// But we need to wait for it to be ready
+// Add to PLAN_LIMITS
+ai_questions_per_day: {
+  free: 5,
+  plus: 30,
+  pro: -1  // Unlimited
+}
 
-// Current issue: trying to register '/sw.js' manually when VitePWA already handles this
-// Fix: Use the existing registration from VitePWA
+// Add to DailyUsage
+ai_questions_asked: number;
+```
 
-let registration = await navigator.serviceWorker.getRegistration('/');
-if (!registration) {
-  // Wait for VitePWA to register
-  registration = await navigator.serviceWorker.ready;
+### DocumentReader Component Updates
+
+```typescript
+// Before asking question
+const { canAskQuestion, remainingQuestions } = useUsageLimits();
+
+if (!canAskQuestion()) {
+  toast.error("Daily question limit reached. Upgrade for more!");
+  return;
+}
+
+// Track usage after successful question
+await supabase.from("usage_tracking").insert({
+  user_id: session.user.id,
+  action_type: "ai_question",
+  metadata: { source: "document_reader", documentId: selectedDoc.id }
+});
+```
+
+### Smart Truncation Helper
+
+```typescript
+function buildConstrainedMessage(
+  userQuestion: string,
+  contextPrefix: string,
+  contextContent: string,
+  maxTotal: number = 4000
+): string {
+  const BUFFER = 100; // Safety buffer
+  const questionPart = `Question: ${userQuestion}`;
+  const reservedForQuestion = questionPart.length + BUFFER;
+  const availableForContext = maxTotal - reservedForQuestion;
+  
+  if (availableForContext <= 0) {
+    // Question alone is too long
+    return questionPart.slice(0, maxTotal - 3) + "...";
+  }
+  
+  const truncatedContext = (contextPrefix + contextContent)
+    .slice(0, availableForContext - 3) + "...";
+  
+  return `${truncatedContext}\n\n${questionPart}`;
 }
 ```
-
-### Additional Improvements
-- Add debug logging to help diagnose notification issues
-- Add a test notification on the settings page that shows browser-level support status
-- Show clearer error messages when notifications fail
-
----
-
-## Task 4: Google Analytics Implementation
-
-**Goal**: Add Google Analytics tracking to all pages using the provided Measurement ID: G-385KRYXR2X
-
-### File to Modify
-
-**File: `index.html`**
-Add the Google tag immediately after the `<head>` element:
-
-```html
-<!doctype html>
-<html lang="en">
-  <head>
-    <!-- Google tag (gtag.js) -->
-    <script async src="https://www.googletagmanager.com/gtag/js?id=G-385KRYXR2X"></script>
-    <script>
-      window.dataLayer = window.dataLayer || [];
-      function gtag(){dataLayer.push(arguments);}
-      gtag('js', new Date());
-      gtag('config', 'G-385KRYXR2X');
-    </script>
-    <meta charset="UTF-8" />
-    <!-- rest of head content -->
-  </head>
-</html>
-```
-
-### Notes
-- Single Page App (SPA) considerations: The current gtag.js setup will track initial page loads
-- For route change tracking, React Router navigation is handled automatically by GA4's enhanced measurement
-- No additional code changes needed since GA4 automatically tracks SPA navigation
-
----
-
-## Task 5: Payment Callback Logo Replacement
-
-**Goal**: Replace the icon-based logo on the payment cancellation page with text-based "TalkPDF AI" branding.
-
-### File to Modify
-
-**File: `src/pages/PaymentCallback.tsx`**
-
-### Current Code (Lines 88-95)
-```tsx
-<Link to="/" className="inline-flex items-center gap-1.5 justify-center mb-6">
-  <div className="w-10 h-10 rounded-lg bg-primary flex items-center justify-center">
-    <span className="text-primary-foreground font-bold text-lg">T</span>
-  </div>
-  <span className="font-display text-2xl font-bold text-foreground tracking-tight">
-    TalkPDF
-  </span>
-</Link>
-```
-
-### Updated Code
-```tsx
-<Link to="/" className="inline-flex items-center justify-center mb-6">
-  <span className="font-display text-2xl font-bold text-foreground tracking-tight">
-    TalkPDF AI
-  </span>
-</Link>
-```
-
-This removes the icon box with "T" and uses consistent text-only branding matching other pages.
 
 ---
 
 ## Implementation Order
 
-1. **Phase 1 - Quick Fixes**
-   - Task 4: Add Google Analytics (simple HTML change)
-   - Task 5: Update PaymentCallback logo (simple UI change)
-
-2. **Phase 2 - Notification Fix**
-   - Task 3: Fix push notification service worker issues
-
-3. **Phase 3 - AI Enhancements**
-   - Task 1: Enhance chatbot with Nigerian academic context
-
-4. **Phase 4 - New Feature**
-   - Task 2: Implement page-by-page document reader (larger feature)
-
----
-
-## Files Summary
-
-| Task | File | Action |
-|------|------|--------|
-| 1 | `supabase/functions/support-chatbot/index.ts` | Update system prompt |
-| 1 | `src/components/SupportChatbot.tsx` | Add knowledge base entries |
-| 2 | `src/components/dashboard/DocumentReader.tsx` | Create new component |
-| 2 | `src/pages/Dashboard.tsx` | Add reader tab/mode |
-| 2 | `supabase/functions/process-pdf/index.ts` | Add section extraction |
-| 3 | `src/hooks/usePushNotifications.ts` | Fix SW registration |
-| 3 | `src/components/dashboard/NotificationSettings.tsx` | Improve diagnostics |
-| 4 | `index.html` | Add Google Analytics script |
-| 5 | `src/pages/PaymentCallback.tsx` | Update logo to text-only |
+1. **Task 1**: Character limit warnings (quick win, improves UX immediately)
+2. **Task 3**: Smart truncation (fixes the root cause of 400 errors)
+3. **Task 4**: Question limits (requires database migration)
+4. **Task 2**: Credit adjustments (requires careful communication to users)
 
 ---
 
 ## Testing Checklist
 
-- [ ] Verify Google Analytics tracking appears in GA4 dashboard
-- [ ] Test PaymentCallback page shows "TalkPDF AI" text logo
-- [ ] Test notification toggle in dashboard settings
-- [ ] Test chatbot responds with Nigerian academic context
-- [ ] Test page-by-page reading flow (once implemented)
+After implementation, verify:
+- [ ] Character counter shows in SupportChatbot and DocumentReader
+- [ ] Warning colors change at 3,500 and 3,900 characters
+- [ ] Send button disables at 4,000+ characters
+- [ ] Long documents get truncated while preserving user's question
+- [ ] Free users see limit (5 questions) and upgrade prompt
+- [ ] Plus users have 30 questions/day limit
+- [ ] Pro users have unlimited questions
+- [ ] Credit costs display correctly in CreditsUsageTracker
+- [ ] Usage tracking records `ai_question` action type
+

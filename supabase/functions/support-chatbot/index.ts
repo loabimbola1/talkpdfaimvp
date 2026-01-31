@@ -86,6 +86,13 @@ serve(async (req) => {
 
     const userPlan = profile?.subscription_plan || "free";
 
+    // AI Question limits by plan
+    const AI_QUESTION_LIMITS: Record<string, number> = {
+      free: 5,
+      plus: 30,
+      pro: -1, // Unlimited
+    };
+
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     
     if (!LOVABLE_API_KEY) {
@@ -95,7 +102,42 @@ serve(async (req) => {
       );
     }
 
-    const { message, conversationHistory }: ChatRequest = await req.json();
+    const { message, conversationHistory, source }: ChatRequest & { source?: string } = await req.json();
+
+    // Check question limit for Read & Learn sources (document_reader, explain_concept, ask_question)
+    const readLearnSources = ["document_reader", "explain_concept", "ask_question"];
+    if (source && readLearnSources.includes(source)) {
+      const questionLimit = AI_QUESTION_LIMITS[userPlan] || 5;
+      
+      if (questionLimit !== -1) {
+        // Count today's AI questions
+        const today = new Date().toISOString().split("T")[0];
+        
+        const { data: dailyUsage } = await supabaseAdmin
+          .from("daily_usage_summary")
+          .select("ai_questions_asked")
+          .eq("user_id", userId)
+          .eq("date", today)
+          .maybeSingle();
+        
+        const questionsAsked = dailyUsage?.ai_questions_asked || 0;
+        
+        if (questionsAsked >= questionLimit) {
+          const upgradeMessage = userPlan === "free" 
+            ? "Upgrade to Plus for 30 questions/day or Pro for unlimited!"
+            : "Upgrade to Pro for unlimited AI questions!";
+          
+          return new Response(
+            JSON.stringify({ 
+              error: "Daily question limit reached",
+              limitReached: true,
+              upgradeMessage
+            }),
+            { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+      }
+    }
 
     // Validate message input
     if (!message || typeof message !== "string" || message.trim().length === 0) {

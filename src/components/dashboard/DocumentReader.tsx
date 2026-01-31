@@ -5,6 +5,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
+import { Progress } from "@/components/ui/progress";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { 
@@ -17,14 +18,38 @@ import {
   MessageCircle,
   BookOpen,
   Send,
-  Lightbulb
+  Lightbulb,
+  AlertCircle,
+  Crown
 } from "lucide-react";
+import { CharacterCounter } from "@/components/ui/CharacterCounter";
+import { useUsageLimits } from "@/hooks/useUsageLimits";
 
 const MAX_SUPPORT_MESSAGE_CHARS = 4000;
-function clampSupportMessage(text: string) {
-  if (text.length <= MAX_SUPPORT_MESSAGE_CHARS) return text;
-  // Keep safely under the backend check (message.length > 4000)
-  return text.slice(0, MAX_SUPPORT_MESSAGE_CHARS - 3) + "...";
+const QUESTION_BUFFER = 100;
+
+// Smart truncation: prioritize keeping user's question, truncate context first
+function buildConstrainedMessage(
+  userQuestion: string,
+  contextPrefix: string,
+  contextContent: string,
+  maxTotal: number = MAX_SUPPORT_MESSAGE_CHARS
+): string {
+  const questionPart = userQuestion ? `\n\nStudent's Question: ${userQuestion}` : "";
+  const reservedForQuestion = questionPart.length + QUESTION_BUFFER;
+  const availableForContext = maxTotal - reservedForQuestion;
+  
+  if (availableForContext <= 0) {
+    // Question alone is too long - truncate the question itself
+    return questionPart.slice(0, maxTotal - 3) + "...";
+  }
+  
+  const fullContext = contextPrefix + contextContent;
+  const truncatedContext = fullContext.length > availableForContext
+    ? fullContext.slice(0, availableForContext - 3) + "..."
+    : fullContext;
+  
+  return truncatedContext + questionPart;
 }
 
 interface Document {
@@ -40,12 +65,14 @@ interface DocumentReaderProps {
   documentId?: string;
   onNavigateToExplainBack?: (documentId: string, conceptIndex: number) => void;
   onNavigateToListen?: (documentId: string) => void;
+  onNavigateToUpgrade?: () => void;
 }
 
 const DocumentReader = ({ 
   documentId, 
   onNavigateToExplainBack,
-  onNavigateToListen 
+  onNavigateToListen,
+  onNavigateToUpgrade
 }: DocumentReaderProps) => {
   const [documents, setDocuments] = useState<Document[]>([]);
   const [selectedDoc, setSelectedDoc] = useState<Document | null>(null);
@@ -56,6 +83,15 @@ const DocumentReader = ({
   const [question, setQuestion] = useState("");
   const [askingQuestion, setAskingQuestion] = useState(false);
   const [questionAnswer, setQuestionAnswer] = useState<string>("");
+
+  const { 
+    plan, 
+    limits, 
+    usage, 
+    canAskAIQuestion, 
+    getRemainingAIQuestions,
+    refetch: refetchUsage 
+  } = useUsageLimits();
 
   useEffect(() => {
     fetchDocuments();
@@ -117,8 +153,32 @@ const DocumentReader = ({
     }
   };
 
+  const trackAIQuestion = async (source: string, docId: string) => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+
+      await supabase.from("usage_tracking").insert({
+        user_id: session.user.id,
+        action_type: "ai_question",
+        metadata: { source, documentId: docId }
+      });
+      
+      // Refresh usage data
+      refetchUsage();
+    } catch (error) {
+      console.error("Error tracking AI question:", error);
+    }
+  };
+
   const handleExplainConcept = async () => {
     if (!selectedDoc || !selectedDoc.study_prompts) return;
+
+    // Check question limit
+    if (!canAskAIQuestion()) {
+      toast.error("Daily question limit reached. Upgrade for more!");
+      return;
+    }
 
     const currentConcept = selectedDoc.study_prompts[currentConceptIndex];
     if (!currentConcept) return;
@@ -127,10 +187,12 @@ const DocumentReader = ({
     setExplanation("");
 
     try {
-      const rawMessage = `As a Nigerian academic tutor, please explain this concept in simple terms that a secondary school or university student would understand. Use local examples where possible:\n\nTopic: ${currentConcept.title}\n\nContent: ${currentConcept.content}`;
+      const contextPrefix = `As a Nigerian academic tutor, please explain this concept in simple terms that a secondary school or university student would understand. Use local examples where possible:\n\nTopic: ${currentConcept.title}\n\nContent: `;
+      const message = buildConstrainedMessage("", contextPrefix, currentConcept.content);
+      
       const { data, error } = await supabase.functions.invoke("support-chatbot", {
         body: {
-          message: clampSupportMessage(rawMessage),
+          message,
           conversationHistory: []
         }
       });
@@ -138,6 +200,9 @@ const DocumentReader = ({
       if (error) throw error;
 
       setExplanation(data.response || "I couldn't generate an explanation. Please try again.");
+      
+      // Track usage after successful response
+      await trackAIQuestion("explain_concept", selectedDoc.id);
     } catch (error) {
       console.error("Error getting explanation:", error);
       toast.error("Failed to get explanation");
@@ -150,19 +215,31 @@ const DocumentReader = ({
   const handleAskQuestion = async () => {
     if (!question.trim() || !selectedDoc) return;
 
+    // Check question limit
+    if (!canAskAIQuestion()) {
+      toast.error("Daily question limit reached. Upgrade for more!");
+      return;
+    }
+
     const currentConcept = selectedDoc.study_prompts?.[currentConceptIndex];
     
     setAskingQuestion(true);
     setQuestionAnswer("");
 
     try {
-      const contextMessage = currentConcept 
-        ? `Context - Document: "${selectedDoc.title}", Current Topic: "${currentConcept.title}"\n\nTopic Content: ${currentConcept.content}\n\nStudent's Question: ${question}`
-        : `Context - Document: "${selectedDoc.title}"\n\nDocument Summary: ${selectedDoc.summary || "No summary available"}\n\nStudent's Question: ${question}`;
+      let message: string;
+      
+      if (currentConcept) {
+        const contextPrefix = `Context - Document: "${selectedDoc.title}", Current Topic: "${currentConcept.title}"\n\nTopic Content: `;
+        message = buildConstrainedMessage(question, contextPrefix, currentConcept.content);
+      } else {
+        const contextPrefix = `Context - Document: "${selectedDoc.title}"\n\nDocument Summary: `;
+        message = buildConstrainedMessage(question, contextPrefix, selectedDoc.summary || "No summary available");
+      }
 
       const { data, error } = await supabase.functions.invoke("support-chatbot", {
         body: {
-          message: clampSupportMessage(contextMessage),
+          message,
           conversationHistory: []
         }
       });
@@ -171,6 +248,9 @@ const DocumentReader = ({
 
       setQuestionAnswer(data.response || "I couldn't answer your question. Please try again.");
       setQuestion("");
+      
+      // Track usage after successful response
+      await trackAIQuestion("ask_question", selectedDoc.id);
     } catch (error) {
       console.error("Error asking question:", error);
       toast.error("Failed to get answer");
@@ -213,6 +293,11 @@ const DocumentReader = ({
 
   const currentConcept = selectedDoc?.study_prompts?.[currentConceptIndex];
   const totalConcepts = selectedDoc?.study_prompts?.length || 0;
+  const remainingQuestions = getRemainingAIQuestions();
+  const questionLimit = limits.ai_questions_per_day;
+  const isUnlimited = questionLimit === -1;
+  const questionsUsed = usage.ai_questions_asked;
+  const questionPercentage = isUnlimited ? 0 : (questionsUsed / questionLimit) * 100;
 
   return (
     <div className="space-y-6">
@@ -250,6 +335,41 @@ const DocumentReader = ({
           </Button>
         )}
       </div>
+
+      {/* AI Questions Usage Display */}
+      {!isUnlimited && (
+        <Card className="border-border">
+          <CardContent className="py-3">
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2 text-sm">
+                <MessageCircle className="h-4 w-4 text-primary" />
+                <span className="font-medium text-foreground">AI Questions Today</span>
+              </div>
+              <span className="text-sm text-muted-foreground">
+                {questionsUsed} / {questionLimit}
+              </span>
+            </div>
+            <Progress 
+              value={questionPercentage} 
+              className={questionPercentage >= 80 ? "[&>div]:bg-yellow-500" : ""}
+            />
+            {remainingQuestions === 0 && (
+              <div className="flex items-center justify-between mt-3 p-2 bg-destructive/10 rounded-lg">
+                <div className="flex items-center gap-2 text-sm text-destructive">
+                  <AlertCircle className="h-4 w-4" />
+                  <span>Daily limit reached</span>
+                </div>
+                {plan !== "pro" && onNavigateToUpgrade && (
+                  <Button size="sm" variant="outline" onClick={onNavigateToUpgrade} className="gap-1">
+                    <Crown className="h-3 w-3" />
+                    Upgrade
+                  </Button>
+                )}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {selectedDoc && (
         <>
@@ -295,7 +415,7 @@ const DocumentReader = ({
                 <div className="flex flex-wrap gap-3 mt-4">
                   <Button 
                     onClick={handleExplainConcept}
-                    disabled={explaining}
+                    disabled={explaining || !canAskAIQuestion()}
                     className="gap-2"
                   >
                     {explaining ? (
@@ -361,18 +481,21 @@ const DocumentReader = ({
                 Ask a Question
               </CardTitle>
             </CardHeader>
-            <CardContent>
+            <CardContent className="space-y-3">
               <div className="flex gap-2">
                 <Textarea
                   value={question}
-                  onChange={(e) => setQuestion(e.target.value)}
-                  placeholder="Type your question about this topic..."
+                  onChange={(e) => setQuestion(e.target.value.slice(0, MAX_SUPPORT_MESSAGE_CHARS))}
+                  placeholder={canAskAIQuestion() 
+                    ? "Type your question about this topic..." 
+                    : "Daily question limit reached. Upgrade for more!"}
                   className="min-h-[80px] resize-none"
-                  disabled={askingQuestion}
+                  disabled={askingQuestion || !canAskAIQuestion()}
+                  maxLength={MAX_SUPPORT_MESSAGE_CHARS}
                 />
                 <Button 
                   onClick={handleAskQuestion}
-                  disabled={!question.trim() || askingQuestion}
+                  disabled={!question.trim() || askingQuestion || !canAskAIQuestion()}
                   size="icon"
                   className="h-auto"
                 >
@@ -383,6 +506,9 @@ const DocumentReader = ({
                   )}
                 </Button>
               </div>
+              
+              {/* Character counter for question input */}
+              <CharacterCounter current={question.length} max={MAX_SUPPORT_MESSAGE_CHARS} />
 
               {/* Question Answer */}
               {questionAnswer && (

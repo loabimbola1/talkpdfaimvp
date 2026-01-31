@@ -63,6 +63,7 @@ export type Database = {
       }
       daily_usage_summary: {
         Row: {
+          ai_questions_asked: number | null
           audio_minutes_used: number | null
           created_at: string
           date: string
@@ -73,6 +74,7 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          ai_questions_asked?: number | null
           audio_minutes_used?: number | null
           created_at?: string
           date?: string
@@ -83,6 +85,7 @@ export type Database = {
           user_id: string
         }
         Update: {
+          ai_questions_asked?: number | null
           audio_minutes_used?: number | null
           created_at?: string
           date?: string

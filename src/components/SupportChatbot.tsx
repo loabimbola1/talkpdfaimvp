@@ -5,6 +5,9 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { MessageCircle, X, Send, Loader2, Bot, User, Sparkles, LogIn } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
+import { CharacterCounter } from "@/components/ui/CharacterCounter";
+
+const MAX_MESSAGE_CHARS = 4000;
 
 interface Message {
   id: string;
@@ -422,7 +425,7 @@ export function SupportChatbot() {
         </ScrollArea>
 
         {/* Input */}
-        <div className="p-4 border-t border-border">
+        <div className="p-4 border-t border-border space-y-2">
           <form
             onSubmit={(e) => {
               e.preventDefault();
@@ -432,19 +435,22 @@ export function SupportChatbot() {
           >
             <Input
               value={input}
-              onChange={(e) => setInput(e.target.value)}
+              onChange={(e) => setInput(e.target.value.slice(0, MAX_MESSAGE_CHARS))}
               placeholder="Type your question..."
               className="flex-1"
               disabled={isLoading}
+              maxLength={MAX_MESSAGE_CHARS}
             />
             <Button 
               type="submit" 
               size="icon" 
-              disabled={!input.trim() || isLoading}
+              disabled={!input.trim() || isLoading || input.length >= MAX_MESSAGE_CHARS}
+              title={input.length >= MAX_MESSAGE_CHARS ? "Message too long" : undefined}
             >
               <Send className="h-4 w-4" />
             </Button>
           </form>
+          <CharacterCounter current={input.length} max={MAX_MESSAGE_CHARS} />
         </div>
       </div>
     </>

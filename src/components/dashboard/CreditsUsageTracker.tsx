@@ -22,17 +22,18 @@ interface CreditsData {
 
 const PLAN_CREDITS: Record<string, number> = {
   free: 0,
-  plus: 100,
+  plus: 150,  // Updated from 100 to 150 (+50% to offset increased costs)
   pro: 500,
 };
 
-// Credit costs per action
+// Credit costs per action - Updated for profitability
 const CREDIT_COSTS = {
-  pdf_upload: 1,
-  audio_per_5_min: 1,
-  explain_back: 2,
-  quiz: 1,
-  micro_lesson: 1,
+  pdf_upload: 2,        // Updated from 1 (Gemini extraction + summary)
+  audio_per_5_min: 2,   // Updated from 1 (TTS is expensive)
+  explain_back: 3,      // Updated from 2 (uses Gemini Pro)
+  quiz: 2,              // Updated from 1 (uses Gemini Pro)
+  micro_lesson: 1,      // Keep affordable for engagement
+  ai_question: 1,       // NEW: AI questions in Read & Learn
 };
 
 const CreditsUsageTracker = ({ onUpgrade }: CreditsUsageTrackerProps) => {
@@ -123,6 +124,9 @@ const CreditsUsageTracker = ({ onUpgrade }: CreditsUsageTrackerProps) => {
         }
         if (entry.action_type === "micro_lesson") {
           usedCredits += CREDIT_COSTS.micro_lesson;
+        }
+        if (entry.action_type === "ai_question") {
+          usedCredits += CREDIT_COSTS.ai_question;
         }
       });
 
@@ -300,18 +304,22 @@ const CreditsUsageTracker = ({ onUpgrade }: CreditsUsageTrackerProps) => {
         {/* Credit Usage Guide */}
         <div className="pt-2 border-t">
           <p className="text-xs text-muted-foreground mb-2">Credit usage:</p>
-          <div className="grid grid-cols-3 gap-2 text-xs">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
             <div className="text-center p-2 bg-secondary/50 rounded">
-              <p className="font-medium">{CREDIT_COSTS.pdf_upload} credit</p>
+              <p className="font-medium">{CREDIT_COSTS.pdf_upload} credits</p>
               <p className="text-muted-foreground">per PDF</p>
             </div>
             <div className="text-center p-2 bg-secondary/50 rounded">
-              <p className="font-medium">{CREDIT_COSTS.audio_per_5_min} credit</p>
+              <p className="font-medium">{CREDIT_COSTS.audio_per_5_min} credits</p>
               <p className="text-muted-foreground">per 5 min audio</p>
             </div>
             <div className="text-center p-2 bg-secondary/50 rounded">
               <p className="font-medium">{CREDIT_COSTS.explain_back} credits</p>
               <p className="text-muted-foreground">per explain-back</p>
+            </div>
+            <div className="text-center p-2 bg-secondary/50 rounded">
+              <p className="font-medium">{CREDIT_COSTS.ai_question} credit</p>
+              <p className="text-muted-foreground">per AI question</p>
             </div>
           </div>
         </div>

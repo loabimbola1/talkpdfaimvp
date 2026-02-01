@@ -40,25 +40,34 @@ const RATE_LIMIT_CONFIG = {
   maxRequests: 5,
 };
 
-// YarnGPT NATIVE LANGUAGE voice mapping for Nigerian languages
-// Updated to use native language voices for authentic pronunciation
-// Reference: https://yarngpt.ai/api-docs
-const yarnGPTVoiceMap: Record<string, string> = {
-  "en": "idera",           // Nigerian accent for English (clear, natural)
-  "yo": "yoruba_female2",  // Native Yoruba voice (authentic pronunciation)
-  "ha": "hausa_female1",   // Native Hausa voice (authentic pronunciation)
-  "ig": "igbo_female2",    // Native Igbo voice (authentic pronunciation)
-  "pcm": "idera",          // Pidgin uses Nigerian-accented English voice with translated text
+// Spitch voice mapping for Nigerian languages (Primary TTS provider)
+// Reference: https://docs.spitch.app
+const spitchVoiceMap: Record<string, { voice: string; language: string }> = {
+  "yo": { voice: "sade", language: "yo" },     // Yoruba - feminine, energetic
+  "ha": { voice: "zainab", language: "ha" },   // Hausa - feminine, clear
+  "ig": { voice: "ngozi", language: "ig" },    // Igbo - feminine, soft
+  "en": { voice: "lucy", language: "en" },     // English - feminine, very clear
+  "pcm": { voice: "lucy", language: "en" },    // Pidgin - uses English voice
 };
 
-// ElevenLabs voice mapping for Nigerian-sounding voices
-// Using Olufunmilola for authentic Nigerian accent when YarnGPT fails
+// ElevenLabs voice mapping for Nigerian-sounding voices (Final fallback)
+// Using Olufunmilola for authentic Nigerian accent
 const elevenLabsVoiceMap: Record<string, string> = {
   "en": "onwK4e9ZLuTAKqWW03F9",  // Daniel - Nigerian accent English
   "yo": "9Dbo4hEvXQ5l7MXGZFQA",  // Olufunmilola - African Female Nigerian Accent
   "ha": "9Dbo4hEvXQ5l7MXGZFQA",  // Olufunmilola - African Female Nigerian Accent
   "ig": "9Dbo4hEvXQ5l7MXGZFQA",  // Olufunmilola - African Female Nigerian Accent
   "pcm": "onwK4e9ZLuTAKqWW03F9", // Daniel - Nigerian accent for Pidgin
+};
+
+// Gemini TTS voice mapping
+// Reference: https://ai.google.dev/gemini-api/docs/speech-generation
+const geminiVoiceMap: Record<string, string> = {
+  "en": "Charon",   // Informative - good for educational content
+  "yo": "Kore",     // Firm - clear pronunciation
+  "ha": "Kore",     // Firm - clear pronunciation
+  "ig": "Kore",     // Firm - clear pronunciation
+  "pcm": "Puck",    // Upbeat - good for Pidgin
 };
 
 // Plan-based TTS character limits
@@ -68,10 +77,10 @@ const PLAN_TTS_LIMITS: Record<string, number> = {
   "pro": 15000,    // Comprehensive (~25 min audio)
 };
 
-// YarnGPT chunk limit
-const YARNGPT_CHUNK_LIMIT = 2000;
+// TTS chunk limits
+const SPITCH_CHUNK_LIMIT = 2000;
 
-// Split text into chunks at sentence boundaries for YarnGPT
+// Split text into chunks at sentence boundaries
 function splitIntoChunks(text: string, maxLength: number): string[] {
   const chunks: string[] = [];
   const sentences = text.split(/(?<=[.!?])\s+/);
@@ -118,25 +127,26 @@ function concatenateAudioBuffers(buffers: ArrayBuffer[]): ArrayBuffer {
   return result.buffer;
 }
 
-// Generate audio using YarnGPT with chunking support
-async function generateYarnGPTAudio(
+// Generate audio using Spitch API (Primary TTS provider for Nigerian languages)
+async function generateSpitchAudio(
   text: string,
-  voice: string,
+  language: string,
   apiKey: string,
   maxChunks: number = 1
 ): Promise<{ buffer: ArrayBuffer | null; chunksGenerated: number; error?: string }> {
-  const chunks = splitIntoChunks(text, YARNGPT_CHUNK_LIMIT);
+  const config = spitchVoiceMap[language.toLowerCase()] || spitchVoiceMap["en"];
+  const chunks = splitIntoChunks(text, SPITCH_CHUNK_LIMIT);
   const chunksToProcess = chunks.slice(0, maxChunks);
   const audioBuffers: ArrayBuffer[] = [];
   
-  console.log(`YarnGPT: Processing ${chunksToProcess.length} of ${chunks.length} chunks with voice: ${voice}`);
+  console.log(`Spitch: Processing ${chunksToProcess.length} of ${chunks.length} chunks with voice: ${config.voice}`);
   
   for (let i = 0; i < chunksToProcess.length; i++) {
     const chunk = chunksToProcess[i];
-    console.log(`YarnGPT: Processing chunk ${i + 1}/${chunksToProcess.length} (${chunk.length} chars)`);
+    console.log(`Spitch: Processing chunk ${i + 1}/${chunksToProcess.length} (${chunk.length} chars)`);
     
     try {
-      const response = await fetch("https://yarngpt.ai/api/v1/tts", {
+      const response = await fetch("https://api.spitch.app/v1/speech", {
         method: "POST",
         headers: {
           "Authorization": `Bearer ${apiKey}`,
@@ -144,14 +154,15 @@ async function generateYarnGPTAudio(
         },
         body: JSON.stringify({
           text: chunk,
-          voice: voice,
-          response_format: "mp3"
+          voice: config.voice,
+          language: config.language,
+          format: "mp3"
         }),
       });
       
       if (!response.ok) {
         const errorText = await response.text();
-        console.warn(`YarnGPT chunk ${i + 1} failed:`, response.status, errorText.substring(0, 200));
+        console.warn(`Spitch chunk ${i + 1} failed:`, response.status, errorText.substring(0, 200));
         return { buffer: null, chunksGenerated: i, error: `Status ${response.status}: ${errorText.substring(0, 100)}` };
       }
       
@@ -161,16 +172,16 @@ async function generateYarnGPTAudio(
         if (buffer.byteLength > 1024) {
           audioBuffers.push(buffer);
         } else {
-          console.warn(`YarnGPT chunk ${i + 1}: audio too small (${buffer.byteLength} bytes)`);
+          console.warn(`Spitch chunk ${i + 1}: audio too small (${buffer.byteLength} bytes)`);
           return { buffer: null, chunksGenerated: i, error: "Audio too small" };
         }
       } else {
         const responseText = await response.text();
-        console.warn(`YarnGPT chunk ${i + 1}: unexpected content-type`, contentType, responseText.substring(0, 100));
+        console.warn(`Spitch chunk ${i + 1}: unexpected content-type`, contentType, responseText.substring(0, 100));
         return { buffer: null, chunksGenerated: i, error: `Unexpected response: ${contentType}` };
       }
     } catch (error) {
-      console.warn(`YarnGPT chunk ${i + 1} error:`, error instanceof Error ? error.message : String(error));
+      console.warn(`Spitch chunk ${i + 1} error:`, error instanceof Error ? error.message : String(error));
       return { buffer: null, chunksGenerated: i, error: error instanceof Error ? error.message : "Network error" };
     }
   }
@@ -181,9 +192,85 @@ async function generateYarnGPTAudio(
   
   // Concatenate all chunks
   const finalBuffer = concatenateAudioBuffers(audioBuffers);
-  console.log(`YarnGPT: Successfully generated ${audioBuffers.length} chunks, total size: ${finalBuffer.byteLength} bytes`);
+  console.log(`Spitch: Successfully generated ${audioBuffers.length} chunks, total size: ${finalBuffer.byteLength} bytes`);
   
   return { buffer: finalBuffer, chunksGenerated: audioBuffers.length };
+}
+
+// Generate audio using Google Gemini TTS (Secondary fallback)
+// Reference: https://ai.google.dev/gemini-api/docs/speech-generation
+async function generateGeminiTTSAudio(
+  text: string,
+  language: string = "en"
+): Promise<ArrayBuffer | null> {
+  const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
+  if (!GEMINI_API_KEY) {
+    console.log("Gemini API key not configured");
+    return null;
+  }
+
+  const voice = geminiVoiceMap[language] || geminiVoiceMap["en"];
+  
+  // Limit text to 5000 chars for TTS
+  const ttsText = text.substring(0, 5000);
+
+  try {
+    console.log(`Gemini TTS: Generating audio with voice ${voice} for ${ttsText.length} chars...`);
+    
+    const response = await fetch(
+      "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent",
+      {
+        method: "POST",
+        headers: {
+          "x-goog-api-key": GEMINI_API_KEY,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          contents: [{
+            parts: [{ text: ttsText }]
+          }],
+          generationConfig: {
+            responseModalities: ["AUDIO"],
+            speechConfig: {
+              voiceConfig: {
+                prebuiltVoiceConfig: {
+                  voiceName: voice
+                }
+              }
+            }
+          }
+        }),
+      }
+    );
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`Gemini TTS error: ${response.status}`, errorText.substring(0, 500));
+      return null;
+    }
+
+    const data = await response.json();
+    const audioData = data.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+    
+    if (!audioData) {
+      console.warn("Gemini TTS: No audio data in response. Keys:", JSON.stringify(Object.keys(data)));
+      return null;
+    }
+
+    // Gemini returns base64 PCM audio - decode to ArrayBuffer
+    // Note: This is raw PCM (24kHz, 16-bit, mono) but can be played as-is by most players
+    const binaryString = atob(audioData);
+    const bytes = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
+    
+    console.log(`Gemini TTS: Successfully generated audio, size: ${bytes.length} bytes`);
+    return bytes.buffer;
+  } catch (error) {
+    console.error("Gemini TTS error:", error instanceof Error ? error.message : String(error));
+    return null;
+  }
 }
 
 serve(async (req) => {
@@ -321,8 +408,6 @@ serve(async (req) => {
     }
 
     // Extract text from file using AI
-    // For Word documents, we use a text-based extraction approach since the AI gateway
-    // doesn't support DOCX file attachments. For PDFs, we use the file attachment method.
     const fileBase64 = await blobToBase64(fileData);
     
     console.log(`Extracting text from ${fileType}...`);
@@ -331,8 +416,6 @@ serve(async (req) => {
     
     if (isWordDoc) {
       // For Word documents, extract text by reading the document structure
-      // Word documents (.docx) are ZIP files containing XML. We'll ask the AI
-      // to treat the base64 data and filename to understand it's a Word doc
       console.log("Using Word document extraction approach...");
       extractResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
         method: "POST",
@@ -524,7 +607,7 @@ Create ${userPlan === "pro" ? "8-10" : (userPlan === "plus" ? "5-7" : "3-5")} st
       }
     }
 
-    // Generate audio using TTS - try multiple providers with improved fallback
+    // Generate audio using TTS - Spitch -> Gemini -> ElevenLabs fallback chain
     console.log("Generating audio with TTS...");
     
     let audioPath: string | null = null;
@@ -586,7 +669,7 @@ Create ${userPlan === "pro" ? "8-10" : (userPlan === "plus" ? "5-7" : "3-5")} st
     
     console.log(`TTS text length after plan limits: ${ttsText.length} chars (plan: ${userPlan})`);
     
-    const YARNGPT_API_KEY = Deno.env.get("YARNGPT_API_KEY");
+    const SPITCH_API_KEY = Deno.env.get("SPITCH_API_KEY");
     const ELEVENLABS_API_KEY = Deno.env.get("ELEVENLABS_API_KEY");
 
     let audioBuffer: ArrayBuffer | null = null;
@@ -595,30 +678,47 @@ Create ${userPlan === "pro" ? "8-10" : (userPlan === "plus" ? "5-7" : "3-5")} st
     let chunksGenerated = 0;
     const failedProviders: string[] = [];
 
-    // Try YarnGPT first with NATIVE LANGUAGE voices for Nigerian languages
-    if (YARNGPT_API_KEY) {
-      const selectedVoice = yarnGPTVoiceMap[language.toLowerCase()] || yarnGPTVoiceMap["en"];
-      console.log(`Attempting YarnGPT TTS with NATIVE voice: ${selectedVoice} for language: ${language}...`);
+    // TRY 1: Spitch for Nigerian languages (primary provider)
+    if (SPITCH_API_KEY) {
+      const config = spitchVoiceMap[language.toLowerCase()] || spitchVoiceMap["en"];
+      console.log(`Attempting Spitch TTS with voice: ${config.voice} for language: ${language}...`);
       
-      const result = await generateYarnGPTAudio(ttsText, selectedVoice, YARNGPT_API_KEY, maxChunks);
+      const result = await generateSpitchAudio(ttsText, language, SPITCH_API_KEY, maxChunks);
       
       if (result.buffer) {
         audioBuffer = result.buffer;
-        ttsProvider = "yarngpt";
-        voiceUsed = selectedVoice;
+        ttsProvider = "spitch";
+        voiceUsed = config.voice;
         chunksGenerated = result.chunksGenerated;
-        console.log(`YarnGPT TTS successful: ${chunksGenerated} chunks, voice: ${selectedVoice}, language: ${language}`);
+        console.log(`Spitch TTS successful: ${chunksGenerated} chunks, voice: ${config.voice}, language: ${language}`);
       } else {
         const errorMsg = result.error || "unknown error";
-        console.warn(`YarnGPT failed: ${errorMsg}`);
-        failedProviders.push(`yarngpt (${errorMsg})`);
+        console.warn(`Spitch failed: ${errorMsg}`);
+        failedProviders.push(`spitch (${errorMsg})`);
       }
     } else {
-      console.log("YarnGPT API key not configured, skipping");
-      failedProviders.push("yarngpt (no API key)");
+      console.log("Spitch API key not configured, skipping");
+      failedProviders.push("spitch (no API key)");
     }
 
-    // Fallback to ElevenLabs with Nigerian-appropriate voices
+    // TRY 2: Google Gemini TTS (secondary fallback)
+    if (!audioBuffer) {
+      console.log("Attempting Gemini TTS as fallback...");
+      const geminiAudio = await generateGeminiTTSAudio(ttsText, language);
+      
+      if (geminiAudio && geminiAudio.byteLength > 1024) {
+        audioBuffer = geminiAudio;
+        ttsProvider = "gemini";
+        voiceUsed = geminiVoiceMap[language] || geminiVoiceMap["en"];
+        chunksGenerated = 1;
+        console.log(`Gemini TTS successful: voice ${voiceUsed}, size: ${audioBuffer.byteLength} bytes`);
+      } else {
+        console.warn("Gemini TTS failed or returned no audio");
+        failedProviders.push("gemini (no audio)");
+      }
+    }
+
+    // TRY 3: ElevenLabs (final fallback with Nigerian-appropriate voices)
     if (!audioBuffer && ELEVENLABS_API_KEY) {
       try {
         console.log("Falling back to ElevenLabs TTS with language-specific voice...");
@@ -683,134 +783,6 @@ Create ${userPlan === "pro" ? "8-10" : (userPlan === "plus" ? "5-7" : "3-5")} st
       }
     }
 
-    // Fallback to OpenRouter TTS using Gemini 2.5 Flash (supports native TTS)
-    if (!audioBuffer && LOVABLE_API_KEY) {
-      try {
-        console.log("Falling back to Lovable AI Gemini TTS...");
-        
-        // Use Gemini 2.5 Flash Preview TTS with proper audio output configuration
-        const lovableResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-          method: "POST",
-          headers: {
-            "Authorization": `Bearer ${LOVABLE_API_KEY}`,
-            "Content-Type": "application/json",
-            "HTTP-Referer": "https://www.talkpdf.online",
-            "X-Title": "TalkPDF AI"
-          },
-          body: JSON.stringify({
-            model: "google/gemini-2.5-flash-preview-tts",
-            messages: [
-              {
-                role: "user",
-                content: `Read this text naturally as an audiobook narrator: ${ttsText.substring(0, 8000)}`
-              }
-            ],
-            modalities: ["text", "audio"],
-            audio: {
-              voice: "Kore",
-              format: "mp3"
-            }
-          }),
-        });
-
-        if (lovableResponse.ok) {
-          const responseData = await lovableResponse.json();
-          console.log("Lovable AI response structure:", JSON.stringify(responseData, null, 2).substring(0, 500));
-          
-          // Check multiple possible locations for audio data
-          const audioData = responseData.choices?.[0]?.message?.audio?.data 
-            || responseData.choices?.[0]?.message?.content?.audio?.data
-            || responseData.audio?.data;
-            
-          if (audioData) {
-            // Decode base64 to ArrayBuffer
-            const binaryString = atob(audioData);
-            const bytes = new Uint8Array(binaryString.length);
-            for (let i = 0; i < binaryString.length; i++) {
-              bytes[i] = binaryString.charCodeAt(i);
-            }
-            audioBuffer = bytes.buffer;
-            ttsProvider = "lovable-gemini";
-            voiceUsed = "Kore";
-            chunksGenerated = 1;
-            console.log("Lovable AI Gemini TTS successful");
-          } else {
-            console.warn("Lovable AI Gemini TTS: No audio data found in response. Keys:", Object.keys(responseData));
-            failedProviders.push("lovable (no audio data)");
-          }
-        } else {
-          const errorText = await lovableResponse.text();
-          console.warn("Lovable AI Gemini TTS failed:", lovableResponse.status, errorText.substring(0, 500));
-          failedProviders.push(`lovable (${lovableResponse.status})`);
-        }
-      } catch (lovableError) {
-        console.warn("Lovable AI Gemini TTS error:", lovableError instanceof Error ? lovableError.message : String(lovableError));
-        failedProviders.push("lovable (error)");
-      }
-    }
-
-    // Final fallback: Use OpenRouter for TTS if available
-    if (!audioBuffer && LOVABLE_API_KEY) {
-      try {
-        console.log("Falling back to Lovable AI Gemini for TTS...");
-        
-        const lovableTTSResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-          method: "POST",
-          headers: {
-            "Authorization": `Bearer ${LOVABLE_API_KEY}`,
-            "Content-Type": "application/json",
-            "HTTP-Referer": "https://www.talkpdf.online",
-            "X-Title": "TalkPDF AI",
-          },
-          body: JSON.stringify({
-            model: "google/gemini-flash-1.5",
-            messages: [
-              {
-                role: "system",
-                content: "Generate audio narration for the following educational content. Speak clearly and at a moderate pace suitable for learning."
-              },
-              {
-                role: "user",
-                content: ttsText.substring(0, 5000)
-              }
-            ],
-            modalities: ["audio"],
-            audio: {
-              voice: "Kore",
-              format: "mp3"
-            }
-          }),
-        });
-
-        if (lovableTTSResponse.ok) {
-          const responseData = await lovableTTSResponse.json();
-          const audioData = responseData.choices?.[0]?.message?.audio?.data;
-          
-          if (audioData) {
-            const binaryString = atob(audioData);
-            const bytes = new Uint8Array(binaryString.length);
-            for (let i = 0; i < binaryString.length; i++) {
-              bytes[i] = binaryString.charCodeAt(i);
-            }
-            audioBuffer = bytes.buffer;
-            ttsProvider = "lovable-gemini";
-            voiceUsed = "Kore";
-            chunksGenerated = 1;
-            console.log("Lovable AI Gemini TTS successful");
-          } else {
-            failedProviders.push("lovable-final (no audio data)");
-          }
-        } else {
-          const errorText = await lovableTTSResponse.text();
-          console.warn("Lovable AI Gemini TTS failed:", lovableTTSResponse.status, errorText.substring(0, 200));
-          failedProviders.push(`lovable-final (${lovableTTSResponse.status})`);
-        }
-      } catch (lovableError) {
-        console.warn("Lovable AI Gemini TTS error:", lovableError instanceof Error ? lovableError.message : String(lovableError));
-        failedProviders.push("lovable-final (error)");
-      }
-    }
-
     // Log failed providers for debugging
     if (failedProviders.length > 0) {
       console.log("Failed TTS providers:", failedProviders.join(", "));
@@ -835,8 +807,9 @@ Create ${userPlan === "pro" ? "8-10" : (userPlan === "plus" ? "5-7" : "3-5")} st
     if (audioBuffer && audioBuffer.byteLength > 1024) {
       try {
         // Determine content type based on provider
-        const contentType = "audio/mpeg";
-        const fileExt = "mp3";
+        // Gemini returns PCM, but we'll save as-is (browsers can often play it)
+        const contentType = ttsProvider === "gemini" ? "audio/wav" : "audio/mpeg";
+        const fileExt = ttsProvider === "gemini" ? "wav" : "mp3";
         
         const audioBlob = new Blob([audioBuffer], { type: contentType });
         
@@ -903,92 +876,55 @@ Create ${userPlan === "pro" ? "8-10" : (userPlan === "plus" ? "5-7" : "3-5")} st
       });
     }
 
-    if (audioPath && audioDurationSeconds > 0) {
-      await supabase.from("usage_tracking").insert({
-        user_id: document.user_id,
-        action_type: "audio_conversion",
-        audio_minutes_used: audioDurationSeconds / 60,
-        metadata: { 
-          document_id: documentId, 
-          language, 
-          tts_provider: ttsProvider,
-          voice_used: voiceUsed,
-          chunks_generated: chunksGenerated,
-          translation_applied: translationApplied
-        }
-      });
+    // Track audio usage if audio was generated
+    if (audioBuffer && audioDurationSeconds > 0) {
+      const audioMinutes = audioDurationSeconds / 60;
+      const { data: existingAudio } = await supabase
+        .from("usage_tracking")
+        .select("id")
+        .eq("user_id", document.user_id)
+        .eq("action_type", "audio_conversion")
+        .contains("metadata", { document_id: documentId })
+        .maybeSingle();
+
+      if (!existingAudio) {
+        await supabase.from("usage_tracking").insert({
+          user_id: document.user_id,
+          action_type: "audio_conversion",
+          audio_minutes_used: audioMinutes,
+          metadata: { document_id: documentId, tts_provider: ttsProvider }
+        });
+      }
     }
 
-    // Sync daily usage summary from usage_tracking
-    const startOfToday = new Date();
-    startOfToday.setUTCHours(0, 0, 0, 0);
-    const startOfTomorrow = new Date(startOfToday);
-    startOfTomorrow.setUTCDate(startOfToday.getUTCDate() + 1);
-    const today = startOfToday.toISOString().split("T")[0];
-
-    const { data: todayUsageRows, error: todayUsageError } = await supabase
-      .from("usage_tracking")
-      .select("action_type, audio_minutes_used")
-      .eq("user_id", document.user_id)
-      .gte("created_at", startOfToday.toISOString())
-      .lt("created_at", startOfTomorrow.toISOString());
-
-    if (todayUsageError) {
-      console.warn("Failed to fetch usage rows for daily summary sync:", todayUsageError);
-    } else {
-      const rows = todayUsageRows || [];
-      const pdfs_uploaded = rows.filter((r) => r.action_type === "pdf_upload").length;
-      const explain_back_count = rows.filter((r) => r.action_type === "explain_back").length;
-      const audio_minutes_used = rows
-        .filter((r) => r.action_type === "audio_conversion")
-        .reduce((acc, r) => acc + Number(r.audio_minutes_used || 0), 0);
-
-      await supabase
-        .from("daily_usage_summary")
-        .upsert(
-          {
-            user_id: document.user_id,
-            date: today,
-            pdfs_uploaded,
-            audio_minutes_used,
-            explain_back_count,
-            updated_at: new Date().toISOString(),
-          },
-          { onConflict: "user_id,date" }
-        );
-    }
-
-    console.log("Document processed successfully:", documentId, "TTS Provider:", ttsProvider, "Voice:", voiceUsed, "Language:", language, "Plan:", userPlan);
+    console.log("Document processing complete:", documentId);
 
     return new Response(
       JSON.stringify({
         success: true,
         documentId,
-        summary: summary.substring(0, 200) + "...",
+        summary: summary.substring(0, 200),
         studyPromptsCount: studyPrompts.length,
-        audioDuration: audioDurationSeconds,
-        ttsProvider,
-        voiceUsed,
-        chunksGenerated,
-        translationApplied,
-        fileType,
-        userPlan
+        audioGenerated: !!audioPath,
+        audioProvider: ttsProvider,
+        ttsMetadata
       }),
-      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
 
   } catch (error) {
-    console.error("Processing error:", error);
+    console.error("Process error:", error);
     return new Response(
-      JSON.stringify({ error: "Internal server error" }),
+      JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
 });
 
+// Helper function to convert Blob to Base64
 async function blobToBase64(blob: Blob): Promise<string> {
-  const buffer = await blob.arrayBuffer();
-  const bytes = new Uint8Array(buffer);
+  const arrayBuffer = await blob.arrayBuffer();
+  const bytes = new Uint8Array(arrayBuffer);
   let binary = "";
   for (let i = 0; i < bytes.byteLength; i++) {
     binary += String.fromCharCode(bytes[i]);

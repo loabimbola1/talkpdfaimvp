@@ -6,88 +6,153 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-// YarnGPT voice mapping for Nigerian languages
-const YARNGPT_VOICES: Record<string, string> = {
-  "en": "idera",      // Nigerian-accented English
-  "yo": "yoruba_female2",
-  "ig": "igbo_female2",
-  "ha": "hausa_female1",
-  "pcm": "tayo",      // Nigerian Pidgin
+// Spitch voice mapping for Nigerian languages (Primary TTS provider)
+const spitchVoiceMap: Record<string, { voice: string; language: string }> = {
+  "yo": { voice: "sade", language: "yo" },     // Yoruba
+  "ha": { voice: "zainab", language: "ha" },   // Hausa
+  "ig": { voice: "ngozi", language: "ig" },    // Igbo
+  "en": { voice: "lucy", language: "en" },     // English
+  "pcm": { voice: "lucy", language: "en" },    // Pidgin
 };
 
-async function generateYarnGPTAudio(text: string, language: string): Promise<ArrayBuffer | null> {
-  const YARNGPT_API_KEY = Deno.env.get("YARNGPT_API_KEY");
-  if (!YARNGPT_API_KEY) {
-    console.log("YarnGPT API key not configured");
+// Gemini TTS voice mapping
+const geminiVoiceMap: Record<string, string> = {
+  "en": "Charon",   // Informative - good for educational content
+  "yo": "Kore",     // Firm - clear pronunciation
+  "ha": "Kore",
+  "ig": "Kore",
+  "pcm": "Puck",    // Upbeat - good for Pidgin
+};
+
+// ElevenLabs voice mapping for Nigerian-sounding voices
+const elevenLabsVoiceMap: Record<string, string> = {
+  en: "onwK4e9ZLuTAKqWW03F9",  // Daniel - Nigerian accent
+  yo: "9Dbo4hEvXQ5l7MXGZFQA",  // Olufunmilola - African Female Nigerian Accent
+  ha: "9Dbo4hEvXQ5l7MXGZFQA",  // Olufunmilola
+  ig: "9Dbo4hEvXQ5l7MXGZFQA",  // Olufunmilola
+  pcm: "onwK4e9ZLuTAKqWW03F9", // Daniel - Nigerian accent for Pidgin
+};
+
+// Generate audio using Spitch API (Primary TTS provider for Nigerian languages)
+async function generateSpitchAudio(text: string, language: string): Promise<ArrayBuffer | null> {
+  const SPITCH_API_KEY = Deno.env.get("SPITCH_API_KEY");
+  if (!SPITCH_API_KEY) {
+    console.log("Spitch API key not configured");
     return null;
   }
 
-  const voice = YARNGPT_VOICES[language] || YARNGPT_VOICES["en"];
+  const config = spitchVoiceMap[language.toLowerCase()] || spitchVoiceMap["en"];
   
   try {
-    // Chunk text if over 2000 chars
-    const chunks: string[] = [];
-    let remaining = text;
-    while (remaining.length > 0) {
-      if (remaining.length <= 2000) {
-        chunks.push(remaining);
-        break;
-      }
-      
-      // Find last sentence end within limit
-      let splitPoint = remaining.lastIndexOf('. ', 1900);
-      if (splitPoint === -1) splitPoint = remaining.lastIndexOf(' ', 1900);
-      if (splitPoint === -1) splitPoint = 1900;
-      
-      chunks.push(remaining.substring(0, splitPoint + 1));
-      remaining = remaining.substring(splitPoint + 1).trim();
-    }
-
-    const audioBuffers: ArrayBuffer[] = [];
+    console.log(`Spitch: Generating audio with voice ${config.voice} for language ${language}...`);
     
-    for (const chunk of chunks) {
-      const response = await fetch("https://api.yarngpt.com/v1/text-to-speech", {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${YARNGPT_API_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          text: chunk,
-          voice: voice,
-          output_format: "mp3",
-        }),
-      });
+    const response = await fetch("https://api.spitch.app/v1/speech", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${SPITCH_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        text: text.substring(0, 2000), // Spitch limit
+        voice: config.voice,
+        language: config.language,
+        format: "mp3"
+      }),
+    });
 
-      if (!response.ok) {
-        console.error(`YarnGPT error: ${response.status}`);
-        return null;
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`Spitch error: ${response.status}`, errorText.substring(0, 200));
+      return null;
+    }
+
+    const contentType = response.headers.get("content-type") || "";
+    if (contentType.includes("audio") || contentType.includes("mpeg") || contentType.includes("mp3") || contentType.includes("octet-stream")) {
+      const buffer = await response.arrayBuffer();
+      if (buffer.byteLength > 1024) {
+        console.log(`Spitch: Successfully generated audio, size: ${buffer.byteLength} bytes`);
+        return buffer;
       }
-
-      const audioData = await response.arrayBuffer();
-      audioBuffers.push(audioData);
-    }
-
-    // Concatenate audio buffers
-    if (audioBuffers.length === 1) {
-      return audioBuffers[0];
-    }
-
-    const totalLength = audioBuffers.reduce((sum, buf) => sum + buf.byteLength, 0);
-    const combined = new Uint8Array(totalLength);
-    let offset = 0;
-    for (const buf of audioBuffers) {
-      combined.set(new Uint8Array(buf), offset);
-      offset += buf.byteLength;
     }
     
-    return combined.buffer;
+    console.warn("Spitch: Invalid response format");
+    return null;
   } catch (error) {
-    console.error("YarnGPT TTS error:", error);
+    console.error("Spitch TTS error:", error instanceof Error ? error.message : String(error));
     return null;
   }
 }
 
+// Generate audio using Google Gemini TTS (Secondary fallback)
+async function generateGeminiTTSAudio(text: string, language: string = "en"): Promise<ArrayBuffer | null> {
+  const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
+  if (!GEMINI_API_KEY) {
+    console.log("Gemini API key not configured");
+    return null;
+  }
+
+  const voice = geminiVoiceMap[language] || geminiVoiceMap["en"];
+  const ttsText = text.substring(0, 5000);
+
+  try {
+    console.log(`Gemini TTS: Generating audio with voice ${voice}...`);
+    
+    const response = await fetch(
+      "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent",
+      {
+        method: "POST",
+        headers: {
+          "x-goog-api-key": GEMINI_API_KEY,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          contents: [{
+            parts: [{ text: ttsText }]
+          }],
+          generationConfig: {
+            responseModalities: ["AUDIO"],
+            speechConfig: {
+              voiceConfig: {
+                prebuiltVoiceConfig: {
+                  voiceName: voice
+                }
+              }
+            }
+          }
+        }),
+      }
+    );
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`Gemini TTS error: ${response.status}`, errorText.substring(0, 500));
+      return null;
+    }
+
+    const data = await response.json();
+    const audioData = data.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+    
+    if (!audioData) {
+      console.warn("Gemini TTS: No audio data in response");
+      return null;
+    }
+
+    // Decode base64 to ArrayBuffer
+    const binaryString = atob(audioData);
+    const bytes = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
+    
+    console.log(`Gemini TTS: Successfully generated audio, size: ${bytes.length} bytes`);
+    return bytes.buffer;
+  } catch (error) {
+    console.error("Gemini TTS error:", error instanceof Error ? error.message : String(error));
+    return null;
+  }
+}
+
+// Generate audio using ElevenLabs (Final fallback)
 async function generateElevenLabsAudio(text: string, language: string = "en"): Promise<ArrayBuffer | null> {
   const ELEVENLABS_API_KEY = Deno.env.get("ELEVENLABS_API_KEY");
   if (!ELEVENLABS_API_KEY) {
@@ -95,17 +160,10 @@ async function generateElevenLabsAudio(text: string, language: string = "en"): P
     return null;
   }
 
-  // Voice mapping for Nigerian languages with authentic accents
-  const voiceMap: Record<string, string> = {
-    en: "onwK4e9ZLuTAKqWW03F9",  // Daniel - Nigerian accent
-    yo: "9Dbo4hEvXQ5l7MXGZFQA",  // Olufunmilola - African Female Nigerian Accent
-    ha: "9Dbo4hEvXQ5l7MXGZFQA",  // Olufunmilola - African Female Nigerian Accent
-    ig: "9Dbo4hEvXQ5l7MXGZFQA",  // Olufunmilola - African Female Nigerian Accent
-    pcm: "onwK4e9ZLuTAKqWW03F9", // Daniel - Nigerian accent for Pidgin
-  };
-
+  const voiceId = elevenLabsVoiceMap[language] || elevenLabsVoiceMap["en"];
+  
   try {
-    const voiceId = voiceMap[language] || voiceMap["en"];
+    console.log(`ElevenLabs: Generating audio with voice ${voiceId} for language ${language}...`);
     
     const response = await fetch(
       `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}?output_format=mp3_44100_128`,
@@ -129,13 +187,16 @@ async function generateElevenLabsAudio(text: string, language: string = "en"): P
     );
 
     if (!response.ok) {
-      console.error(`ElevenLabs error: ${response.status}`);
+      const errorText = await response.text();
+      console.error(`ElevenLabs error: ${response.status}`, errorText.substring(0, 200));
       return null;
     }
 
-    return await response.arrayBuffer();
+    const buffer = await response.arrayBuffer();
+    console.log(`ElevenLabs: Successfully generated audio, size: ${buffer.byteLength} bytes`);
+    return buffer;
   } catch (error) {
-    console.error("ElevenLabs TTS error:", error);
+    console.error("ElevenLabs TTS error:", error instanceof Error ? error.message : String(error));
     return null;
   }
 }
@@ -224,23 +285,31 @@ serve(async (req) => {
     const aiData = await aiResponse.json();
     const explanation = aiData.choices?.[0]?.message?.content || "";
 
-    // Generate TTS audio with Nigerian accent
+    // Generate TTS audio with fallback chain: Spitch -> Gemini -> ElevenLabs
     let audioBase64: string | null = null;
     let audioProvider = "none";
 
-    // Try YarnGPT first for Nigerian accent
-    const yarnAudio = await generateYarnGPTAudio(explanation, language);
-    if (yarnAudio) {
-      audioBase64 = base64Encode(yarnAudio);
-      audioProvider = "yarngpt";
-      console.log(`Generated audio with YarnGPT for language: ${language}`);
+    // TRY 1: Spitch for Nigerian accent (primary)
+    const spitchAudio = await generateSpitchAudio(explanation, language);
+    if (spitchAudio) {
+      audioBase64 = base64Encode(spitchAudio);
+      audioProvider = "spitch";
+      console.log(`Generated audio with Spitch for language: ${language}`);
     } else {
-    // Fallback to ElevenLabs with language-specific voice
-      const elevenAudio = await generateElevenLabsAudio(explanation, language);
-      if (elevenAudio) {
-        audioBase64 = base64Encode(elevenAudio);
-        audioProvider = "elevenlabs";
-        console.log("Generated audio with ElevenLabs fallback");
+      // TRY 2: Gemini TTS (secondary fallback)
+      const geminiAudio = await generateGeminiTTSAudio(explanation, language);
+      if (geminiAudio) {
+        audioBase64 = base64Encode(geminiAudio);
+        audioProvider = "gemini";
+        console.log("Generated audio with Gemini TTS fallback");
+      } else {
+        // TRY 3: ElevenLabs with language-specific voice (final fallback)
+        const elevenAudio = await generateElevenLabsAudio(explanation, language);
+        if (elevenAudio) {
+          audioBase64 = base64Encode(elevenAudio);
+          audioProvider = "elevenlabs";
+          console.log("Generated audio with ElevenLabs fallback");
+        }
       }
     }
 

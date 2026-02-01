@@ -6,8 +6,8 @@ import { Check, Sparkles, Loader2, Zap } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-
 import { Badge } from "@/components/ui/badge";
+import { useFeatureAccess } from "@/hooks/useFeatureAccess";
 
 interface PlanFeature {
   text: string;
@@ -120,7 +120,9 @@ interface SubscriptionPlansProps {
   currentPlan?: string;
 }
 
-const SubscriptionPlans = ({ currentPlan = "free" }: SubscriptionPlansProps) => {
+const SubscriptionPlans = ({ currentPlan: _currentPlan }: SubscriptionPlansProps) => {
+  const { plan: userPlan, loading: planLoading } = useFeatureAccess();
+  const currentPlan = userPlan; // Use fetched plan instead of prop
   const [isAnnual, setIsAnnual] = useState(false);
   const [loadingPlan, setLoadingPlan] = useState<string | null>(null);
 

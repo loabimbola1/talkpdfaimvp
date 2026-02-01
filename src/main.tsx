@@ -3,7 +3,7 @@ import App from "./App.tsx";
 import "./index.css";
 
 // Version-based cache invalidation to prevent stale data after deployments
-const APP_VERSION = "2.2.0";
+const APP_VERSION = "2.3.0";
 const cachedVersion = localStorage.getItem("app_version");
 
 if (cachedVersion !== APP_VERSION) {

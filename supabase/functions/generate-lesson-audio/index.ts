@@ -88,16 +88,24 @@ async function generateYarnGPTAudio(text: string, language: string): Promise<Arr
   }
 }
 
-async function generateElevenLabsAudio(text: string): Promise<ArrayBuffer | null> {
+async function generateElevenLabsAudio(text: string, language: string = "en"): Promise<ArrayBuffer | null> {
   const ELEVENLABS_API_KEY = Deno.env.get("ELEVENLABS_API_KEY");
   if (!ELEVENLABS_API_KEY) {
     console.log("ElevenLabs API key not configured");
     return null;
   }
 
+  // Voice mapping for Nigerian languages with authentic accents
+  const voiceMap: Record<string, string> = {
+    en: "onwK4e9ZLuTAKqWW03F9",  // Daniel - Nigerian accent
+    yo: "9Dbo4hEvXQ5l7MXGZFQA",  // Olufunmilola - African Female Nigerian Accent
+    ha: "9Dbo4hEvXQ5l7MXGZFQA",  // Olufunmilola - African Female Nigerian Accent
+    ig: "9Dbo4hEvXQ5l7MXGZFQA",  // Olufunmilola - African Female Nigerian Accent
+    pcm: "onwK4e9ZLuTAKqWW03F9", // Daniel - Nigerian accent for Pidgin
+  };
+
   try {
-    // Use a Nigerian-sounding voice (George has a neutral accent that works)
-    const voiceId = "JBFqnCBsd6RMkjVDRZzb"; // George voice
+    const voiceId = voiceMap[language] || voiceMap["en"];
     
     const response = await fetch(
       `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}?output_format=mp3_44100_128`,
@@ -227,8 +235,8 @@ serve(async (req) => {
       audioProvider = "yarngpt";
       console.log(`Generated audio with YarnGPT for language: ${language}`);
     } else {
-      // Fallback to ElevenLabs
-      const elevenAudio = await generateElevenLabsAudio(explanation);
+    // Fallback to ElevenLabs with language-specific voice
+      const elevenAudio = await generateElevenLabsAudio(explanation, language);
       if (elevenAudio) {
         audioBase64 = base64Encode(elevenAudio);
         audioProvider = "elevenlabs";

@@ -1,138 +1,212 @@
 
-# Implementation Plan: Fix Three Critical Issues
+# Implementation Plan: Fix TTS Provider Chain with Spitch and Gemini TTS
 
-This plan addresses three user-reported issues: stale browser cache, incorrect current plan display, and Yoruba voice quality.
-
----
-
-## Issue Summary
-
-| Issue | Root Cause | Solution |
-|-------|------------|----------|
-| 1. Stale Browser Cache | Old version cached in Chrome | Bump APP_VERSION to force cache invalidation |
-| 2. Wrong "Current Plan" Display | `currentPlan` prop not passed to `SubscriptionPlans` | Fetch and pass user's actual plan from profile |
-| 3. Poor Yoruba Voice Quality | Using generic ElevenLabs voices | Use "Olufunmilola" Nigerian accent voice (9Dbo4hEvXQ5l7MXGZFQA) |
+This plan replaces the unreliable YarnGPT with Spitch.app and implements proper Google Gemini TTS as a fallback, with ElevenLabs as the final fallback.
 
 ---
 
-## Task 1: Fix Stale Browser Cache
+## Problem Analysis
 
-### Problem
-The user's laptop Chrome is showing an outdated version with old plan names ("Student Pro", "Mastery Pass") and old pricing (N2,000). The current version has "Plus", "Pro" and updated pricing, but the browser cache is serving stale assets.
+### Current Issues
 
-### Solution
-Increment `APP_VERSION` in `src/main.tsx` to force cache invalidation on next page load.
+| Provider | Issue |
+|----------|-------|
+| **YarnGPT** | API endpoint `yarngpt.ai/api/v1/tts` appears to be non-functional or returning errors, causing fallback to ElevenLabs |
+| **Lovable AI Gemini TTS** | Using incorrect API format - the Lovable AI Gateway doesn't support the `responseModalities: ["AUDIO"]` format that Gemini TTS requires |
+| **ElevenLabs** | Works but Nigerian accent voices may not be as authentic as native Nigerian language providers |
+| **Spitch** | Already implemented as standalone function but NOT integrated into main TTS fallback chain |
 
-### Changes
-**File: `src/main.tsx`**
-- Change `APP_VERSION` from `"2.2.0"` to `"2.3.0"`
+### Proposed TTS Fallback Chain
 
----
-
-## Task 2: Fix Incorrect "Current Plan" Display
-
-### Problem
-Looking at the second screenshot, the user is clearly on a Plus plan (the right sidebar shows "Plus Plan" with "150 base credits", "55 used", "100 remaining"). However, the "Current Plan" button appears on the Free tier card, not the Plus tier.
-
-### Root Cause
-In `Dashboard.tsx` line 338, the `SubscriptionPlans` component is rendered without passing the `currentPlan` prop:
-```tsx
-{activeTab === "subscription" && <SubscriptionPlans />}
-```
-
-The component defaults to `currentPlan = "free"` when no prop is provided. The component needs to fetch the user's actual subscription plan.
-
-### Solution
-Modify `SubscriptionPlans.tsx` to:
-1. Use the `useFeatureAccess` hook to get the user's current plan
-2. Ignore the prop and use the fetched plan instead (or remove the prop entirely)
-
-### Changes
-**File: `src/components/dashboard/SubscriptionPlans.tsx`**
-
-```typescript
-// Add import
-import { useFeatureAccess } from "@/hooks/useFeatureAccess";
-
-// Inside component, before useState declarations
-const { plan: userPlan, loading: planLoading } = useFeatureAccess();
-
-// Use userPlan instead of currentPlan prop throughout
-const isCurrentPlan = plan.planId === userPlan;
+```text
++-----------+     +-----------+     +-------------+
+|  Spitch   | --> | Gemini    | --> | ElevenLabs  |
+|  (Primary)|     | TTS       |     | (Final)     |
++-----------+     +-----------+     +-------------+
+     |                  |                  |
+     v                  v                  v
+  Nigerian          Google API         Olufunmilola/
+  Native Voices     (Direct Call)      Daniel voices
 ```
 
 ---
 
-## Task 3: Improve Yoruba Voice with Nigerian Accent
+## Task 1: Add GEMINI_API_KEY Secret
 
-### Problem
-Users complain the Yoruba voice sounds "funny, inconsistent, and lacking authentic Nigerian accent." The user has specifically requested using the ElevenLabs voice "Olufunmilola - African Female with Nigerian Accent" (Voice ID: `9Dbo4hEvXQ5l7MXGZFQA`).
+The user has provided a Google AI Studio API key. This needs to be added as a Supabase secret.
 
-### Current State
-- **process-pdf**: Uses YarnGPT as primary (`yoruba_female2`), ElevenLabs fallback uses `Daniel` voice (`onwK4e9ZLuTAKqWW03F9`)
-- **elevenlabs-tts**: Uses `Sarah` voice (`EXAVITQu4vr4xnSDxMaL`) for all languages
-- **generate-lesson-audio**: Uses YarnGPT primary, ElevenLabs fallback uses `George` voice (`JBFqnCBsd6RMkjVDRZzb`)
+**Secret to Add:**
+- Name: `GEMINI_API_KEY`
+- Value: `AIzaSyA4pCKVeFMtZJPF_F-g1NK240e0CFoHjDY`
 
-### Solution
-Update ElevenLabs voice mappings in all three TTS edge functions to use Olufunmilola (9Dbo4hEvXQ5l7MXGZFQA) for Yoruba specifically, and consider Nigerian accent voices for other languages.
+---
 
-### Voice Configuration (ElevenLabs)
-| Language | Current Voice | New Voice |
-|----------|---------------|-----------|
-| Yoruba (yo) | Sarah/Daniel/George | **Olufunmilola** (9Dbo4hEvXQ5l7MXGZFQA) |
-| English (en) | Various | Keep Daniel (onwK4e9ZLuTAKqWW03F9) for Nigerian accent |
-| Igbo (ig) | Sarah/Daniel | Olufunmilola (9Dbo4hEvXQ5l7MXGZFQA) |
-| Hausa (ha) | Sarah/Daniel | Olufunmilola (9Dbo4hEvXQ5l7MXGZFQA) |
-| Pidgin (pcm) | Sarah/Daniel | Keep Daniel (Nigerian accent) |
+## Task 2: Update process-pdf/index.ts
 
-### Changes
+### Changes Overview
 
-**File: `supabase/functions/elevenlabs-tts/index.ts`**
+1. **Remove YarnGPT** - Replace with Spitch API integration
+2. **Add Spitch TTS function** - Inline implementation for Nigerian languages
+3. **Implement proper Gemini TTS** - Using Google's direct API with correct format
+4. **Remove broken Lovable AI Gemini fallbacks** - Lines 686-812
+
+### Spitch Voice Mapping (Nigerian Languages)
+
 ```typescript
-const voiceMapping: Record<string, string> = {
-  en: "onwK4e9ZLuTAKqWW03F9",  // Daniel - Nigerian accent
-  yo: "9Dbo4hEvXQ5l7MXGZFQA",  // Olufunmilola - African Female Nigerian Accent
-  ha: "9Dbo4hEvXQ5l7MXGZFQA",  // Olufunmilola - African Female Nigerian Accent
-  ig: "9Dbo4hEvXQ5l7MXGZFQA",  // Olufunmilola - African Female Nigerian Accent
-  pcm: "onwK4e9ZLuTAKqWW03F9", // Daniel - Nigerian accent for Pidgin
+const spitchVoiceMap: Record<string, { voice: string; language: string }> = {
+  "yo": { voice: "sade", language: "yo" },    // Yoruba
+  "ha": { voice: "zainab", language: "ha" },  // Hausa
+  "ig": { voice: "ngozi", language: "ig" },   // Igbo
+  "en": { voice: "lucy", language: "en" },    // English
+  "pcm": { voice: "lucy", language: "en" },   // Pidgin (uses English)
 };
 ```
 
-**File: `supabase/functions/process-pdf/index.ts`** (lines 54-62)
-```typescript
-const elevenLabsVoiceMap: Record<string, string> = {
-  "en": "onwK4e9ZLuTAKqWW03F9",  // Daniel - Nigerian accent
-  "yo": "9Dbo4hEvXQ5l7MXGZFQA",  // Olufunmilola - African Female Nigerian Accent
-  "ha": "9Dbo4hEvXQ5l7MXGZFQA",  // Olufunmilola - African Female Nigerian Accent
-  "ig": "9Dbo4hEvXQ5l7MXGZFQA",  // Olufunmilola - African Female Nigerian Accent
-  "pcm": "onwK4e9ZLuTAKqWW03F9", // Daniel - Nigerian accent for Pidgin
-};
-```
+### Gemini TTS Implementation
 
-**File: `supabase/functions/generate-lesson-audio/index.ts`** (lines 91-100)
+According to Google's documentation, the correct API call is:
+
 ```typescript
-async function generateElevenLabsAudio(text: string, language: string = "en"): Promise<ArrayBuffer | null> {
-  // ...
-  
-  // Voice mapping for Nigerian languages
+async function generateGeminiTTSAudio(
+  text: string,
+  language: string = "en"
+): Promise<ArrayBuffer | null> {
+  const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
+  if (!GEMINI_API_KEY) {
+    console.log("Gemini API key not configured");
+    return null;
+  }
+
+  // Select appropriate voice based on language
+  // Gemini voices: Kore (Firm), Puck (Upbeat), Charon (Informative), etc.
   const voiceMap: Record<string, string> = {
-    en: "onwK4e9ZLuTAKqWW03F9",  // Daniel - Nigerian accent
-    yo: "9Dbo4hEvXQ5l7MXGZFQA",  // Olufunmilola - African Female Nigerian Accent
-    ha: "9Dbo4hEvXQ5l7MXGZFQA",  // Olufunmilola
-    ig: "9Dbo4hEvXQ5l7MXGZFQA",  // Olufunmilola
-    pcm: "onwK4e9ZLuTAKqWW03F9", // Daniel
+    "en": "Charon",     // Informative - good for educational content
+    "yo": "Kore",       // Firm - clear pronunciation
+    "ha": "Kore",
+    "ig": "Kore",
+    "pcm": "Puck",      // Upbeat - good for Pidgin
   };
-  
-  const voiceId = voiceMap[language] || voiceMap["en"];
-  // ... rest of function
+
+  const voice = voiceMap[language] || "Charon";
+
+  try {
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent`,
+      {
+        method: "POST",
+        headers: {
+          "x-goog-api-key": GEMINI_API_KEY,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          contents: [{
+            parts: [{ text: text.substring(0, 5000) }]
+          }],
+          generationConfig: {
+            responseModalities: ["AUDIO"],
+            speechConfig: {
+              voiceConfig: {
+                prebuiltVoiceConfig: {
+                  voiceName: voice
+                }
+              }
+            }
+          }
+        }),
+      }
+    );
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`Gemini TTS error: ${response.status}`, errorText);
+      return null;
+    }
+
+    const data = await response.json();
+    const audioData = data.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+    
+    if (!audioData) {
+      console.warn("Gemini TTS: No audio data in response");
+      return null;
+    }
+
+    // Gemini returns base64 PCM audio (24kHz, 16-bit, mono)
+    // Decode base64 to ArrayBuffer
+    const binaryString = atob(audioData);
+    const bytes = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
+    
+    return bytes.buffer;
+  } catch (error) {
+    console.error("Gemini TTS error:", error);
+    return null;
+  }
 }
 ```
 
-Also update the function signature to accept language parameter:
+### Updated Fallback Flow in process-pdf
+
 ```typescript
-// Update call site
-const elevenAudio = await generateElevenLabsAudio(explanation, language);
+// TRY 1: Spitch for Nigerian languages (primary for yo, ha, ig, pcm)
+if (SPITCH_API_KEY && ["yo", "ha", "ig", "en", "pcm"].includes(language)) {
+  const spitchConfig = spitchVoiceMap[language] || spitchVoiceMap["en"];
+  // ... call Spitch API
+}
+
+// TRY 2: Gemini TTS (better quality, supports multiple languages)
+if (!audioBuffer && GEMINI_API_KEY) {
+  audioBuffer = await generateGeminiTTSAudio(ttsText, language);
+  // ...
+}
+
+// TRY 3: ElevenLabs (final fallback with Olufunmilola/Daniel voices)
+if (!audioBuffer && ELEVENLABS_API_KEY) {
+  // ... existing ElevenLabs code
+}
 ```
+
+---
+
+## Task 3: Update generate-lesson-audio/index.ts
+
+Apply the same changes for micro-lesson audio generation:
+
+1. **Replace YarnGPT with Spitch** as primary provider
+2. **Add Gemini TTS** as second fallback
+3. **Keep ElevenLabs** with Nigerian voices as final fallback
+
+### Updated Fallback Chain
+
+```typescript
+// Try Spitch first for Nigerian accent
+const spitchAudio = await generateSpitchAudio(explanation, language);
+if (spitchAudio) {
+  audioBase64 = base64Encode(spitchAudio);
+  audioProvider = "spitch";
+} else {
+  // Try Gemini TTS
+  const geminiAudio = await generateGeminiTTSAudio(explanation, language);
+  if (geminiAudio) {
+    audioBase64 = base64Encode(geminiAudio);
+    audioProvider = "gemini";
+  } else {
+    // Fallback to ElevenLabs with Olufunmilola/Daniel
+    const elevenAudio = await generateElevenLabsAudio(explanation, language);
+    if (elevenAudio) {
+      audioBase64 = base64Encode(elevenAudio);
+      audioProvider = "elevenlabs";
+    }
+  }
+}
+```
+
+---
+
+## Task 4: Update elevenlabs-tts/index.ts (Minor)
+
+No major changes needed - this is already correctly configured with Olufunmilola/Daniel voices from the previous update.
 
 ---
 
@@ -140,39 +214,72 @@ const elevenAudio = await generateElevenLabsAudio(explanation, language);
 
 | File | Changes |
 |------|---------|
-| `src/main.tsx` | Bump APP_VERSION to "2.3.0" |
-| `src/components/dashboard/SubscriptionPlans.tsx` | Add useFeatureAccess hook to fetch actual user plan |
-| `supabase/functions/elevenlabs-tts/index.ts` | Update voice mapping to use Olufunmilola |
-| `supabase/functions/process-pdf/index.ts` | Update elevenLabsVoiceMap |
-| `supabase/functions/generate-lesson-audio/index.ts` | Update ElevenLabs voice mapping and pass language param |
+| `supabase/functions/process-pdf/index.ts` | Replace YarnGPT with Spitch, add Gemini TTS function, remove broken Lovable AI fallbacks |
+| `supabase/functions/generate-lesson-audio/index.ts` | Replace YarnGPT with Spitch, add Gemini TTS as fallback |
 
 ---
 
 ## Technical Details
 
-### Olufunmilola Voice (9Dbo4hEvXQ5l7MXGZFQA)
-- **Name**: Olufunmilola - African Female with Nigerian Accent
-- **Provider**: ElevenLabs
-- **Use Case**: Best for Yoruba and other Nigerian language content
-- **Model**: Works with `eleven_multilingual_v2`
+### Spitch API (docs.spitch.app)
 
-### Voice Settings (Recommended)
-```json
-{
-  "stability": 0.5,
-  "similarity_boost": 0.75,
-  "style": 0.3,
-  "use_speaker_boost": true
-}
+```typescript
+// Endpoint: https://api.spitch.app/v1/speech
+// Method: POST
+// Headers: Authorization: Bearer {API_KEY}
+// Body: { language: "yo", voice: "sade", text: "...", format: "mp3" }
+// Returns: audio/mpeg binary
 ```
+
+### Gemini TTS API (Google AI Studio)
+
+```typescript
+// Endpoint: https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent
+// Method: POST
+// Headers: x-goog-api-key: {API_KEY}
+// Body: { contents, generationConfig: { responseModalities: ["AUDIO"], speechConfig: {...} } }
+// Returns: base64 PCM audio in inlineData.data (24kHz, 16-bit, mono)
+```
+
+### Audio Format Notes
+
+- **Spitch**: Returns MP3 directly
+- **Gemini**: Returns PCM audio (24kHz, 16-bit, mono) - needs WAV header or conversion
+- **ElevenLabs**: Returns MP3
+
+For Gemini PCM audio, we'll store it as WAV or convert to MP3 for consistency.
+
+---
+
+## Spitch Voice Options
+
+| Language | Voice | Description |
+|----------|-------|-------------|
+| Yoruba (yo) | sade, segun | Feminine/Masculine, energetic |
+| Hausa (ha) | zainab, hassan | Feminine/Masculine, clear |
+| Igbo (ig) | ngozi, emeka | Feminine/Masculine, soft |
+| English (en) | lucy | Feminine, very clear |
+
+---
+
+## Gemini TTS Voice Options
+
+| Voice | Style | Best For |
+|-------|-------|----------|
+| Charon | Informative | Educational content |
+| Kore | Firm | Clear pronunciation |
+| Puck | Upbeat | Conversational content |
+| Aoede | Breezy | Casual content |
+| Achird | Friendly | Welcoming content |
 
 ---
 
 ## Testing Checklist
 
 After implementation, verify:
-- [ ] Clear browser cache and confirm new version loads (v2.3.0)
-- [ ] Login as a Plus plan user and verify "Current Plan" shows on Plus tier
-- [ ] Generate Yoruba audio and verify it uses Nigerian accent voice
-- [ ] Test micro-lessons with Nigerian language selection
-- [ ] Verify YarnGPT still works as primary TTS (Olufunmilola is fallback only)
+- [ ] Upload a PDF with Yoruba language selected - audio should use Spitch "sade" voice
+- [ ] If Spitch fails, Gemini TTS should generate audio
+- [ ] If both fail, ElevenLabs should use Olufunmilola voice
+- [ ] Micro-lessons also use the same fallback chain
+- [ ] TTS metadata correctly records which provider was used
+- [ ] Check edge function logs for any API errors

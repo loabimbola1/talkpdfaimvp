@@ -52,13 +52,13 @@ const yarnGPTVoiceMap: Record<string, string> = {
 };
 
 // ElevenLabs voice mapping for Nigerian-sounding voices
-// Using Daniel for warmer, African-friendly tone when YarnGPT fails
+// Using Olufunmilola for authentic Nigerian accent when YarnGPT fails
 const elevenLabsVoiceMap: Record<string, string> = {
-  "en": "onwK4e9ZLuTAKqWW03F9",  // Daniel - warmer, African-friendly tone
-  "yo": "onwK4e9ZLuTAKqWW03F9",  // Daniel - for consistency
-  "ha": "onwK4e9ZLuTAKqWW03F9",  // Daniel - for consistency
-  "ig": "onwK4e9ZLuTAKqWW03F9",  // Daniel - for consistency
-  "pcm": "onwK4e9ZLuTAKqWW03F9", // Daniel - for consistency
+  "en": "onwK4e9ZLuTAKqWW03F9",  // Daniel - Nigerian accent English
+  "yo": "9Dbo4hEvXQ5l7MXGZFQA",  // Olufunmilola - African Female Nigerian Accent
+  "ha": "9Dbo4hEvXQ5l7MXGZFQA",  // Olufunmilola - African Female Nigerian Accent
+  "ig": "9Dbo4hEvXQ5l7MXGZFQA",  // Olufunmilola - African Female Nigerian Accent
+  "pcm": "onwK4e9ZLuTAKqWW03F9", // Daniel - Nigerian accent for Pidgin
 };
 
 // Plan-based TTS character limits

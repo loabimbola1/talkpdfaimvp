@@ -85,13 +85,13 @@ serve(async (req) => {
     }
 
     // Voice mapping for Nigerian languages
-    // Using ElevenLabs voices that work well for African languages
+    // Using authentic Nigerian accent voices from ElevenLabs
     const voiceMapping: Record<string, string> = {
-      en: "EXAVITQu4vr4xnSDxMaL", // Sarah - Clear English
-      yo: "EXAVITQu4vr4xnSDxMaL", // Will use English voice with Yoruba text
-      ha: "EXAVITQu4vr4xnSDxMaL", // Hausa
-      ig: "EXAVITQu4vr4xnSDxMaL", // Igbo
-      pcm: "EXAVITQu4vr4xnSDxMaL", // Nigerian Pidgin
+      en: "onwK4e9ZLuTAKqWW03F9",  // Daniel - Nigerian accent
+      yo: "9Dbo4hEvXQ5l7MXGZFQA",  // Olufunmilola - African Female Nigerian Accent
+      ha: "9Dbo4hEvXQ5l7MXGZFQA",  // Olufunmilola - African Female Nigerian Accent
+      ig: "9Dbo4hEvXQ5l7MXGZFQA",  // Olufunmilola - African Female Nigerian Accent
+      pcm: "onwK4e9ZLuTAKqWW03F9", // Daniel - Nigerian accent for Pidgin
     };
 
     const selectedVoice = voiceId || voiceMapping[language] || voiceMapping.en;

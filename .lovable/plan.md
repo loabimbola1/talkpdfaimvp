@@ -1,215 +1,137 @@
 
+# Implementation Plan: Fix Three Critical Issues
 
-# Implementation Plan: Revised Onboarding & Updated Pricing Structure
-
-This plan streamlines the onboarding experience to focus on essential features and updates pricing to reflect the new credit limits and "Read & Learn" feature.
-
----
-
-## Overview
-
-| Task | Description | Files to Modify |
-|------|-------------|-----------------|
-| 1. Streamline Onboarding | Reduce from 7 steps to 5 essential steps | `OnboardingGuide.tsx` |
-| 2. Update Dashboard Pricing | Reflect new credits, add Read & Learn feature | `SubscriptionPlans.tsx` |
-| 3. Update Landing Pricing | Same updates for landing page | `Pricing.tsx` |
+This plan addresses three user-reported issues: stale browser cache, incorrect current plan display, and Yoruba voice quality.
 
 ---
 
-## Task 1: Streamlined Onboarding Flow
+## Issue Summary
 
-### Current Steps (7 total)
-1. Welcome
-2. Upload PDFs
-3. Explain-Back Mode
-4. Achievement Milestones  
-5. Study Groups
-6. Smart Notifications
-7. Complete
-
-### Proposed Steps (5 total)
-1. **Welcome** - Keep (essential introduction)
-2. **Upload PDFs** - Keep (core feature)
-3. **Read & Learn** - NEW (replace Explain-Back with broader Read & Learn feature that includes AI Q&A)
-4. **Listen & Review** - NEW (combines Audio + Quiz + Spaced Repetition into one step)
-5. **Complete** - Keep (call to action)
-
-### Removed Steps
-- ❌ Achievement Milestones - Secondary feature, users discover naturally
-- ❌ Study Groups - Secondary feature, not core workflow
-- ❌ Smart Notifications - Can be discovered in settings
-
-### New Step Content
-
-**Step 3: Read & Learn**
-- Icon: `BookOpen`
-- Title: "Read & Learn with AI"
-- Description: "Read your documents page-by-page. Tap 'Explain This' for AI explanations or ask questions about any topic. Your daily question limit depends on your plan."
-- Action: "Go to My Docs tab"
-
-**Step 4: Listen & Review**
-- Icon: `Headphones`
-- Title: "Listen & Test Yourself"
-- Description: "Listen to audio lessons, take quizzes to test your understanding, and use spaced repetition to remember what you learn. Track your progress with achievements."
-- Action: "Go to My Docs tab"
+| Issue | Root Cause | Solution |
+|-------|------------|----------|
+| 1. Stale Browser Cache | Old version cached in Chrome | Bump APP_VERSION to force cache invalidation |
+| 2. Wrong "Current Plan" Display | `currentPlan` prop not passed to `SubscriptionPlans` | Fetch and pass user's actual plan from profile |
+| 3. Poor Yoruba Voice Quality | Using generic ElevenLabs voices | Use "Olufunmilola" Nigerian accent voice (9Dbo4hEvXQ5l7MXGZFQA) |
 
 ---
 
-## Task 2: Update Dashboard Pricing (SubscriptionPlans.tsx)
+## Task 1: Fix Stale Browser Cache
 
-### Changes for All Plans
+### Problem
+The user's laptop Chrome is showing an outdated version with old plan names ("Student Pro", "Mastery Pass") and old pricing (N2,000). The current version has "Plus", "Pro" and updated pricing, but the browser cache is serving stale assets.
 
-**Free Plan Features:**
-- 5 minutes audio per day
-- 2 PDF uploads per day
-- English language only
-- **5 AI questions per day (Read & Learn)** ← NEW
-- Quiz access
-- Quiz leaderboard access
+### Solution
+Increment `APP_VERSION` in `src/main.tsx` to force cache invalidation on next page load.
 
-**Plus Plan Features:**
-- **150 monthly credits** ← Updated from 100
-- 60 minutes audio per day
-- 20 PDF uploads per day
-- 3 Nigerian languages (Yoruba, Igbo, Pidgin)
-- **30 AI questions per day (Read & Learn)** ← NEW
-- Voice Q&A with explanations (Explain-Back)
-- Quiz & Quiz Leaderboard access
-- Bronze & Silver badges
-- Basic micro-lessons
-- Email support
-
-**Pro Plan Features:**
-- 500 monthly credits
-- Unlimited audio generation
-- Unlimited PDF uploads
-- All 5 Nigerian languages
-- **Unlimited AI questions (Read & Learn)** ← NEW
-- Real-time explanation validation (Explain-Back)
-- Quiz & Quiz Leaderboard access
-- 1-Minute Mastery micro-lessons
-- All badge levels
-- Campus leaderboard access
-- WhatsApp integration (Coming Soon)
-- Offline mode & audio download
-- Priority support
+### Changes
+**File: `src/main.tsx`**
+- Change `APP_VERSION` from `"2.2.0"` to `"2.3.0"`
 
 ---
 
-## Task 3: Update Landing Page Pricing (Pricing.tsx)
+## Task 2: Fix Incorrect "Current Plan" Display
 
-### Same Changes as Dashboard
+### Problem
+Looking at the second screenshot, the user is clearly on a Plus plan (the right sidebar shows "Plus Plan" with "150 base credits", "55 used", "100 remaining"). However, the "Current Plan" button appears on the Free tier card, not the Plus tier.
 
-Apply identical feature updates to the landing page pricing section:
-- Update Plus credits from 100 → 150
-- Add "Read & Learn" AI questions feature to all plans
-- Ensure feature lists match between dashboard and landing page
+### Root Cause
+In `Dashboard.tsx` line 338, the `SubscriptionPlans` component is rendered without passing the `currentPlan` prop:
+```tsx
+{activeTab === "subscription" && <SubscriptionPlans />}
+```
 
----
+The component defaults to `currentPlan = "free"` when no prop is provided. The component needs to fetch the user's actual subscription plan.
 
-## Technical Implementation
+### Solution
+Modify `SubscriptionPlans.tsx` to:
+1. Use the `useFeatureAccess` hook to get the user's current plan
+2. Ignore the prop and use the fetched plan instead (or remove the prop entirely)
 
-### OnboardingGuide.tsx Changes
+### Changes
+**File: `src/components/dashboard/SubscriptionPlans.tsx`**
 
 ```typescript
-// Updated steps array - reduced from 7 to 5
-const onboardingSteps: OnboardingStep[] = [
-  {
-    id: "welcome",
-    icon: Sparkles,
-    title: "Welcome to TalkPDF AI! 🎉",
-    description: "Let's take a quick tour. TalkPDF AI converts your PDFs into interactive audio lessons in Nigerian languages.",
-  },
-  {
-    id: "upload",
-    icon: Upload,
-    title: "Upload Your PDFs",
-    description: "Upload your study materials. Our AI converts them into audio lessons and creates study prompts you can explore.",
-    action: "Go to Upload tab",
-  },
-  {
-    id: "read",
-    icon: BookOpen,
-    title: "Read & Learn with AI",
-    description: "Read documents page-by-page. Tap 'Explain This' for AI explanations or ask questions about any topic.",
-    action: "Go to My Docs tab",
-  },
-  {
-    id: "listen",
-    icon: Headphones,
-    title: "Listen & Test Yourself",
-    description: "Listen to audio lessons, take quizzes, and use spaced repetition to remember what you learn.",
-    action: "Go to My Docs tab",
-  },
-  {
-    id: "complete",
-    icon: CheckCircle,
-    title: "You're All Set! 🚀",
-    description: "Upload your first PDF and start learning. Na you go excel!",
-  },
-];
+// Add import
+import { useFeatureAccess } from "@/hooks/useFeatureAccess";
 
-// Update tabMap for navigation
-const tabMap: Record<string, string> = {
-  upload: "upload",
-  read: "documents",
-  listen: "documents",
+// Inside component, before useState declarations
+const { plan: userPlan, loading: planLoading } = useFeatureAccess();
+
+// Use userPlan instead of currentPlan prop throughout
+const isCurrentPlan = plan.planId === userPlan;
+```
+
+---
+
+## Task 3: Improve Yoruba Voice with Nigerian Accent
+
+### Problem
+Users complain the Yoruba voice sounds "funny, inconsistent, and lacking authentic Nigerian accent." The user has specifically requested using the ElevenLabs voice "Olufunmilola - African Female with Nigerian Accent" (Voice ID: `9Dbo4hEvXQ5l7MXGZFQA`).
+
+### Current State
+- **process-pdf**: Uses YarnGPT as primary (`yoruba_female2`), ElevenLabs fallback uses `Daniel` voice (`onwK4e9ZLuTAKqWW03F9`)
+- **elevenlabs-tts**: Uses `Sarah` voice (`EXAVITQu4vr4xnSDxMaL`) for all languages
+- **generate-lesson-audio**: Uses YarnGPT primary, ElevenLabs fallback uses `George` voice (`JBFqnCBsd6RMkjVDRZzb`)
+
+### Solution
+Update ElevenLabs voice mappings in all three TTS edge functions to use Olufunmilola (9Dbo4hEvXQ5l7MXGZFQA) for Yoruba specifically, and consider Nigerian accent voices for other languages.
+
+### Voice Configuration (ElevenLabs)
+| Language | Current Voice | New Voice |
+|----------|---------------|-----------|
+| Yoruba (yo) | Sarah/Daniel/George | **Olufunmilola** (9Dbo4hEvXQ5l7MXGZFQA) |
+| English (en) | Various | Keep Daniel (onwK4e9ZLuTAKqWW03F9) for Nigerian accent |
+| Igbo (ig) | Sarah/Daniel | Olufunmilola (9Dbo4hEvXQ5l7MXGZFQA) |
+| Hausa (ha) | Sarah/Daniel | Olufunmilola (9Dbo4hEvXQ5l7MXGZFQA) |
+| Pidgin (pcm) | Sarah/Daniel | Keep Daniel (Nigerian accent) |
+
+### Changes
+
+**File: `supabase/functions/elevenlabs-tts/index.ts`**
+```typescript
+const voiceMapping: Record<string, string> = {
+  en: "onwK4e9ZLuTAKqWW03F9",  // Daniel - Nigerian accent
+  yo: "9Dbo4hEvXQ5l7MXGZFQA",  // Olufunmilola - African Female Nigerian Accent
+  ha: "9Dbo4hEvXQ5l7MXGZFQA",  // Olufunmilola - African Female Nigerian Accent
+  ig: "9Dbo4hEvXQ5l7MXGZFQA",  // Olufunmilola - African Female Nigerian Accent
+  pcm: "onwK4e9ZLuTAKqWW03F9", // Daniel - Nigerian accent for Pidgin
 };
 ```
 
-### SubscriptionPlans.tsx & Pricing.tsx Changes
-
+**File: `supabase/functions/process-pdf/index.ts`** (lines 54-62)
 ```typescript
-// Updated plans array
-const plans: PricingPlan[] = [
-  {
-    name: "Free",
-    features: [
-      { text: "5 minutes audio per day", included: true },
-      { text: "2 PDF uploads per day", included: true },
-      { text: "5 AI questions per day (Read & Learn)", included: true }, // NEW
-      { text: "English language only", included: true },
-      { text: "Quiz access", included: true },
-      { text: "Quiz leaderboard access", included: true },
-    ],
-    // ... rest stays same
-  },
-  {
-    name: "Plus",
-    features: [
-      { text: "150 monthly credits", included: true }, // Updated
-      { text: "60 minutes audio per day", included: true },
-      { text: "20 PDF uploads per day", included: true },
-      { text: "30 AI questions per day (Read & Learn)", included: true }, // NEW
-      { text: "3 Nigerian languages (Yoruba, Igbo, Pidgin)", included: true },
-      { text: "Voice Q&A with explanations (Explain-Back)", included: true },
-      { text: "Quiz & Quiz Leaderboard access", included: true },
-      { text: "Bronze & Silver badges", included: true },
-      { text: "Basic micro-lessons", included: true },
-      { text: "Email support", included: true },
-    ],
-    // ... rest stays same
-  },
-  {
-    name: "Pro",
-    features: [
-      { text: "500 monthly credits", included: true },
-      { text: "Unlimited audio generation", included: true },
-      { text: "Unlimited PDF uploads", included: true },
-      { text: "Unlimited AI questions (Read & Learn)", included: true }, // NEW
-      { text: "All 5 Nigerian languages (including Igbo, Hausa)", included: true },
-      { text: "Real-time explanation validation (Explain-Back)", included: true },
-      { text: "Quiz & Quiz Leaderboard access", included: true },
-      { text: "1-Minute Mastery micro-lessons", included: true },
-      { text: "All badge levels (Bronze, Silver, Gold)", included: true },
-      { text: "Campus leaderboard access", included: true },
-      { text: "WhatsApp integration", included: true, comingSoon: true },
-      { text: "Offline mode & audio download", included: true },
-      { text: "Priority support", included: true },
-    ],
-    // ... rest stays same
-  },
-];
+const elevenLabsVoiceMap: Record<string, string> = {
+  "en": "onwK4e9ZLuTAKqWW03F9",  // Daniel - Nigerian accent
+  "yo": "9Dbo4hEvXQ5l7MXGZFQA",  // Olufunmilola - African Female Nigerian Accent
+  "ha": "9Dbo4hEvXQ5l7MXGZFQA",  // Olufunmilola - African Female Nigerian Accent
+  "ig": "9Dbo4hEvXQ5l7MXGZFQA",  // Olufunmilola - African Female Nigerian Accent
+  "pcm": "onwK4e9ZLuTAKqWW03F9", // Daniel - Nigerian accent for Pidgin
+};
+```
+
+**File: `supabase/functions/generate-lesson-audio/index.ts`** (lines 91-100)
+```typescript
+async function generateElevenLabsAudio(text: string, language: string = "en"): Promise<ArrayBuffer | null> {
+  // ...
+  
+  // Voice mapping for Nigerian languages
+  const voiceMap: Record<string, string> = {
+    en: "onwK4e9ZLuTAKqWW03F9",  // Daniel - Nigerian accent
+    yo: "9Dbo4hEvXQ5l7MXGZFQA",  // Olufunmilola - African Female Nigerian Accent
+    ha: "9Dbo4hEvXQ5l7MXGZFQA",  // Olufunmilola
+    ig: "9Dbo4hEvXQ5l7MXGZFQA",  // Olufunmilola
+    pcm: "onwK4e9ZLuTAKqWW03F9", // Daniel
+  };
+  
+  const voiceId = voiceMap[language] || voiceMap["en"];
+  // ... rest of function
+}
+```
+
+Also update the function signature to accept language parameter:
+```typescript
+// Update call site
+const elevenAudio = await generateElevenLabsAudio(explanation, language);
 ```
 
 ---
@@ -218,19 +140,39 @@ const plans: PricingPlan[] = [
 
 | File | Changes |
 |------|---------|
-| `src/components/dashboard/OnboardingGuide.tsx` | Reduce to 5 steps, update content, add BookOpen and Headphones icons |
-| `src/components/dashboard/SubscriptionPlans.tsx` | Update Plus credits to 150, add Read & Learn feature to all plans |
-| `src/components/landing/Pricing.tsx` | Same pricing updates as dashboard |
+| `src/main.tsx` | Bump APP_VERSION to "2.3.0" |
+| `src/components/dashboard/SubscriptionPlans.tsx` | Add useFeatureAccess hook to fetch actual user plan |
+| `supabase/functions/elevenlabs-tts/index.ts` | Update voice mapping to use Olufunmilola |
+| `supabase/functions/process-pdf/index.ts` | Update elevenLabsVoiceMap |
+| `supabase/functions/generate-lesson-audio/index.ts` | Update ElevenLabs voice mapping and pass language param |
+
+---
+
+## Technical Details
+
+### Olufunmilola Voice (9Dbo4hEvXQ5l7MXGZFQA)
+- **Name**: Olufunmilola - African Female with Nigerian Accent
+- **Provider**: ElevenLabs
+- **Use Case**: Best for Yoruba and other Nigerian language content
+- **Model**: Works with `eleven_multilingual_v2`
+
+### Voice Settings (Recommended)
+```json
+{
+  "stability": 0.5,
+  "similarity_boost": 0.75,
+  "style": 0.3,
+  "use_speaker_boost": true
+}
+```
 
 ---
 
 ## Testing Checklist
 
 After implementation, verify:
-- [ ] Onboarding shows 5 steps (not 7)
-- [ ] "Go to My Docs tab" navigation works for Read & Listen steps
-- [ ] Plus plan shows "150 monthly credits"
-- [ ] All plans show "AI questions per day (Read & Learn)" feature
-- [ ] Landing page pricing matches dashboard pricing
-- [ ] Step indicators (dots) update correctly during onboarding
-
+- [ ] Clear browser cache and confirm new version loads (v2.3.0)
+- [ ] Login as a Plus plan user and verify "Current Plan" shows on Plus tier
+- [ ] Generate Yoruba audio and verify it uses Nigerian accent voice
+- [ ] Test micro-lessons with Nigerian language selection
+- [ ] Verify YarnGPT still works as primary TTS (Olufunmilola is fallback only)

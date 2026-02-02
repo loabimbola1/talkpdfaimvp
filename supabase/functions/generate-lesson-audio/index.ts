@@ -83,6 +83,48 @@ async function generateSpitchAudio(text: string, language: string): Promise<Arra
   }
 }
 
+// Add WAV header to raw PCM data from Gemini TTS
+function addWavHeader(
+  pcmBuffer: ArrayBuffer,
+  sampleRate: number = 24000,
+  channels: number = 1,
+  bitsPerSample: number = 16
+): ArrayBuffer {
+  const pcmData = new Uint8Array(pcmBuffer);
+  const wavHeader = new ArrayBuffer(44);
+  const view = new DataView(wavHeader);
+  
+  const bytesPerSample = bitsPerSample / 8;
+  const byteRate = sampleRate * channels * bytesPerSample;
+  const blockAlign = channels * bytesPerSample;
+  
+  // RIFF header
+  view.setUint32(0, 0x52494646, false);  // "RIFF"
+  view.setUint32(4, 36 + pcmData.length, true);  // File size - 8
+  view.setUint32(8, 0x57415645, false);  // "WAVE"
+  
+  // fmt chunk
+  view.setUint32(12, 0x666D7420, false);  // "fmt "
+  view.setUint32(16, 16, true);  // Chunk size (16 for PCM)
+  view.setUint16(20, 1, true);   // Audio format (1 = PCM)
+  view.setUint16(22, channels, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, byteRate, true);
+  view.setUint16(32, blockAlign, true);
+  view.setUint16(34, bitsPerSample, true);
+  
+  // data chunk
+  view.setUint32(36, 0x64617461, false);  // "data"
+  view.setUint32(40, pcmData.length, true);
+  
+  // Combine header and PCM data
+  const result = new Uint8Array(44 + pcmData.length);
+  result.set(new Uint8Array(wavHeader), 0);
+  result.set(pcmData, 44);
+  
+  return result.buffer;
+}
+
 // Generate audio using Google Gemini TTS (Secondary fallback)
 async function generateGeminiTTSAudio(text: string, language: string = "en"): Promise<ArrayBuffer | null> {
   const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
@@ -144,8 +186,10 @@ async function generateGeminiTTSAudio(text: string, language: string = "en"): Pr
       bytes[i] = binaryString.charCodeAt(i);
     }
     
-    console.log(`Gemini TTS: Successfully generated audio, size: ${bytes.length} bytes`);
-    return bytes.buffer;
+    // CRITICAL: Add WAV header to make the PCM audio playable in browsers
+    const wavBuffer = addWavHeader(bytes.buffer, 24000, 1, 16);
+    console.log(`Gemini TTS: Successfully generated WAV audio, size: ${wavBuffer.byteLength} bytes`);
+    return wavBuffer;
   } catch (error) {
     console.error("Gemini TTS error:", error instanceof Error ? error.message : String(error));
     return null;

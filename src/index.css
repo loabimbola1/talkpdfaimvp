@@ -40,7 +40,7 @@
     --input: 214 20% 90%;
     --ring: 173 80% 40%;
 
-    --radius: 0.75rem;
+    --radius: 1rem;
 
     /* Custom TalkPDF tokens */
     --gradient-primary: linear-gradient(135deg, hsl(173, 80%, 40%), hsl(195, 80%, 45%));

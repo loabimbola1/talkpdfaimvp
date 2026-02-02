@@ -182,7 +182,8 @@ const MicroLessons = ({ onLessonComplete }: MicroLessonsProps) => {
     }
   };
 
-  const generateAIExplanation = async (lesson: MicroLesson) => {
+  // Updated to accept pre-created audio element for browser autoplay policy compliance
+  const generateAIExplanation = async (lesson: MicroLesson, preCreatedAudio?: HTMLAudioElement) => {
     setGeneratingExplanation(true);
     try {
       const { data, error } = await supabase.functions.invoke("generate-lesson-audio", {
@@ -206,15 +207,30 @@ const MicroLessons = ({ onLessonComplete }: MicroLessonsProps) => {
             concept_index: lesson.conceptIndex || 0,
             status: "in_progress",
             ai_explanation: data.explanation,
-            audio_url: data.audioBase64 ? `data:audio/mpeg;base64,${data.audioBase64}` : null,
+            audio_url: data.audioBase64 ? `data:audio/wav;base64,${data.audioBase64}` : null,
           }, { onConflict: "user_id,document_id,concept_index" });
         }
       }
 
-      // If audio was generated, play it automatically
-      if (data.audioBase64) {
-        const audioUrl = `data:audio/mpeg;base64,${data.audioBase64}`;
-        playGeneratedAudio(audioUrl);
+      // If audio was generated and we have a pre-created audio element, use it
+      if (data.audioBase64 && preCreatedAudio) {
+        // Use WAV format since Gemini TTS now returns proper WAV with header
+        const audioUrl = `data:audio/wav;base64,${data.audioBase64}`;
+        preCreatedAudio.src = audioUrl;
+        preCreatedAudio.onended = () => setIsPlayingAudio(false);
+        preCreatedAudio.onerror = (e) => {
+          console.error("Audio playback error:", e);
+          setIsPlayingAudio(false);
+          toast.error("Failed to play audio");
+        };
+        
+        try {
+          await preCreatedAudio.play();
+          setIsPlayingAudio(true);
+        } catch (playError) {
+          console.warn("Auto-play failed:", playError);
+          // User can still click play manually
+        }
       }
 
       return data.explanation;
@@ -263,6 +279,12 @@ const MicroLessons = ({ onLessonComplete }: MicroLessonsProps) => {
     setTimeRemaining(60);
     setExplanation("");
     
+    // CRITICAL: Create Audio element IMMEDIATELY within user gesture context
+    // This allows autoplay to work in browsers that require user interaction
+    const audio = new Audio();
+    audio.preload = "auto";
+    setAudioElement(audio);
+    
     // Update lesson status
     setLessons((prev) =>
       prev.map((l) =>
@@ -270,8 +292,8 @@ const MicroLessons = ({ onLessonComplete }: MicroLessonsProps) => {
       )
     );
 
-    // Generate AI explanation with audio
-    await generateAIExplanation(lesson);
+    // Generate AI explanation with audio - pass pre-created audio element
+    await generateAIExplanation(lesson, audio);
     
     // Auto-start timer
     setIsRunning(true);

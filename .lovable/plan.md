@@ -1,285 +1,373 @@
 
-# Implementation Plan: Fix TTS Provider Chain with Spitch and Gemini TTS
+# Implementation Plan: Atlas.org-Style UX Redesign & Audio Playback Fixes
 
-This plan replaces the unreliable YarnGPT with Spitch.app and implements proper Google Gemini TTS as a fallback, with ElevenLabs as the final fallback.
+This plan addresses two critical issues: (1) redesigning the website UX to mimic atlas.org's solution-focused style, and (2) fixing the silent/empty audio in Listen Mode and micro-lessons.
 
 ---
 
-## Problem Analysis
+## Issue Summary
 
-### Current Issues
+| Issue | Root Cause | Solution |
+|-------|------------|----------|
+| Silent/Empty Audio | Gemini TTS returns raw PCM without WAV header; Spitch is returning 530 errors | Add proper WAV header to Gemini PCM audio; fix browser audio playback timing |
+| Micro-lesson Audio Fails | Audio element created after async operations, breaking user gesture context | Create Audio element synchronously before async calls |
+| UX/UI Redesign | Current design lacks the clean, solution-focused style of atlas.org | Redesign landing page with minimalist hero, problem-solution focus, and social proof |
 
-| Provider | Issue |
-|----------|-------|
-| **YarnGPT** | API endpoint `yarngpt.ai/api/v1/tts` appears to be non-functional or returning errors, causing fallback to ElevenLabs |
-| **Lovable AI Gemini TTS** | Using incorrect API format - the Lovable AI Gateway doesn't support the `responseModalities: ["AUDIO"]` format that Gemini TTS requires |
-| **ElevenLabs** | Works but Nigerian accent voices may not be as authentic as native Nigerian language providers |
-| **Spitch** | Already implemented as standalone function but NOT integrated into main TTS fallback chain |
+---
 
-### Proposed TTS Fallback Chain
+## Part 1: Fix Audio Generation & Playback Issues
 
-```text
-+-----------+     +-----------+     +-------------+
-|  Spitch   | --> | Gemini    | --> | ElevenLabs  |
-|  (Primary)|     | TTS       |     | (Final)     |
-+-----------+     +-----------+     +-------------+
-     |                  |                  |
-     v                  v                  v
-  Nigerian          Google API         Olufunmilola/
-  Native Voices     (Direct Call)      Daniel voices
+### Issue 1.1: Gemini TTS Audio Format (Critical)
+
+**Problem**: Looking at the edge function logs:
+```
+Spitch error: 530 <!doctype html>...
+Gemini TTS: Successfully generated audio, size: 2719246 bytes
+```
+
+Spitch is returning 530 errors (Cloudflare blocking), so Gemini TTS is being used as fallback. However, **Gemini returns raw PCM audio (24kHz, 16-bit, mono) without a WAV header**. The code saves it as `.wav` but without the header, browsers cannot play it correctly - resulting in silence.
+
+**Solution**: Add a WAV header to the raw PCM data before storing.
+
+**Files to modify**:
+- `supabase/functions/process-pdf/index.ts` (lines 260-274, 807-829)
+- `supabase/functions/generate-lesson-audio/index.ts` (lines 140-148)
+
+**Implementation**:
+```typescript
+// Add WAV header helper function
+function addWavHeader(pcmBuffer: ArrayBuffer, sampleRate: number = 24000, channels: number = 1, bitsPerSample: number = 16): ArrayBuffer {
+  const pcmData = new Uint8Array(pcmBuffer);
+  const wavHeader = new ArrayBuffer(44);
+  const view = new DataView(wavHeader);
+  
+  const bytesPerSample = bitsPerSample / 8;
+  const byteRate = sampleRate * channels * bytesPerSample;
+  const blockAlign = channels * bytesPerSample;
+  
+  // RIFF header
+  view.setUint32(0, 0x52494646, false);  // "RIFF"
+  view.setUint32(4, 36 + pcmData.length, true);  // File size
+  view.setUint32(8, 0x57415645, false);  // "WAVE"
+  
+  // fmt chunk
+  view.setUint32(12, 0x666D7420, false);  // "fmt "
+  view.setUint32(16, 16, true);  // Chunk size
+  view.setUint16(20, 1, true);   // Audio format (PCM)
+  view.setUint16(22, channels, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, byteRate, true);
+  view.setUint16(32, blockAlign, true);
+  view.setUint16(34, bitsPerSample, true);
+  
+  // data chunk
+  view.setUint32(36, 0x64617461, false);  // "data"
+  view.setUint32(40, pcmData.length, true);
+  
+  // Combine header and PCM data
+  const result = new Uint8Array(44 + pcmData.length);
+  result.set(new Uint8Array(wavHeader), 0);
+  result.set(pcmData, 44);
+  
+  return result.buffer;
+}
+```
+
+Then update the Gemini TTS audio handling:
+```typescript
+// In generateGeminiTTSAudio function - wrap PCM with WAV header
+const wavBuffer = addWavHeader(bytes.buffer, 24000, 1, 16);
+console.log(`Gemini TTS: Successfully generated WAV audio, size: ${wavBuffer.byteLength} bytes`);
+return wavBuffer;
 ```
 
 ---
 
-## Task 1: Add GEMINI_API_KEY Secret
+### Issue 1.2: Micro-Lesson Audio Playback (Browser Policy)
 
-The user has provided a Google AI Studio API key. This needs to be added as a Supabase secret.
+**Problem**: The `playGeneratedAudio` function in `MicroLessons.tsx` creates the Audio element AFTER async operations complete, breaking the browser's user gesture context requirement.
 
-**Secret to Add:**
-- Name: `GEMINI_API_KEY`
-- Value: `AIzaSyA4pCKVeFMtZJPF_F-g1NK240e0CFoHjDY`
-
----
-
-## Task 2: Update process-pdf/index.ts
-
-### Changes Overview
-
-1. **Remove YarnGPT** - Replace with Spitch API integration
-2. **Add Spitch TTS function** - Inline implementation for Nigerian languages
-3. **Implement proper Gemini TTS** - Using Google's direct API with correct format
-4. **Remove broken Lovable AI Gemini fallbacks** - Lines 686-812
-
-### Spitch Voice Mapping (Nigerian Languages)
-
+**Current Code** (lines 232-247):
 ```typescript
-const spitchVoiceMap: Record<string, { voice: string; language: string }> = {
-  "yo": { voice: "sade", language: "yo" },    // Yoruba
-  "ha": { voice: "zainab", language: "ha" },  // Hausa
-  "ig": { voice: "ngozi", language: "ig" },   // Igbo
-  "en": { voice: "lucy", language: "en" },    // English
-  "pcm": { voice: "lucy", language: "en" },   // Pidgin (uses English)
+const playGeneratedAudio = (audioUrl: string) => {
+  if (audioElement) {
+    audioElement.pause();
+  }
+  const audio = new Audio(audioUrl);  // Created after async
+  // ...
+  audio.play();  // Fails - no user gesture context
 };
 ```
 
-### Gemini TTS Implementation
+**Solution**: Create Audio element synchronously BEFORE async operations in `startLesson`:
 
-According to Google's documentation, the correct API call is:
-
-```typescript
-async function generateGeminiTTSAudio(
-  text: string,
-  language: string = "en"
-): Promise<ArrayBuffer | null> {
-  const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
-  if (!GEMINI_API_KEY) {
-    console.log("Gemini API key not configured");
-    return null;
-  }
-
-  // Select appropriate voice based on language
-  // Gemini voices: Kore (Firm), Puck (Upbeat), Charon (Informative), etc.
-  const voiceMap: Record<string, string> = {
-    "en": "Charon",     // Informative - good for educational content
-    "yo": "Kore",       // Firm - clear pronunciation
-    "ha": "Kore",
-    "ig": "Kore",
-    "pcm": "Puck",      // Upbeat - good for Pidgin
-  };
-
-  const voice = voiceMap[language] || "Charon";
-
-  try {
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent`,
-      {
-        method: "POST",
-        headers: {
-          "x-goog-api-key": GEMINI_API_KEY,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          contents: [{
-            parts: [{ text: text.substring(0, 5000) }]
-          }],
-          generationConfig: {
-            responseModalities: ["AUDIO"],
-            speechConfig: {
-              voiceConfig: {
-                prebuiltVoiceConfig: {
-                  voiceName: voice
-                }
-              }
-            }
-          }
-        }),
-      }
-    );
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error(`Gemini TTS error: ${response.status}`, errorText);
-      return null;
-    }
-
-    const data = await response.json();
-    const audioData = data.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-    
-    if (!audioData) {
-      console.warn("Gemini TTS: No audio data in response");
-      return null;
-    }
-
-    // Gemini returns base64 PCM audio (24kHz, 16-bit, mono)
-    // Decode base64 to ArrayBuffer
-    const binaryString = atob(audioData);
-    const bytes = new Uint8Array(binaryString.length);
-    for (let i = 0; i < binaryString.length; i++) {
-      bytes[i] = binaryString.charCodeAt(i);
-    }
-    
-    return bytes.buffer;
-  } catch (error) {
-    console.error("Gemini TTS error:", error);
-    return null;
-  }
-}
-```
-
-### Updated Fallback Flow in process-pdf
+**File to modify**: `src/components/dashboard/MicroLessons.tsx`
 
 ```typescript
-// TRY 1: Spitch for Nigerian languages (primary for yo, ha, ig, pcm)
-if (SPITCH_API_KEY && ["yo", "ha", "ig", "en", "pcm"].includes(language)) {
-  const spitchConfig = spitchVoiceMap[language] || spitchVoiceMap["en"];
-  // ... call Spitch API
-}
+const startLesson = async (lesson: MicroLesson) => {
+  setActiveLesson(lesson);
+  setTimeRemaining(60);
+  setExplanation("");
+  
+  // Create Audio element IMMEDIATELY within user gesture
+  const audio = new Audio();
+  audio.preload = "auto";
+  setAudioElement(audio);
+  
+  // Update lesson status
+  setLessons((prev) =>
+    prev.map((l) =>
+      l.id === lesson.id ? { ...l, status: "in_progress" as const } : l
+    )
+  );
 
-// TRY 2: Gemini TTS (better quality, supports multiple languages)
-if (!audioBuffer && GEMINI_API_KEY) {
-  audioBuffer = await generateGeminiTTSAudio(ttsText, language);
-  // ...
-}
+  // Generate AI explanation - audio URL will be set on pre-existing element
+  await generateAIExplanation(lesson, audio);
+  
+  setIsRunning(true);
+};
 
-// TRY 3: ElevenLabs (final fallback with Olufunmilola/Daniel voices)
-if (!audioBuffer && ELEVENLABS_API_KEY) {
-  // ... existing ElevenLabs code
-}
+// Updated function signature
+const generateAIExplanation = async (lesson: MicroLesson, preCreatedAudio: HTMLAudioElement) => {
+  // ... existing code ...
+  
+  if (data.audioBase64) {
+    const audioUrl = `data:audio/mpeg;base64,${data.audioBase64}`;
+    // Set source on pre-existing element and play
+    preCreatedAudio.src = audioUrl;
+    preCreatedAudio.onended = () => setIsPlayingAudio(false);
+    preCreatedAudio.onerror = () => {
+      setIsPlayingAudio(false);
+      toast.error("Failed to play audio");
+    };
+    await preCreatedAudio.play();
+    setIsPlayingAudio(true);
+  }
+};
 ```
 
 ---
 
-## Task 3: Update generate-lesson-audio/index.ts
+### Issue 1.3: generate-lesson-audio Gemini TTS Format
 
-Apply the same changes for micro-lesson audio generation:
+Apply the same WAV header fix to `generate-lesson-audio/index.ts`:
 
-1. **Replace YarnGPT with Spitch** as primary provider
-2. **Add Gemini TTS** as second fallback
-3. **Keep ElevenLabs** with Nigerian voices as final fallback
+**File to modify**: `supabase/functions/generate-lesson-audio/index.ts` (lines 86-153)
 
-### Updated Fallback Chain
-
-```typescript
-// Try Spitch first for Nigerian accent
-const spitchAudio = await generateSpitchAudio(explanation, language);
-if (spitchAudio) {
-  audioBase64 = base64Encode(spitchAudio);
-  audioProvider = "spitch";
-} else {
-  // Try Gemini TTS
-  const geminiAudio = await generateGeminiTTSAudio(explanation, language);
-  if (geminiAudio) {
-    audioBase64 = base64Encode(geminiAudio);
-    audioProvider = "gemini";
-  } else {
-    // Fallback to ElevenLabs with Olufunmilola/Daniel
-    const elevenAudio = await generateElevenLabsAudio(explanation, language);
-    if (elevenAudio) {
-      audioBase64 = base64Encode(elevenAudio);
-      audioProvider = "elevenlabs";
-    }
-  }
-}
-```
+Add the `addWavHeader` function and update `generateGeminiTTSAudio` to return proper WAV format.
 
 ---
 
-## Task 4: Update elevenlabs-tts/index.ts (Minor)
+## Part 2: Atlas.org-Style UX Redesign
 
-No major changes needed - this is already correctly configured with Olufunmilola/Daniel voices from the previous update.
+Atlas.org uses a clean, solution-focused design with:
+- **Minimalist hero** with bold problem statement
+- **Problem-Solution structure** - clearly articulating the pain point before showing the solution
+- **Social proof** prominently displayed
+- **Clean typography** with generous whitespace
+- **Focused CTAs** - single primary action
+- **Trust indicators** (logos, numbers, testimonials)
+
+### Design Changes
+
+#### 2.1 Hero Section Redesign
+
+**File**: `src/components/landing/Hero.tsx`
+
+**Current**: Feature-focused ("Turn Your PDFs Into Interactive Audio Tutors")
+**New**: Problem-focused first, then solution
+
+```tsx
+// New Hero structure
+<section className="relative pt-28 pb-20 md:pt-40 md:pb-32">
+  <div className="container mx-auto px-4">
+    <div className="max-w-4xl mx-auto text-center">
+      {/* Problem Statement */}
+      <h1 className="font-display text-4xl md:text-6xl lg:text-7xl font-bold text-foreground mb-6 leading-[1.1]">
+        Stop Reading.<br />
+        <span className="text-muted-foreground">Start Understanding.</span>
+      </h1>
+      
+      {/* Solution */}
+      <p className="text-xl md:text-2xl text-muted-foreground max-w-2xl mx-auto mb-12">
+        Turn any PDF into an audio tutor that speaks your language. 
+        Learn in Yoruba, Hausa, Igbo, Pidgin, or English.
+      </p>
+      
+      {/* Single Focused CTA */}
+      <Button size="lg" className="h-14 px-10 text-lg rounded-full">
+        Start Learning Free
+        <ArrowRight className="ml-2 h-5 w-5" />
+      </Button>
+      
+      {/* Immediate Trust */}
+      <p className="mt-6 text-sm text-muted-foreground">
+        Join 10,000+ students • No credit card required
+      </p>
+    </div>
+  </div>
+</section>
+```
+
+#### 2.2 Problem-Solution Section (New)
+
+**New File**: `src/components/landing/ProblemSolution.tsx`
+
+```tsx
+const problems = [
+  {
+    problem: "Reading textbooks for hours",
+    solution: "Listen while commuting, exercising, or relaxing",
+    icon: Headphones
+  },
+  {
+    problem: "English-only learning materials",
+    solution: "Learn in Yoruba, Hausa, Igbo, or Pidgin",
+    icon: Languages
+  },
+  {
+    problem: "Memorizing without understanding",
+    solution: "Explain-Back Mode proves you truly get it",
+    icon: Brain
+  }
+];
+```
+
+#### 2.3 Simplified Features Section
+
+**File**: `src/components/landing/Features.tsx`
+
+Reduce to 3-4 core features with larger cards and more visual impact:
+- Audio Learning (with waveform visual)
+- 5 Nigerian Languages (with flag icons)
+- Explain-Back Mode (with brain icon)
+- Badges & Progress (with trophy visual)
+
+#### 2.4 Social Proof Enhancement
+
+**File**: `src/components/landing/TrustedBy.tsx`
+
+Add university logos and real numbers:
+```tsx
+// Stats with larger numbers
+<div className="grid grid-cols-3 gap-8 text-center">
+  <div>
+    <span className="text-5xl font-bold">10K+</span>
+    <span className="text-muted-foreground">Students</span>
+  </div>
+  <div>
+    <span className="text-5xl font-bold">50K+</span>
+    <span className="text-muted-foreground">Hours Listened</span>
+  </div>
+  <div>
+    <span className="text-5xl font-bold">4.9</span>
+    <span className="text-muted-foreground">Rating</span>
+  </div>
+</div>
+```
+
+#### 2.5 Testimonials with Photos
+
+**File**: `src/components/landing/Testimonials.tsx`
+
+Add avatar placeholders and make quotes larger:
+```tsx
+// Larger, more prominent testimonial cards
+<div className="grid md:grid-cols-3 gap-8">
+  {testimonials.map((t) => (
+    <div className="p-8 bg-card rounded-3xl border shadow-lg">
+      <div className="flex items-center gap-4 mb-6">
+        <Avatar className="h-14 w-14">
+          <AvatarFallback>{t.author[0]}</AvatarFallback>
+        </Avatar>
+        <div>
+          <p className="font-semibold">{t.author}</p>
+          <p className="text-sm text-muted-foreground">{t.role}</p>
+        </div>
+      </div>
+      <blockquote className="text-lg leading-relaxed">
+        "{t.quote}"
+      </blockquote>
+    </div>
+  ))}
+</div>
+```
+
+#### 2.6 Color & Typography Refinements
+
+**File**: `src/index.css`
+
+Adjust for cleaner look:
+```css
+:root {
+  /* Slightly softer primary for atlas-like feel */
+  --primary: 210 100% 50%;  /* Brighter blue */
+  
+  /* Larger radius for friendlier feel */
+  --radius: 1rem;
+}
+
+/* Increase heading line height */
+h1, h2, h3 {
+  line-height: 1.1;
+}
+```
 
 ---
 
 ## Files to Modify
 
+### Audio Fixes
 | File | Changes |
 |------|---------|
-| `supabase/functions/process-pdf/index.ts` | Replace YarnGPT with Spitch, add Gemini TTS function, remove broken Lovable AI fallbacks |
-| `supabase/functions/generate-lesson-audio/index.ts` | Replace YarnGPT with Spitch, add Gemini TTS as fallback |
+| `supabase/functions/process-pdf/index.ts` | Add `addWavHeader` function; wrap Gemini PCM with WAV header |
+| `supabase/functions/generate-lesson-audio/index.ts` | Add `addWavHeader` function; wrap Gemini PCM with WAV header |
+| `src/components/dashboard/MicroLessons.tsx` | Create Audio element before async operations; restructure playback logic |
+
+### UX Redesign
+| File | Changes |
+|------|---------|
+| `src/components/landing/Hero.tsx` | Problem-focused headline, simplified CTA, trust indicators |
+| `src/components/landing/Features.tsx` | Reduce to 4 core features with larger cards |
+| `src/components/landing/HowItWorks.tsx` | Simplify steps, add visual connection |
+| `src/components/landing/Testimonials.tsx` | Add avatars, larger quotes |
+| `src/components/landing/TrustedBy.tsx` | Add large stat numbers, university logos |
+| `src/components/landing/ProblemSolution.tsx` | NEW - Problem/solution comparison section |
+| `src/pages/Index.tsx` | Add new ProblemSolution component |
+| `src/index.css` | Typography and color refinements |
 
 ---
 
 ## Technical Details
 
-### Spitch API (docs.spitch.app)
+### WAV Header Format (Gemini TTS)
+- Sample Rate: 24000 Hz
+- Channels: 1 (mono)
+- Bits per Sample: 16
+- Header Size: 44 bytes
+- Chunk Size: 44 + PCM data length
 
-```typescript
-// Endpoint: https://api.spitch.app/v1/speech
-// Method: POST
-// Headers: Authorization: Bearer {API_KEY}
-// Body: { language: "yo", voice: "sade", text: "...", format: "mp3" }
-// Returns: audio/mpeg binary
-```
-
-### Gemini TTS API (Google AI Studio)
-
-```typescript
-// Endpoint: https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent
-// Method: POST
-// Headers: x-goog-api-key: {API_KEY}
-// Body: { contents, generationConfig: { responseModalities: ["AUDIO"], speechConfig: {...} } }
-// Returns: base64 PCM audio in inlineData.data (24kHz, 16-bit, mono)
-```
-
-### Audio Format Notes
-
-- **Spitch**: Returns MP3 directly
-- **Gemini**: Returns PCM audio (24kHz, 16-bit, mono) - needs WAV header or conversion
-- **ElevenLabs**: Returns MP3
-
-For Gemini PCM audio, we'll store it as WAV or convert to MP3 for consistency.
-
----
-
-## Spitch Voice Options
-
-| Language | Voice | Description |
-|----------|-------|-------------|
-| Yoruba (yo) | sade, segun | Feminine/Masculine, energetic |
-| Hausa (ha) | zainab, hassan | Feminine/Masculine, clear |
-| Igbo (ig) | ngozi, emeka | Feminine/Masculine, soft |
-| English (en) | lucy | Feminine, very clear |
-
----
-
-## Gemini TTS Voice Options
-
-| Voice | Style | Best For |
-|-------|-------|----------|
-| Charon | Informative | Educational content |
-| Kore | Firm | Clear pronunciation |
-| Puck | Upbeat | Conversational content |
-| Aoede | Breezy | Casual content |
-| Achird | Friendly | Welcoming content |
+### Browser Audio Policy
+Modern browsers require audio playback to be initiated from a user gesture. The solution is to:
+1. Create the `Audio` element synchronously in the click handler
+2. Perform async operations (API calls)
+3. Set the `src` property on the pre-existing element
+4. Call `play()` - this works because the element was created in the gesture context
 
 ---
 
 ## Testing Checklist
 
-After implementation, verify:
-- [ ] Upload a PDF with Yoruba language selected - audio should use Spitch "sade" voice
-- [ ] If Spitch fails, Gemini TTS should generate audio
-- [ ] If both fail, ElevenLabs should use Olufunmilola voice
-- [ ] Micro-lessons also use the same fallback chain
-- [ ] TTS metadata correctly records which provider was used
-- [ ] Check edge function logs for any API errors
+### Audio Fixes
+- [ ] Upload a PDF with Yoruba language and verify audio plays (not silent)
+- [ ] Check edge function logs to confirm WAV header is being added
+- [ ] Test micro-lesson audio playback - should auto-play after explanation generates
+- [ ] Test on Chrome, Safari, and Firefox
+- [ ] Test on mobile devices
+
+### UX Redesign
+- [ ] Verify hero section displays correctly on mobile and desktop
+- [ ] Check all CTAs lead to correct destinations
+- [ ] Verify dark mode compatibility
+- [ ] Test responsive behavior at all breakpoints
+- [ ] Verify animations are smooth and not jarring

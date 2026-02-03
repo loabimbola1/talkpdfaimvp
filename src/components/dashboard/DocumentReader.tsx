@@ -55,12 +55,18 @@ function buildConstrainedMessage(
   return truncatedContext + questionPart;
 }
 
+// Normalized concept structure used internally
+interface StudyConcept {
+  title: string;
+  content: string;
+}
+
 interface Document {
   id: string;
   title: string;
   file_name: string;
   summary: string | null;
-  study_prompts: { title: string; content: string }[] | null;
+  study_prompts: StudyConcept[] | null;
   audio_url: string | null;
   audio_language?: string | null;
 }
@@ -135,11 +141,21 @@ const DocumentReader = ({
 
       if (error) throw error;
 
-      // Type assertion for study_prompts
-      const typedData = (data || []).map(doc => ({
-        ...doc,
-        study_prompts: doc.study_prompts as { title: string; content: string }[] | null
-      }));
+      // Normalize study_prompts to handle both old format (topic/prompt) and new format (title/content)
+      const typedData = (data || []).map(doc => {
+        const rawPrompts = doc.study_prompts as Array<{ topic?: string; prompt?: string; title?: string; content?: string }> | null;
+        const normalizedPrompts: StudyConcept[] | null = rawPrompts 
+          ? rawPrompts.map(p => ({
+              title: p.title || p.topic || "Untitled Concept",
+              content: p.content || p.prompt || ""
+            }))
+          : null;
+        
+        return {
+          ...doc,
+          study_prompts: normalizedPrompts
+        };
+      });
 
       setDocuments(typedData);
       

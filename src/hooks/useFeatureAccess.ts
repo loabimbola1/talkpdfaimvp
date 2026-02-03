@@ -29,6 +29,7 @@ export interface PlanFeatures {
   downloadAudio: boolean;
   prioritySupport: boolean;
   credits: number; // Monthly credits
+  pageNavigation: boolean; // Jump-to-concept navigation + listen
 }
 
 export const PLAN_FEATURES: Record<SubscriptionPlan, PlanFeatures> = {
@@ -49,6 +50,7 @@ export const PLAN_FEATURES: Record<SubscriptionPlan, PlanFeatures> = {
     downloadAudio: false,
     prioritySupport: false,
     credits: 0,
+    pageNavigation: false,
   },
   plus: {
     audioMinutesPerDay: 60,
@@ -67,6 +69,7 @@ export const PLAN_FEATURES: Record<SubscriptionPlan, PlanFeatures> = {
     downloadAudio: false,
     prioritySupport: false,
     credits: 150, // Updated from 100 (+50% to offset increased costs)
+    pageNavigation: true,
   },
   pro: {
     audioMinutesPerDay: -1, // Unlimited
@@ -85,6 +88,7 @@ export const PLAN_FEATURES: Record<SubscriptionPlan, PlanFeatures> = {
     downloadAudio: true,
     prioritySupport: true,
     credits: 500,
+    pageNavigation: true,
   },
 };
 

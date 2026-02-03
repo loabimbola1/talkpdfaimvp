@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -20,10 +20,13 @@ import {
   Send,
   Lightbulb,
   AlertCircle,
-  Crown
+  Crown,
+  Pause,
+  Play
 } from "lucide-react";
 import { CharacterCounter } from "@/components/ui/CharacterCounter";
 import { useUsageLimits } from "@/hooks/useUsageLimits";
+import { useFeatureAccess } from "@/hooks/useFeatureAccess";
 
 const MAX_SUPPORT_MESSAGE_CHARS = 4000;
 const QUESTION_BUFFER = 100;
@@ -59,6 +62,7 @@ interface Document {
   summary: string | null;
   study_prompts: { title: string; content: string }[] | null;
   audio_url: string | null;
+  audio_language?: string | null;
 }
 
 interface DocumentReaderProps {
@@ -82,6 +86,12 @@ const DocumentReader = ({
   const [explanation, setExplanation] = useState<string>("");
   const [question, setQuestion] = useState("");
   const [askingQuestion, setAskingQuestion] = useState(false);
+  
+  // Concept audio state
+  const [conceptAudioUrl, setConceptAudioUrl] = useState<string | null>(null);
+  const [generatingAudio, setGeneratingAudio] = useState(false);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
   const [questionAnswer, setQuestionAnswer] = useState<string>("");
 
   const { 
@@ -92,6 +102,8 @@ const DocumentReader = ({
     getRemainingAIQuestions,
     refetch: refetchUsage 
   } = useUsageLimits();
+
+  const { hasFeature, isFree } = useFeatureAccess();
 
   useEffect(() => {
     fetchDocuments();
@@ -116,7 +128,7 @@ const DocumentReader = ({
 
       const { data, error } = await supabase
         .from("documents")
-        .select("id, title, file_name, summary, study_prompts, audio_url")
+        .select("id, title, file_name, summary, study_prompts, audio_url, audio_language")
         .eq("user_id", session.user.id)
         .eq("status", "ready")
         .order("created_at", { ascending: false });
@@ -150,6 +162,98 @@ const DocumentReader = ({
       setCurrentConceptIndex(0);
       setExplanation("");
       setQuestionAnswer("");
+      // Reset audio state when changing documents
+      stopAudio();
+      setConceptAudioUrl(null);
+    }
+  };
+
+  // Audio control functions
+  const stopAudio = () => {
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.currentTime = 0;
+      setIsPlaying(false);
+    }
+  };
+
+  const toggleAudioPlayback = () => {
+    if (!audioRef.current || !conceptAudioUrl) return;
+    
+    if (isPlaying) {
+      audioRef.current.pause();
+      setIsPlaying(false);
+    } else {
+      audioRef.current.play();
+      setIsPlaying(true);
+    }
+  };
+
+  // Handle listening to concept audio (Plus/Pro only)
+  const handleListenToConcept = async () => {
+    if (!selectedDoc || !currentConcept) return;
+    
+    // Check feature access
+    if (!hasFeature("pageNavigation")) {
+      toast.error("Upgrade to Plus to listen to concepts");
+      return;
+    }
+    
+    // Create audio element immediately in user gesture context for autoplay compliance
+    const audio = new Audio();
+    audioRef.current = audio;
+    
+    audio.onended = () => setIsPlaying(false);
+    audio.onpause = () => setIsPlaying(false);
+    audio.onplay = () => setIsPlaying(true);
+    
+    setGeneratingAudio(true);
+    
+    try {
+      const { data, error } = await supabase.functions.invoke("generate-lesson-audio", {
+        body: {
+          concept: `${currentConcept.title}: ${currentConcept.content}`,
+          documentSummary: selectedDoc.summary,
+          language: selectedDoc.audio_language || "en"
+        }
+      });
+      
+      if (error || !data?.audioBase64) {
+        console.error("Audio generation error:", error, data);
+        toast.error("Failed to generate audio");
+        return;
+      }
+      
+      // Determine audio type based on provider
+      const audioType = data.audioProvider === "gemini" ? "audio/wav" : "audio/mpeg";
+      const audioUrl = `data:${audioType};base64,${data.audioBase64}`;
+      
+      audio.src = audioUrl;
+      await audio.play();
+      setConceptAudioUrl(audioUrl);
+      setIsPlaying(true);
+    } catch (error) {
+      console.error("Error generating concept audio:", error);
+      toast.error("Failed to generate audio");
+    } finally {
+      setGeneratingAudio(false);
+    }
+  };
+
+  // Handle concept navigation with dropdown (Plus/Pro only)
+  const handleConceptJump = (conceptIndex: string) => {
+    if (!hasFeature("pageNavigation")) {
+      toast.error("Upgrade to Plus for quick concept navigation");
+      return;
+    }
+    
+    const index = parseInt(conceptIndex, 10);
+    if (!isNaN(index) && index >= 0 && index < totalConcepts) {
+      setCurrentConceptIndex(index);
+      setExplanation("");
+      setQuestionAnswer("");
+      stopAudio();
+      setConceptAudioUrl(null);
     }
   };
 
@@ -373,35 +477,77 @@ const DocumentReader = ({
 
       {selectedDoc && (
         <>
+          {/* Upgrade Banner for Free Users */}
+          {isFree && totalConcepts > 0 && (
+            <div className="flex items-center gap-3 p-3 bg-primary/5 rounded-lg border border-primary/20">
+              <Crown className="h-4 w-4 text-primary flex-shrink-0" />
+              <span className="text-sm text-muted-foreground flex-1">
+                Upgrade to Plus for quick concept navigation and audio playback
+              </span>
+              {onNavigateToUpgrade && (
+                <Button size="sm" variant="outline" onClick={onNavigateToUpgrade} className="gap-1 flex-shrink-0">
+                  <Crown className="h-3 w-3" />
+                  Upgrade
+                </Button>
+              )}
+            </div>
+          )}
+
           {/* Concept Navigation */}
           {totalConcepts > 0 && (
             <Card className="border-border">
               <CardHeader className="pb-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Badge variant="secondary" className="text-xs">
-                      Concept {currentConceptIndex + 1} of {totalConcepts}
-                    </Badge>
-                    <CardTitle className="text-lg">{currentConcept?.title}</CardTitle>
+                <div className="flex flex-col gap-3">
+                  <div className="flex items-center justify-between flex-wrap gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <Badge variant="secondary" className="text-xs">
+                        Concept {currentConceptIndex + 1} of {totalConcepts}
+                      </Badge>
+                      <CardTitle className="text-lg">{currentConcept?.title}</CardTitle>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        onClick={() => navigateConcept("prev")}
+                        disabled={currentConceptIndex === 0}
+                      >
+                        <ChevronLeft className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        onClick={() => navigateConcept("next")}
+                        disabled={currentConceptIndex >= totalConcepts - 1}
+                      >
+                        <ChevronRight className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      onClick={() => navigateConcept("prev")}
-                      disabled={currentConceptIndex === 0}
-                    >
-                      <ChevronLeft className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      onClick={() => navigateConcept("next")}
-                      disabled={currentConceptIndex >= totalConcepts - 1}
-                    >
-                      <ChevronRight className="h-4 w-4" />
-                    </Button>
-                  </div>
+                  
+                  {/* Jump to Concept Dropdown - Plus/Pro only */}
+                  {hasFeature("pageNavigation") && totalConcepts > 1 && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm text-muted-foreground">Jump to:</span>
+                      <Select
+                        value={currentConceptIndex.toString()}
+                        onValueChange={handleConceptJump}
+                      >
+                        <SelectTrigger className="w-full max-w-xs h-8 text-sm">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {selectedDoc?.study_prompts?.map((concept, index) => (
+                            <SelectItem key={index} value={index.toString()}>
+                              <span className="truncate">
+                                {index + 1}. {concept.title}
+                              </span>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
                 </div>
               </CardHeader>
               <CardContent>
@@ -434,6 +580,29 @@ const DocumentReader = ({
                     >
                       <Brain className="h-4 w-4" />
                       Test My Understanding
+                    </Button>
+                  )}
+
+                  {/* Listen to This Concept - Plus/Pro only */}
+                  {hasFeature("pageNavigation") && (
+                    <Button
+                      variant="outline"
+                      onClick={conceptAudioUrl && !generatingAudio ? toggleAudioPlayback : handleListenToConcept}
+                      disabled={generatingAudio}
+                      className="gap-2"
+                    >
+                      {generatingAudio ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : conceptAudioUrl && isPlaying ? (
+                        <Pause className="h-4 w-4" />
+                      ) : (
+                        <Play className="h-4 w-4" />
+                      )}
+                      {generatingAudio 
+                        ? "Generating..." 
+                        : conceptAudioUrl 
+                          ? (isPlaying ? "Pause" : "Play") 
+                          : "Listen to This"}
                     </Button>
                   )}
                 </div>

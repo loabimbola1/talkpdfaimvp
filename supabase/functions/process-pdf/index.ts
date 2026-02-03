@@ -395,9 +395,9 @@ serve(async (req) => {
       .maybeSingle();
 
     if (docError || !document) {
-      console.error("Document not found or access denied:", docError);
+      console.error("Document access error:", docError?.message || "Not found");
       return new Response(
-        JSON.stringify({ error: "Document not found" }),
+        JSON.stringify({ error: "Unable to access document" }),
         { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }

@@ -104,16 +104,16 @@ serve(async (req) => {
       .maybeSingle();
 
     if (paymentError) {
-      console.error(logPrefix, "Failed to fetch payment:", paymentError.message);
-      return new Response(JSON.stringify({ error: "Failed to fetch payment" }), {
+      console.error(logPrefix, "Payment lookup failed:", paymentError.message);
+      return new Response(JSON.stringify({ error: "Unable to verify payment" }), {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
     if (!payment) {
-      console.warn(logPrefix, "Payment not found for tx_ref:", tx_ref);
-      return new Response(JSON.stringify({ error: "Payment not found" }), {
+      console.warn(logPrefix, "Payment record not found:", tx_ref);
+      return new Response(JSON.stringify({ error: "Payment record not found" }), {
         status: 404,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -215,7 +215,7 @@ serve(async (req) => {
       
       await supabaseAdmin.from("payments").update({ status: "failed" }).eq("id", payment.id);
       
-      return new Response(JSON.stringify({ success: false, message: "Invalid plan configuration" }), {
+      return new Response(JSON.stringify({ success: false, message: "Payment verification failed" }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -257,8 +257,8 @@ serve(async (req) => {
       .single();
 
     if (updateError) {
-      console.error(logPrefix, "Database error updating payment:", updateError.message);
-      return new Response(JSON.stringify({ error: "Failed to update payment" }), {
+      console.error(logPrefix, "Payment update failed:", updateError.message);
+      return new Response(JSON.stringify({ error: "Unable to complete payment verification" }), {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });

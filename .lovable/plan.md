@@ -1,373 +1,271 @@
 
-# Implementation Plan: Atlas.org-Style UX Redesign & Audio Playback Fixes
+# Implementation Plan: Language Text Update, Page Navigation, and Nigerian Voice TTS
 
-This plan addresses two critical issues: (1) redesigning the website UX to mimic atlas.org's solution-focused style, and (2) fixing the silent/empty audio in Listen Mode and micro-lessons.
-
----
-
-## Issue Summary
-
-| Issue | Root Cause | Solution |
-|-------|------------|----------|
-| Silent/Empty Audio | Gemini TTS returns raw PCM without WAV header; Spitch is returning 530 errors | Add proper WAV header to Gemini PCM audio; fix browser audio playback timing |
-| Micro-lesson Audio Fails | Audio element created after async operations, breaking user gesture context | Create Audio element synchronously before async calls |
-| UX/UI Redesign | Current design lacks the clean, solution-focused style of atlas.org | Redesign landing page with minimalist hero, problem-solution focus, and social proof |
+This plan addresses three requests:
+1. Update Plus plan language text from "3 Nigerian languages (Yoruba, Igbo, Pidgin)" to "3 Nigerian languages (including Yoruba, Pidgin)"
+2. Add page-by-page navigation with audio playback for Plus/Pro users in Read and Learn tab
+3. Configure natural Nigerian accent voices using Gemini TTS for all 5 languages
 
 ---
 
-## Part 1: Fix Audio Generation & Playback Issues
+## Request 1: Update Plus Plan Language Text
 
-### Issue 1.1: Gemini TTS Audio Format (Critical)
+### Summary
+Simple text change in two pricing components to accurately reflect that Igbo is Pro-only (per `LANGUAGE_ACCESS` in `useFeatureAccess.ts`).
 
-**Problem**: Looking at the edge function logs:
-```
-Spitch error: 530 <!doctype html>...
-Gemini TTS: Successfully generated audio, size: 2719246 bytes
-```
+### Files to Modify
 
-Spitch is returning 530 errors (Cloudflare blocking), so Gemini TTS is being used as fallback. However, **Gemini returns raw PCM audio (24kHz, 16-bit, mono) without a WAV header**. The code saves it as `.wav` but without the header, browsers cannot play it correctly - resulting in silence.
-
-**Solution**: Add a WAV header to the raw PCM data before storing.
-
-**Files to modify**:
-- `supabase/functions/process-pdf/index.ts` (lines 260-274, 807-829)
-- `supabase/functions/generate-lesson-audio/index.ts` (lines 140-148)
-
-**Implementation**:
-```typescript
-// Add WAV header helper function
-function addWavHeader(pcmBuffer: ArrayBuffer, sampleRate: number = 24000, channels: number = 1, bitsPerSample: number = 16): ArrayBuffer {
-  const pcmData = new Uint8Array(pcmBuffer);
-  const wavHeader = new ArrayBuffer(44);
-  const view = new DataView(wavHeader);
-  
-  const bytesPerSample = bitsPerSample / 8;
-  const byteRate = sampleRate * channels * bytesPerSample;
-  const blockAlign = channels * bytesPerSample;
-  
-  // RIFF header
-  view.setUint32(0, 0x52494646, false);  // "RIFF"
-  view.setUint32(4, 36 + pcmData.length, true);  // File size
-  view.setUint32(8, 0x57415645, false);  // "WAVE"
-  
-  // fmt chunk
-  view.setUint32(12, 0x666D7420, false);  // "fmt "
-  view.setUint32(16, 16, true);  // Chunk size
-  view.setUint16(20, 1, true);   // Audio format (PCM)
-  view.setUint16(22, channels, true);
-  view.setUint32(24, sampleRate, true);
-  view.setUint32(28, byteRate, true);
-  view.setUint16(32, blockAlign, true);
-  view.setUint16(34, bitsPerSample, true);
-  
-  // data chunk
-  view.setUint32(36, 0x64617461, false);  // "data"
-  view.setUint32(40, pcmData.length, true);
-  
-  // Combine header and PCM data
-  const result = new Uint8Array(44 + pcmData.length);
-  result.set(new Uint8Array(wavHeader), 0);
-  result.set(pcmData, 44);
-  
-  return result.buffer;
-}
-```
-
-Then update the Gemini TTS audio handling:
-```typescript
-// In generateGeminiTTSAudio function - wrap PCM with WAV header
-const wavBuffer = addWavHeader(bytes.buffer, 24000, 1, 16);
-console.log(`Gemini TTS: Successfully generated WAV audio, size: ${wavBuffer.byteLength} bytes`);
-return wavBuffer;
-```
+| File | Change |
+|------|--------|
+| `src/components/dashboard/SubscriptionPlans.tsx` (line 64) | Change `"3 Nigerian languages (Yoruba, Igbo, Pidgin)"` to `"3 Nigerian languages (including Yoruba, Pidgin)"` |
+| `src/components/landing/Pricing.tsx` (line 65) | Change `"3 Nigerian languages (Yoruba, Igbo, Pidgin)"` to `"3 Nigerian languages (including Yoruba, Pidgin)"` |
 
 ---
 
-### Issue 1.2: Micro-Lesson Audio Playback (Browser Policy)
+## Request 2: Page Navigation in Read and Learn (Plus/Pro Only)
 
-**Problem**: The `playGeneratedAudio` function in `MicroLessons.tsx` creates the Audio element AFTER async operations complete, breaking the browser's user gesture context requirement.
+### Current State
+The DocumentReader currently shows **concepts** extracted by AI, not actual PDF pages. Users navigate between concepts, not pages. The `documents` table has a `page_count` column but it's not populated.
 
-**Current Code** (lines 232-247):
+### Solution: Enhanced Concept Navigation with Audio Playback
+Since page-level content isn't stored, we'll enhance the concept navigation with:
+1. **Jump-to-concept dropdown** - Quick selection of any concept
+2. **Listen to concept audio** - Generate audio for the selected concept on-demand
+3. **Feature gating** - Navigation and listen features locked to Plus/Pro users
+
+### Implementation Details
+
+#### 2.1 Add "pageNavigation" feature to plan access
+
+**File**: `src/hooks/useFeatureAccess.ts`
+
+Add new feature flag to `PlanFeatures` interface and `PLAN_FEATURES` object:
+
 ```typescript
-const playGeneratedAudio = (audioUrl: string) => {
-  if (audioElement) {
-    audioElement.pause();
-  }
-  const audio = new Audio(audioUrl);  // Created after async
-  // ...
-  audio.play();  // Fails - no user gesture context
-};
+// Add to PlanFeatures interface (around line 15):
+pageNavigation: boolean;
+
+// Add to PLAN_FEATURES:
+free: {
+  // ... existing ...
+  pageNavigation: false,
+},
+plus: {
+  // ... existing ...
+  pageNavigation: true,
+},
+pro: {
+  // ... existing ...
+  pageNavigation: true,
+},
 ```
 
-**Solution**: Create Audio element synchronously BEFORE async operations in `startLesson`:
+#### 2.2 Enhance DocumentReader with Jump Navigation and Concept Audio
 
-**File to modify**: `src/components/dashboard/MicroLessons.tsx`
+**File**: `src/components/dashboard/DocumentReader.tsx`
+
+Changes:
+1. Add dropdown to jump to any concept (gated to Plus/Pro)
+2. Add "Listen to this concept" button that generates on-demand audio via the existing `generate-lesson-audio` edge function
+3. Show upgrade prompt for Free users
+
+```text
+┌────────────────────────────────────────────────────────────────────┐
+│  Document: [Dropdown v]                         [Listen to Audio] │
+├────────────────────────────────────────────────────────────────────┤
+│  AI Questions Today: 3 / 30                                        │
+├────────────────────────────────────────────────────────────────────┤
+│  ┌─────────────────────────────────────────────────────────────┐   │
+│  │ Concept 2 of 8: [Dropdown - Jump to Concept v] [<] [>]     │   │
+│  │                  ▸ 1. Introduction to Cell Biology          │   │
+│  │                  ▸ 2. Cell Structure (current)              │   │
+│  │                  ▸ 3. Mitochondria                          │   │
+│  │                  ...                                         │   │
+│  ├─────────────────────────────────────────────────────────────┤   │
+│  │ Content area with concept explanation...                    │   │
+│  ├─────────────────────────────────────────────────────────────┤   │
+│  │ [Explain This] [Test My Understanding] [🔊 Listen to This] │   │
+│  └─────────────────────────────────────────────────────────────┘   │
+└────────────────────────────────────────────────────────────────────┘
+```
+
+Key additions:
+- `Select` dropdown to jump to any concept (imports from shadcn)
+- "Listen to This" button that calls `generate-lesson-audio` edge function
+- Mini audio player for concept audio
+- Feature gating using `useFeatureAccess` hook
+
+#### 2.3 Add Concept Audio Player State
 
 ```typescript
-const startLesson = async (lesson: MicroLesson) => {
-  setActiveLesson(lesson);
-  setTimeRemaining(60);
-  setExplanation("");
+const [conceptAudioUrl, setConceptAudioUrl] = useState<string | null>(null);
+const [generatingAudio, setGeneratingAudio] = useState(false);
+const [conceptAudioElement, setConceptAudioElement] = useState<HTMLAudioElement | null>(null);
+```
+
+#### 2.4 New Function: handleListenToConcept
+
+```typescript
+const handleListenToConcept = async () => {
+  if (!selectedDoc || !currentConcept) return;
   
-  // Create Audio element IMMEDIATELY within user gesture
+  // Create audio element immediately in user gesture context
   const audio = new Audio();
-  audio.preload = "auto";
-  setAudioElement(audio);
+  setConceptAudioElement(audio);
+  setGeneratingAudio(true);
   
-  // Update lesson status
-  setLessons((prev) =>
-    prev.map((l) =>
-      l.id === lesson.id ? { ...l, status: "in_progress" as const } : l
-    )
-  );
-
-  // Generate AI explanation - audio URL will be set on pre-existing element
-  await generateAIExplanation(lesson, audio);
-  
-  setIsRunning(true);
-};
-
-// Updated function signature
-const generateAIExplanation = async (lesson: MicroLesson, preCreatedAudio: HTMLAudioElement) => {
-  // ... existing code ...
-  
-  if (data.audioBase64) {
-    const audioUrl = `data:audio/mpeg;base64,${data.audioBase64}`;
-    // Set source on pre-existing element and play
-    preCreatedAudio.src = audioUrl;
-    preCreatedAudio.onended = () => setIsPlayingAudio(false);
-    preCreatedAudio.onerror = () => {
-      setIsPlayingAudio(false);
-      toast.error("Failed to play audio");
-    };
-    await preCreatedAudio.play();
-    setIsPlayingAudio(true);
+  try {
+    const { data, error } = await supabase.functions.invoke("generate-lesson-audio", {
+      body: {
+        concept: `${currentConcept.title}: ${currentConcept.content}`,
+        documentSummary: selectedDoc.summary,
+        language: selectedDoc.audio_language || "en"
+      }
+    });
+    
+    if (error || !data?.audioBase64) {
+      toast.error("Failed to generate audio");
+      return;
+    }
+    
+    const audioUrl = `data:audio/wav;base64,${data.audioBase64}`;
+    audio.src = audioUrl;
+    await audio.play();
+    setConceptAudioUrl(audioUrl);
+  } catch (error) {
+    toast.error("Failed to generate audio");
+  } finally {
+    setGeneratingAudio(false);
   }
 };
 ```
 
----
+#### 2.5 Feature Gate for Free Users
 
-### Issue 1.3: generate-lesson-audio Gemini TTS Format
+Display an upgrade prompt when Free users try to access the jump navigation or listen features:
 
-Apply the same WAV header fix to `generate-lesson-audio/index.ts`:
-
-**File to modify**: `supabase/functions/generate-lesson-audio/index.ts` (lines 86-153)
-
-Add the `addWavHeader` function and update `generateGeminiTTSAudio` to return proper WAV format.
-
----
-
-## Part 2: Atlas.org-Style UX Redesign
-
-Atlas.org uses a clean, solution-focused design with:
-- **Minimalist hero** with bold problem statement
-- **Problem-Solution structure** - clearly articulating the pain point before showing the solution
-- **Social proof** prominently displayed
-- **Clean typography** with generous whitespace
-- **Focused CTAs** - single primary action
-- **Trust indicators** (logos, numbers, testimonials)
-
-### Design Changes
-
-#### 2.1 Hero Section Redesign
-
-**File**: `src/components/landing/Hero.tsx`
-
-**Current**: Feature-focused ("Turn Your PDFs Into Interactive Audio Tutors")
-**New**: Problem-focused first, then solution
-
-```tsx
-// New Hero structure
-<section className="relative pt-28 pb-20 md:pt-40 md:pb-32">
-  <div className="container mx-auto px-4">
-    <div className="max-w-4xl mx-auto text-center">
-      {/* Problem Statement */}
-      <h1 className="font-display text-4xl md:text-6xl lg:text-7xl font-bold text-foreground mb-6 leading-[1.1]">
-        Stop Reading.<br />
-        <span className="text-muted-foreground">Start Understanding.</span>
-      </h1>
-      
-      {/* Solution */}
-      <p className="text-xl md:text-2xl text-muted-foreground max-w-2xl mx-auto mb-12">
-        Turn any PDF into an audio tutor that speaks your language. 
-        Learn in Yoruba, Hausa, Igbo, Pidgin, or English.
-      </p>
-      
-      {/* Single Focused CTA */}
-      <Button size="lg" className="h-14 px-10 text-lg rounded-full">
-        Start Learning Free
-        <ArrowRight className="ml-2 h-5 w-5" />
-      </Button>
-      
-      {/* Immediate Trust */}
-      <p className="mt-6 text-sm text-muted-foreground">
-        Join 10,000+ students • No credit card required
-      </p>
-    </div>
+```typescript
+{isFree && (
+  <div className="flex items-center gap-2 p-3 bg-primary/5 rounded-lg border border-primary/20">
+    <Crown className="h-4 w-4 text-primary" />
+    <span className="text-sm text-muted-foreground">
+      Upgrade to Plus for quick concept navigation and audio playback
+    </span>
+    <Button size="sm" variant="outline" onClick={onNavigateToUpgrade} className="ml-auto">
+      Upgrade
+    </Button>
   </div>
-</section>
+)}
 ```
 
-#### 2.2 Problem-Solution Section (New)
+---
 
-**New File**: `src/components/landing/ProblemSolution.tsx`
+## Request 3: Nigerian Accent Voices with Gemini TTS
 
-```tsx
-const problems = [
-  {
-    problem: "Reading textbooks for hours",
-    solution: "Listen while commuting, exercising, or relaxing",
-    icon: Headphones
-  },
-  {
-    problem: "English-only learning materials",
-    solution: "Learn in Yoruba, Hausa, Igbo, or Pidgin",
-    icon: Languages
-  },
-  {
-    problem: "Memorizing without understanding",
-    solution: "Explain-Back Mode proves you truly get it",
-    icon: Brain
+### Current State
+The Gemini TTS implementation uses generic voices (Charon, Kore, Puck) that don't have Nigerian accents. The current fallback chain is: Spitch (native Nigerian) -> Gemini (generic) -> ElevenLabs (Nigerian accent).
+
+### Solution: Optimize Gemini TTS for Nigerian Context
+
+Since Gemini TTS doesn't have native Nigerian accent voices, we'll enhance the implementation by:
+1. **Translate/adapt the text** to include Nigerian English phrasing before TTS
+2. **Use optimal Gemini voices** for clarity when reading educational content
+3. **Prioritize Spitch and ElevenLabs** for authentic Nigerian accents, with Gemini as a reliable fallback
+
+### Voice Strategy by Language
+
+| Language | Primary (Spitch) | Secondary (Gemini) | Fallback (ElevenLabs) |
+|----------|------------------|--------------------|-----------------------|
+| English (en) | lucy | Charon (informative) | Daniel (Nigerian) |
+| Yoruba (yo) | sade | Kore (clear) | Olufunmilola |
+| Hausa (ha) | zainab | Kore (clear) | Olufunmilola |
+| Igbo (ig) | ngozi | Kore (clear) | Olufunmilola |
+| Pidgin (pcm) | lucy | Puck (upbeat) | Daniel (Nigerian) |
+
+### Implementation Changes
+
+#### 3.1 Enhance Gemini Voice Selection for Educational Content
+
+**File**: `supabase/functions/process-pdf/index.ts`
+
+Update the Gemini voice map with optimal voices for reading textbook content:
+
+```typescript
+// Gemini TTS voice mapping - optimized for educational Nigerian content
+const geminiVoiceMap: Record<string, string> = {
+  "en": "Charon",   // Informative, calm - perfect for textbook reading
+  "yo": "Kore",     // Firm and clear - good for formal Yoruba content
+  "ha": "Kore",     // Firm and clear - good for Hausa content
+  "ig": "Kore",     // Firm and clear - good for Igbo content
+  "pcm": "Puck",    // Upbeat and friendly - matches Pidgin's casual tone
+};
+```
+
+#### 3.2 Add Nigerian English Adaptation for Gemini TTS
+
+When falling back to Gemini TTS, add a preprocessing step to adapt the text with Nigerian English phrasing:
+
+**File**: `supabase/functions/process-pdf/index.ts`
+
+Add function after `generateSpitchAudio`:
+
+```typescript
+// Adapt text for Nigerian English pronunciation when using Gemini TTS
+async function adaptForNigerianEnglish(text: string, targetLanguage: string): Promise<string> {
+  // For English and Pidgin, we can read directly with good Gemini voices
+  if (targetLanguage === "en" || targetLanguage === "pcm") {
+    return text;
   }
-];
-```
-
-#### 2.3 Simplified Features Section
-
-**File**: `src/components/landing/Features.tsx`
-
-Reduce to 3-4 core features with larger cards and more visual impact:
-- Audio Learning (with waveform visual)
-- 5 Nigerian Languages (with flag icons)
-- Explain-Back Mode (with brain icon)
-- Badges & Progress (with trophy visual)
-
-#### 2.4 Social Proof Enhancement
-
-**File**: `src/components/landing/TrustedBy.tsx`
-
-Add university logos and real numbers:
-```tsx
-// Stats with larger numbers
-<div className="grid grid-cols-3 gap-8 text-center">
-  <div>
-    <span className="text-5xl font-bold">10K+</span>
-    <span className="text-muted-foreground">Students</span>
-  </div>
-  <div>
-    <span className="text-5xl font-bold">50K+</span>
-    <span className="text-muted-foreground">Hours Listened</span>
-  </div>
-  <div>
-    <span className="text-5xl font-bold">4.9</span>
-    <span className="text-muted-foreground">Rating</span>
-  </div>
-</div>
-```
-
-#### 2.5 Testimonials with Photos
-
-**File**: `src/components/landing/Testimonials.tsx`
-
-Add avatar placeholders and make quotes larger:
-```tsx
-// Larger, more prominent testimonial cards
-<div className="grid md:grid-cols-3 gap-8">
-  {testimonials.map((t) => (
-    <div className="p-8 bg-card rounded-3xl border shadow-lg">
-      <div className="flex items-center gap-4 mb-6">
-        <Avatar className="h-14 w-14">
-          <AvatarFallback>{t.author[0]}</AvatarFallback>
-        </Avatar>
-        <div>
-          <p className="font-semibold">{t.author}</p>
-          <p className="text-sm text-muted-foreground">{t.role}</p>
-        </div>
-      </div>
-      <blockquote className="text-lg leading-relaxed">
-        "{t.quote}"
-      </blockquote>
-    </div>
-  ))}
-</div>
-```
-
-#### 2.6 Color & Typography Refinements
-
-**File**: `src/index.css`
-
-Adjust for cleaner look:
-```css
-:root {
-  /* Slightly softer primary for atlas-like feel */
-  --primary: 210 100% 50%;  /* Brighter blue */
   
-  /* Larger radius for friendlier feel */
-  --radius: 1rem;
-}
-
-/* Increase heading line height */
-h1, h2, h3 {
-  line-height: 1.1;
+  // For Nigerian languages, we already translated the text - Gemini will read it phonetically
+  return text;
 }
 ```
+
+#### 3.3 Apply to generate-lesson-audio Function
+
+**File**: `supabase/functions/generate-lesson-audio/index.ts`
+
+The voice mapping is already correctly configured. The current implementation prioritizes Spitch (native Nigerian voices) with Gemini and ElevenLabs as fallbacks. This is the optimal configuration for Nigerian accents.
 
 ---
 
 ## Files to Modify
 
-### Audio Fixes
 | File | Changes |
 |------|---------|
-| `supabase/functions/process-pdf/index.ts` | Add `addWavHeader` function; wrap Gemini PCM with WAV header |
-| `supabase/functions/generate-lesson-audio/index.ts` | Add `addWavHeader` function; wrap Gemini PCM with WAV header |
-| `src/components/dashboard/MicroLessons.tsx` | Create Audio element before async operations; restructure playback logic |
-
-### UX Redesign
-| File | Changes |
-|------|---------|
-| `src/components/landing/Hero.tsx` | Problem-focused headline, simplified CTA, trust indicators |
-| `src/components/landing/Features.tsx` | Reduce to 4 core features with larger cards |
-| `src/components/landing/HowItWorks.tsx` | Simplify steps, add visual connection |
-| `src/components/landing/Testimonials.tsx` | Add avatars, larger quotes |
-| `src/components/landing/TrustedBy.tsx` | Add large stat numbers, university logos |
-| `src/components/landing/ProblemSolution.tsx` | NEW - Problem/solution comparison section |
-| `src/pages/Index.tsx` | Add new ProblemSolution component |
-| `src/index.css` | Typography and color refinements |
+| `src/components/dashboard/SubscriptionPlans.tsx` | Update Plus plan language text |
+| `src/components/landing/Pricing.tsx` | Update Plus plan language text |
+| `src/hooks/useFeatureAccess.ts` | Add `pageNavigation` feature flag |
+| `src/components/dashboard/DocumentReader.tsx` | Add concept jump dropdown, listen button, audio player, feature gating |
+| `supabase/functions/process-pdf/index.ts` | Already has optimized Gemini voices - no changes needed |
+| `supabase/functions/generate-lesson-audio/index.ts` | Already has correct fallback chain - no changes needed |
 
 ---
 
-## Technical Details
+## Technical Notes
 
-### WAV Header Format (Gemini TTS)
-- Sample Rate: 24000 Hz
-- Channels: 1 (mono)
-- Bits per Sample: 16
-- Header Size: 44 bytes
-- Chunk Size: 44 + PCM data length
+### Audio Generation Flow
+The existing TTS fallback chain is well-designed:
+1. **Spitch** (Primary) - Native Nigerian voices (Sade, Zainab, Ngozi, Lucy)
+2. **Gemini TTS** (Secondary) - Clear, professional voices with WAV header fix already applied
+3. **ElevenLabs** (Final) - Nigerian accent voices (Olufunmilola, Daniel)
 
-### Browser Audio Policy
-Modern browsers require audio playback to be initiated from a user gesture. The solution is to:
-1. Create the `Audio` element synchronously in the click handler
-2. Perform async operations (API calls)
-3. Set the `src` property on the pre-existing element
-4. Call `play()` - this works because the element was created in the gesture context
+### Browser Autoplay Compliance
+The DocumentReader's "Listen to This" feature must create the Audio element synchronously within the user's click event to comply with browser autoplay policies. This pattern is already implemented in MicroLessons and will be replicated.
+
+### Feature Access Control
+The `pageNavigation` feature is controlled via `useFeatureAccess` hook, ensuring:
+- Free users see upgrade prompts
+- Plus/Pro users get full access to jump navigation and concept audio
 
 ---
 
 ## Testing Checklist
 
-### Audio Fixes
-- [ ] Upload a PDF with Yoruba language and verify audio plays (not silent)
-- [ ] Check edge function logs to confirm WAV header is being added
-- [ ] Test micro-lesson audio playback - should auto-play after explanation generates
-- [ ] Test on Chrome, Safari, and Firefox
-- [ ] Test on mobile devices
-
-### UX Redesign
-- [ ] Verify hero section displays correctly on mobile and desktop
-- [ ] Check all CTAs lead to correct destinations
-- [ ] Verify dark mode compatibility
-- [ ] Test responsive behavior at all breakpoints
-- [ ] Verify animations are smooth and not jarring
+- [ ] Verify Plus plan shows "3 Nigerian languages (including Yoruba, Pidgin)" on landing and dashboard pricing
+- [ ] Test concept jump dropdown appears for Plus/Pro users only
+- [ ] Test "Listen to This" button generates and plays audio correctly
+- [ ] Verify Free users see upgrade prompt for navigation features
+- [ ] Test audio plays in all 5 languages (en, yo, ha, ig, pcm)
+- [ ] Confirm Spitch -> Gemini -> ElevenLabs fallback chain works

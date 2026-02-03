@@ -77,9 +77,9 @@ serve(async (req) => {
     if (roleError && roleError.code !== "PGRST116") {
       console.error("Admin dashboard: Error checking admin role:", roleError);
       return new Response(
-        JSON.stringify({ error: "Role check failed" }),
+        JSON.stringify({ error: "Access denied" }),
         { 
-          status: 500, 
+          status: 403, 
           headers: { ...corsHeaders, "Content-Type": "application/json" }
         }
       );

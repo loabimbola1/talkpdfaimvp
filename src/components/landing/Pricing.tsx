@@ -62,7 +62,7 @@ const plans: PricingPlan[] = [
       { text: "60 minutes audio per day", included: true },
       { text: "20 PDF uploads per day", included: true },
       { text: "30 AI questions per day (Read & Learn)", included: true },
-      { text: "3 Nigerian languages (Yoruba, Igbo, Pidgin)", included: true },
+      { text: "3 Nigerian languages (including Yoruba, Pidgin)", included: true },
       { text: "Voice Q&A with explanations (Explain-Back)", included: true },
       { text: "Quiz & Quiz Leaderboard access", included: true },
       { text: "Bronze & Silver badges", included: true },

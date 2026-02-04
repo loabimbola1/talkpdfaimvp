@@ -6,16 +6,16 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-// Spitch voice mapping for Nigerian languages (Primary TTS provider)
-const spitchVoiceMap: Record<string, { voice: string; language: string }> = {
-  "yo": { voice: "sade", language: "yo" },     // Yoruba
-  "ha": { voice: "zainab", language: "ha" },   // Hausa
-  "ig": { voice: "ngozi", language: "ig" },    // Igbo
-  "en": { voice: "lucy", language: "en" },     // English
-  "pcm": { voice: "lucy", language: "en" },    // Pidgin
+// YarnGPT voice mapping for Nigerian languages (Primary TTS provider)
+const yarngptVoiceMap: Record<string, string> = {
+  "yo": "yoruba_female",    // Yoruba native voice
+  "ha": "hausa_female",     // Hausa native voice
+  "ig": "igbo_female",      // Igbo native voice
+  "en": "nigerian_english", // Nigerian English accent
+  "pcm": "pidgin_male",     // Nigerian Pidgin voice
 };
 
-// Gemini TTS voice mapping
+// Gemini TTS voice mapping (Secondary fallback for Nigerian languages)
 const geminiVoiceMap: Record<string, string> = {
   "en": "Charon",   // Informative - good for educational content
   "yo": "Kore",     // Firm - clear pronunciation
@@ -24,45 +24,41 @@ const geminiVoiceMap: Record<string, string> = {
   "pcm": "Puck",    // Upbeat - good for Pidgin
 };
 
-// ElevenLabs voice mapping for Nigerian-sounding voices
+// ElevenLabs voice mapping - ONLY for English on Free plan
 const elevenLabsVoiceMap: Record<string, string> = {
   en: "onwK4e9ZLuTAKqWW03F9",  // Daniel - Nigerian accent
-  yo: "9Dbo4hEvXQ5l7MXGZFQA",  // Olufunmilola - African Female Nigerian Accent
-  ha: "9Dbo4hEvXQ5l7MXGZFQA",  // Olufunmilola
-  ig: "9Dbo4hEvXQ5l7MXGZFQA",  // Olufunmilola
-  pcm: "onwK4e9ZLuTAKqWW03F9", // Daniel - Nigerian accent for Pidgin
 };
 
-// Generate audio using Spitch API (Primary TTS provider for Nigerian languages)
-async function generateSpitchAudio(text: string, language: string): Promise<ArrayBuffer | null> {
-  const SPITCH_API_KEY = Deno.env.get("SPITCH_API_KEY");
-  if (!SPITCH_API_KEY) {
-    console.log("Spitch API key not configured");
+// Generate audio using YarnGPT API (Primary TTS provider for Nigerian languages)
+async function generateYarngptAudio(text: string, language: string): Promise<ArrayBuffer | null> {
+  const YARNGPT_API_KEY = Deno.env.get("YARNGPT_API_KEY");
+  if (!YARNGPT_API_KEY) {
+    console.log("YarnGPT API key not configured");
     return null;
   }
 
-  const config = spitchVoiceMap[language.toLowerCase()] || spitchVoiceMap["en"];
+  const voice = yarngptVoiceMap[language.toLowerCase()] || yarngptVoiceMap["en"];
   
   try {
-    console.log(`Spitch: Generating audio with voice ${config.voice} for language ${language}...`);
+    console.log(`YarnGPT: Generating audio with voice ${voice} for language ${language}...`);
     
-    const response = await fetch("https://api.spitch.app/v1/speech", {
+    const response = await fetch("https://api.yarngpt.ai/v1/text-to-speech", {
       method: "POST",
       headers: {
-        "Authorization": `Bearer ${SPITCH_API_KEY}`,
+        "Authorization": `Bearer ${YARNGPT_API_KEY}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        text: text.substring(0, 2000), // Spitch limit
-        voice: config.voice,
-        language: config.language,
-        format: "mp3"
+        text: text.substring(0, 2000), // YarnGPT limit
+        voice: voice,
+        language: language === "pcm" ? "pidgin" : language,
+        output_format: "mp3"
       }),
     });
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error(`Spitch error: ${response.status}`, errorText.substring(0, 200));
+      console.error(`YarnGPT error: ${response.status}`, errorText.substring(0, 200));
       return null;
     }
 
@@ -70,15 +66,15 @@ async function generateSpitchAudio(text: string, language: string): Promise<Arra
     if (contentType.includes("audio") || contentType.includes("mpeg") || contentType.includes("mp3") || contentType.includes("octet-stream")) {
       const buffer = await response.arrayBuffer();
       if (buffer.byteLength > 1024) {
-        console.log(`Spitch: Successfully generated audio, size: ${buffer.byteLength} bytes`);
+        console.log(`YarnGPT: Successfully generated audio, size: ${buffer.byteLength} bytes`);
         return buffer;
       }
     }
     
-    console.warn("Spitch: Invalid response format");
+    console.warn("YarnGPT: Invalid response format");
     return null;
   } catch (error) {
-    console.error("Spitch TTS error:", error instanceof Error ? error.message : String(error));
+    console.error("YarnGPT TTS error:", error instanceof Error ? error.message : String(error));
     return null;
   }
 }
@@ -196,7 +192,7 @@ async function generateGeminiTTSAudio(text: string, language: string = "en"): Pr
   }
 }
 
-// Generate audio using ElevenLabs (Final fallback)
+// Generate audio using ElevenLabs (Final fallback - English only)
 async function generateElevenLabsAudio(text: string, language: string = "en"): Promise<ArrayBuffer | null> {
   const ELEVENLABS_API_KEY = Deno.env.get("ELEVENLABS_API_KEY");
   if (!ELEVENLABS_API_KEY) {
@@ -204,10 +200,11 @@ async function generateElevenLabsAudio(text: string, language: string = "en"): P
     return null;
   }
 
-  const voiceId = elevenLabsVoiceMap[language] || elevenLabsVoiceMap["en"];
+  // Only use ElevenLabs for English
+  const voiceId = elevenLabsVoiceMap["en"];
   
   try {
-    console.log(`ElevenLabs: Generating audio with voice ${voiceId} for language ${language}...`);
+    console.log(`ElevenLabs: Generating audio with voice ${voiceId} for English...`);
     
     const response = await fetch(
       `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}?output_format=mp3_44100_128`,
@@ -337,31 +334,36 @@ serve(async (req) => {
     const aiData = await aiResponse.json();
     const explanation = aiData.choices?.[0]?.message?.content || "";
 
-    // Generate TTS audio with fallback chain: Spitch -> Gemini -> ElevenLabs
+    // Generate TTS audio with fallback chain: YarnGPT -> Gemini -> ElevenLabs (English only)
     let audioBase64: string | null = null;
     let audioProvider = "none";
+    
+    // Determine if this is a Nigerian language (not English)
+    const isNigerianLanguage = ["yo", "ha", "ig", "pcm"].includes(language.toLowerCase());
 
-    // TRY 1: Spitch for Nigerian accent (primary)
-    const spitchAudio = await generateSpitchAudio(explanation, language);
-    if (spitchAudio) {
-      audioBase64 = base64Encode(spitchAudio);
-      audioProvider = "spitch";
-      console.log(`Generated audio with Spitch for language: ${language}`);
+    // TRY 1: YarnGPT for Nigerian languages (primary)
+    const yarngptAudio = await generateYarngptAudio(explanation, language);
+    if (yarngptAudio) {
+      audioBase64 = base64Encode(yarngptAudio);
+      audioProvider = "yarngpt";
+      console.log(`Generated audio with YarnGPT for language: ${language}`);
     } else {
-      // TRY 2: Gemini TTS (secondary fallback)
+      // TRY 2: Gemini TTS (secondary fallback - preferred for Nigerian languages)
       const geminiAudio = await generateGeminiTTSAudio(explanation, language);
       if (geminiAudio) {
         audioBase64 = base64Encode(geminiAudio);
         audioProvider = "gemini";
         console.log("Generated audio with Gemini TTS fallback");
-      } else {
-        // TRY 3: ElevenLabs with language-specific voice (final fallback)
-        const elevenAudio = await generateElevenLabsAudio(explanation, language);
+      } else if (!isNigerianLanguage) {
+        // TRY 3: ElevenLabs ONLY for English (not for Nigerian languages)
+        const elevenAudio = await generateElevenLabsAudio(explanation, "en");
         if (elevenAudio) {
           audioBase64 = base64Encode(elevenAudio);
           audioProvider = "elevenlabs";
-          console.log("Generated audio with ElevenLabs fallback");
+          console.log("Generated audio with ElevenLabs fallback (English only)");
         }
+      } else {
+        console.log("Skipping ElevenLabs for Nigerian language - no native support");
       }
     }
 

@@ -130,6 +130,64 @@ export function useUsageLimits() {
 
   useEffect(() => {
     fetchUsageData();
+    
+    // Real-time subscription for cross-device sync
+    const setupRealtimeSubscription = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user) return;
+
+      const channel = supabase
+        .channel(`usage-sync-${session.user.id}`)
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table: "daily_usage_summary",
+            filter: `user_id=eq.${session.user.id}`,
+          },
+          () => {
+            console.log("Usage data changed, refreshing...");
+            fetchUsageData();
+          }
+        )
+        .on(
+          "postgres_changes",
+          {
+            event: "INSERT",
+            schema: "public",
+            table: "usage_tracking",
+            filter: `user_id=eq.${session.user.id}`,
+          },
+          () => {
+            console.log("New usage tracked, refreshing...");
+            fetchUsageData();
+          }
+        )
+        .subscribe();
+
+      return () => {
+        supabase.removeChannel(channel);
+      };
+    };
+
+    let cleanup: (() => void) | undefined;
+    setupRealtimeSubscription().then((cleanupFn) => {
+      cleanup = cleanupFn;
+    });
+
+    // Visibility change listener for tab switching
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        fetchUsageData();
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      cleanup?.();
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
   }, [fetchUsageData]);
 
   const limits = PLAN_LIMITS[plan] || PLAN_LIMITS.free;

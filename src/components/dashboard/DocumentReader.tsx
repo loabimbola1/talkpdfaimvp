@@ -6,6 +6,8 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Label } from "@/components/ui/label";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { 
@@ -22,7 +24,8 @@ import {
   AlertCircle,
   Crown,
   Pause,
-  Play
+  Play,
+  BookMarked
 } from "lucide-react";
 import { CharacterCounter } from "@/components/ui/CharacterCounter";
 import { useUsageLimits } from "@/hooks/useUsageLimits";
@@ -61,6 +64,12 @@ interface StudyConcept {
   content: string;
 }
 
+interface PageContent {
+  page: number;
+  text: string;
+  chapter?: string;
+}
+
 interface Document {
   id: string;
   title: string;
@@ -69,11 +78,13 @@ interface Document {
   study_prompts: StudyConcept[] | null;
   audio_url: string | null;
   audio_language?: string | null;
+  page_contents?: PageContent[] | null;
+  page_count?: number | null;
 }
 
 interface DocumentReaderProps {
   documentId?: string;
-  onNavigateToExplainBack?: (documentId: string, conceptIndex: number) => void;
+  onNavigateToExplainBack?: (documentId: string, conceptIndex: number, isPageMode?: boolean, pageIndex?: number) => void;
   onNavigateToListen?: (documentId: string) => void;
   onNavigateToUpgrade?: () => void;
 }
@@ -92,6 +103,10 @@ const DocumentReader = ({
   const [explanation, setExplanation] = useState<string>("");
   const [question, setQuestion] = useState("");
   const [askingQuestion, setAskingQuestion] = useState(false);
+  
+  // View mode: concepts or pages (Plus/Pro only)
+  const [viewMode, setViewMode] = useState<"concepts" | "pages">("concepts");
+  const [currentPageIndex, setCurrentPageIndex] = useState(0);
   
   // Concept audio state
   const [conceptAudioUrl, setConceptAudioUrl] = useState<string | null>(null);
@@ -121,6 +136,7 @@ const DocumentReader = ({
       if (doc) {
         setSelectedDoc(doc);
         setCurrentConceptIndex(0);
+        setCurrentPageIndex(0);
         setExplanation("");
         setQuestionAnswer("");
       }
@@ -134,7 +150,7 @@ const DocumentReader = ({
 
       const { data, error } = await supabase
         .from("documents")
-        .select("id, title, file_name, summary, study_prompts, audio_url, audio_language")
+        .select("id, title, file_name, summary, study_prompts, audio_url, audio_language, page_contents, page_count")
         .eq("user_id", session.user.id)
         .eq("status", "ready")
         .order("created_at", { ascending: false });
@@ -153,7 +169,8 @@ const DocumentReader = ({
         
         return {
           ...doc,
-          study_prompts: normalizedPrompts
+          study_prompts: normalizedPrompts,
+          page_contents: (doc.page_contents as unknown) as PageContent[] | null
         };
       });
 
@@ -176,6 +193,7 @@ const DocumentReader = ({
     if (doc) {
       setSelectedDoc(doc);
       setCurrentConceptIndex(0);
+      setCurrentPageIndex(0);
       setExplanation("");
       setQuestionAnswer("");
       // Reset audio state when changing documents
@@ -205,13 +223,23 @@ const DocumentReader = ({
     }
   };
 
-  // Handle listening to concept audio (Plus/Pro only)
-  const handleListenToConcept = async () => {
-    if (!selectedDoc || !currentConcept) return;
+  // Handle listening to concept or page audio (Plus/Pro only)
+  const handleListenToContent = async () => {
+    if (!selectedDoc) return;
     
     // Check feature access
     if (!hasFeature("pageNavigation")) {
       toast.error("Upgrade to Plus to listen to concepts");
+      return;
+    }
+
+    let contentToSpeak = "";
+    if (viewMode === "pages" && currentPage) {
+      contentToSpeak = `Page ${currentPage.page}${currentPage.chapter ? ` - ${currentPage.chapter}` : ""}: ${currentPage.text}`;
+    } else if (currentConcept) {
+      contentToSpeak = `${currentConcept.title}: ${currentConcept.content}`;
+    } else {
+      toast.error("No content to listen to");
       return;
     }
     
@@ -228,7 +256,7 @@ const DocumentReader = ({
     try {
       const { data, error } = await supabase.functions.invoke("generate-lesson-audio", {
         body: {
-          concept: `${currentConcept.title}: ${currentConcept.content}`,
+          concept: contentToSpeak,
           documentSummary: selectedDoc.summary,
           language: selectedDoc.audio_language || "en"
         }
@@ -249,7 +277,7 @@ const DocumentReader = ({
       setConceptAudioUrl(audioUrl);
       setIsPlaying(true);
     } catch (error) {
-      console.error("Error generating concept audio:", error);
+      console.error("Error generating content audio:", error);
       toast.error("Failed to generate audio");
     } finally {
       setGeneratingAudio(false);
@@ -266,6 +294,23 @@ const DocumentReader = ({
     const index = parseInt(conceptIndex, 10);
     if (!isNaN(index) && index >= 0 && index < totalConcepts) {
       setCurrentConceptIndex(index);
+      setExplanation("");
+      setQuestionAnswer("");
+      stopAudio();
+      setConceptAudioUrl(null);
+    }
+  };
+
+  // Handle page navigation with dropdown (Plus/Pro only)
+  const handlePageJump = (pageIndex: string) => {
+    if (!hasFeature("pageNavigation")) {
+      toast.error("Upgrade to Plus for page navigation");
+      return;
+    }
+    
+    const index = parseInt(pageIndex, 10);
+    if (!isNaN(index) && index >= 0 && index < totalPages) {
+      setCurrentPageIndex(index);
       setExplanation("");
       setQuestionAnswer("");
       stopAudio();
@@ -291,8 +336,8 @@ const DocumentReader = ({
     }
   };
 
-  const handleExplainConcept = async () => {
-    if (!selectedDoc || !selectedDoc.study_prompts) return;
+  const handleExplainContent = async () => {
+    if (!selectedDoc) return;
 
     // Check question limit
     if (!canAskAIQuestion()) {
@@ -300,15 +345,26 @@ const DocumentReader = ({
       return;
     }
 
-    const currentConcept = selectedDoc.study_prompts[currentConceptIndex];
-    if (!currentConcept) return;
+    let contentToExplain = "";
+    let topicName = "";
+
+    if (viewMode === "pages" && currentPage) {
+      contentToExplain = currentPage.text;
+      topicName = `Page ${currentPage.page}${currentPage.chapter ? ` - ${currentPage.chapter}` : ""}`;
+    } else if (currentConcept) {
+      contentToExplain = currentConcept.content;
+      topicName = currentConcept.title;
+    } else {
+      toast.error("No content to explain");
+      return;
+    }
 
     setExplaining(true);
     setExplanation("");
 
     try {
-      const contextPrefix = `As a Nigerian academic tutor, please explain this concept in simple terms that a secondary school or university student would understand. Use local examples where possible:\n\nTopic: ${currentConcept.title}\n\nContent: `;
-      const message = buildConstrainedMessage("", contextPrefix, currentConcept.content);
+      const contextPrefix = `As a Nigerian academic tutor, please explain this ${viewMode === "pages" ? "page content" : "concept"} in simple terms that a secondary school or university student would understand. Use local examples where possible:\n\nTopic: ${topicName}\n\nContent: `;
+      const message = buildConstrainedMessage("", contextPrefix, contentToExplain);
       
       const { data, error } = await supabase.functions.invoke("support-chatbot", {
         body: {
@@ -326,7 +382,7 @@ const DocumentReader = ({
     } catch (error) {
       console.error("Error getting explanation:", error);
       toast.error("Failed to get explanation");
-      setExplanation("Sorry, I couldn't explain this concept right now. Please try again later.");
+      setExplanation("Sorry, I couldn't explain this content right now. Please try again later.");
     } finally {
       setExplaining(false);
     }
@@ -341,7 +397,16 @@ const DocumentReader = ({
       return;
     }
 
-    const currentConcept = selectedDoc.study_prompts?.[currentConceptIndex];
+    let contentContext = "";
+    let topicName = "";
+
+    if (viewMode === "pages" && currentPage) {
+      contentContext = currentPage.text;
+      topicName = `Page ${currentPage.page}${currentPage.chapter ? ` - ${currentPage.chapter}` : ""}`;
+    } else if (currentConcept) {
+      contentContext = currentConcept.content;
+      topicName = currentConcept.title;
+    }
     
     setAskingQuestion(true);
     setQuestionAnswer("");
@@ -349,9 +414,9 @@ const DocumentReader = ({
     try {
       let message: string;
       
-      if (currentConcept) {
-        const contextPrefix = `Context - Document: "${selectedDoc.title}", Current Topic: "${currentConcept.title}"\n\nTopic Content: `;
-        message = buildConstrainedMessage(question, contextPrefix, currentConcept.content);
+      if (contentContext) {
+        const contextPrefix = `Context - Document: "${selectedDoc.title}", Current ${viewMode === "pages" ? "Page" : "Topic"}: "${topicName}"\n\nContent: `;
+        message = buildConstrainedMessage(question, contextPrefix, contentContext);
       } else {
         const contextPrefix = `Context - Document: "${selectedDoc.title}"\n\nDocument Summary: `;
         message = buildConstrainedMessage(question, contextPrefix, selectedDoc.summary || "No summary available");
@@ -389,6 +454,22 @@ const DocumentReader = ({
     setCurrentConceptIndex(newIndex);
     setExplanation("");
     setQuestionAnswer("");
+    stopAudio();
+    setConceptAudioUrl(null);
+  };
+
+  const navigatePage = (direction: "prev" | "next") => {
+    if (!selectedDoc?.page_contents) return;
+
+    const newIndex = direction === "next" 
+      ? Math.min(currentPageIndex + 1, selectedDoc.page_contents.length - 1)
+      : Math.max(currentPageIndex - 1, 0);
+    
+    setCurrentPageIndex(newIndex);
+    setExplanation("");
+    setQuestionAnswer("");
+    stopAudio();
+    setConceptAudioUrl(null);
   };
 
   if (loading) {
@@ -413,6 +494,9 @@ const DocumentReader = ({
 
   const currentConcept = selectedDoc?.study_prompts?.[currentConceptIndex];
   const totalConcepts = selectedDoc?.study_prompts?.length || 0;
+  const currentPage = selectedDoc?.page_contents?.[currentPageIndex];
+  const totalPages = selectedDoc?.page_contents?.length || 0;
+  const hasPages = totalPages > 0;
   const remainingQuestions = getRemainingAIQuestions();
   const questionLimit = limits.ai_questions_per_day;
   const isUnlimited = questionLimit === -1;
@@ -493,12 +577,49 @@ const DocumentReader = ({
 
       {selectedDoc && (
         <>
+          {/* View Mode Toggle - Plus/Pro only with pages available */}
+          {hasFeature("pageNavigation") && hasPages && (
+            <Card className="border-border">
+              <CardContent className="py-3">
+                <div className="flex items-center gap-4">
+                  <span className="text-sm font-medium text-foreground">View Mode:</span>
+                  <RadioGroup
+                    value={viewMode}
+                    onValueChange={(value) => {
+                      setViewMode(value as "concepts" | "pages");
+                      setExplanation("");
+                      setQuestionAnswer("");
+                      stopAudio();
+                      setConceptAudioUrl(null);
+                    }}
+                    className="flex gap-4"
+                  >
+                    <div className="flex items-center space-x-2">
+                      <RadioGroupItem value="concepts" id="concepts" />
+                      <Label htmlFor="concepts" className="flex items-center gap-1 cursor-pointer">
+                        <Lightbulb className="h-4 w-4" />
+                        Concepts
+                      </Label>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <RadioGroupItem value="pages" id="pages" />
+                      <Label htmlFor="pages" className="flex items-center gap-1 cursor-pointer">
+                        <BookMarked className="h-4 w-4" />
+                        Pages ({totalPages})
+                      </Label>
+                    </div>
+                  </RadioGroup>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
           {/* Upgrade Banner for Free Users */}
-          {isFree && totalConcepts > 0 && (
+          {isFree && (totalConcepts > 0 || hasPages) && (
             <div className="flex items-center gap-3 p-3 bg-primary/5 rounded-lg border border-primary/20">
               <Crown className="h-4 w-4 text-primary flex-shrink-0" />
               <span className="text-sm text-muted-foreground flex-1">
-                Upgrade to Plus for quick concept navigation and audio playback
+                Upgrade to Plus for quick navigation, page-by-page reading, and audio playback
               </span>
               {onNavigateToUpgrade && (
                 <Button size="sm" variant="outline" onClick={onNavigateToUpgrade} className="gap-1 flex-shrink-0">
@@ -509,8 +630,137 @@ const DocumentReader = ({
             </div>
           )}
 
-          {/* Concept Navigation */}
-          {totalConcepts > 0 && (
+          {/* Pages View - Plus/Pro only */}
+          {viewMode === "pages" && hasPages && hasFeature("pageNavigation") && (
+            <Card className="border-border">
+              <CardHeader className="pb-3">
+                <div className="flex flex-col gap-3">
+                  <div className="flex items-center justify-between flex-wrap gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <Badge variant="secondary" className="text-xs">
+                        Page {currentPageIndex + 1} of {totalPages}
+                      </Badge>
+                      {currentPage?.chapter && (
+                        <CardTitle className="text-lg">{currentPage.chapter}</CardTitle>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        onClick={() => navigatePage("prev")}
+                        disabled={currentPageIndex === 0}
+                      >
+                        <ChevronLeft className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        onClick={() => navigatePage("next")}
+                        disabled={currentPageIndex >= totalPages - 1}
+                      >
+                        <ChevronRight className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                  
+                  {/* Jump to Page Dropdown */}
+                  {totalPages > 1 && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm text-muted-foreground">Jump to:</span>
+                      <Select
+                        value={currentPageIndex.toString()}
+                        onValueChange={handlePageJump}
+                      >
+                        <SelectTrigger className="w-full max-w-xs h-8 text-sm">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {selectedDoc?.page_contents?.map((page, index) => (
+                            <SelectItem key={index} value={index.toString()}>
+                              <span className="truncate">
+                                Page {page.page}{page.chapter ? ` - ${page.chapter}` : ""}
+                              </span>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+                </div>
+              </CardHeader>
+              <CardContent>
+                <ScrollArea className="h-64 rounded-lg bg-secondary/30 p-4">
+                  <p className="text-foreground whitespace-pre-wrap leading-relaxed">
+                    {currentPage?.text || "No content available for this page."}
+                  </p>
+                </ScrollArea>
+
+                {/* Action Buttons for Pages */}
+                <div className="flex flex-wrap gap-3 mt-4">
+                  <Button 
+                    onClick={handleExplainContent}
+                    disabled={explaining || !canAskAIQuestion()}
+                    className="gap-2"
+                  >
+                    {explaining ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Lightbulb className="h-4 w-4" />
+                    )}
+                    Explain This Page
+                  </Button>
+
+                  {onNavigateToExplainBack && (
+                    <Button 
+                      variant="secondary"
+                      onClick={() => onNavigateToExplainBack(selectedDoc.id, currentConceptIndex, true, currentPageIndex)}
+                      className="gap-2"
+                    >
+                      <Brain className="h-4 w-4" />
+                      Test My Understanding
+                    </Button>
+                  )}
+
+                  <Button
+                    variant="outline"
+                    onClick={conceptAudioUrl && !generatingAudio ? toggleAudioPlayback : handleListenToContent}
+                    disabled={generatingAudio}
+                    className="gap-2"
+                  >
+                    {generatingAudio ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : conceptAudioUrl && isPlaying ? (
+                      <Pause className="h-4 w-4" />
+                    ) : (
+                      <Play className="h-4 w-4" />
+                    )}
+                    {generatingAudio 
+                      ? "Generating..." 
+                      : conceptAudioUrl 
+                        ? (isPlaying ? "Pause" : "Play") 
+                        : "Listen to This Page"}
+                  </Button>
+                </div>
+
+                {/* AI Explanation */}
+                {explanation && (
+                  <div className="mt-4 p-4 bg-primary/5 border border-primary/20 rounded-lg">
+                    <div className="flex items-center gap-2 mb-2">
+                      <Lightbulb className="h-4 w-4 text-primary" />
+                      <span className="font-medium text-foreground">AI Explanation</span>
+                    </div>
+                    <p className="text-foreground/90 whitespace-pre-wrap leading-relaxed">
+                      {explanation}
+                    </p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Concept Navigation - Default view */}
+          {viewMode === "concepts" && totalConcepts > 0 && (
             <Card className="border-border">
               <CardHeader className="pb-3">
                 <div className="flex flex-col gap-3">
@@ -576,7 +826,7 @@ const DocumentReader = ({
                 {/* Action Buttons */}
                 <div className="flex flex-wrap gap-3 mt-4">
                   <Button 
-                    onClick={handleExplainConcept}
+                    onClick={handleExplainContent}
                     disabled={explaining || !canAskAIQuestion()}
                     className="gap-2"
                   >
@@ -603,7 +853,7 @@ const DocumentReader = ({
                   {hasFeature("pageNavigation") && (
                     <Button
                       variant="outline"
-                      onClick={conceptAudioUrl && !generatingAudio ? toggleAudioPlayback : handleListenToConcept}
+                      onClick={conceptAudioUrl && !generatingAudio ? toggleAudioPlayback : handleListenToContent}
                       disabled={generatingAudio}
                       className="gap-2"
                     >
@@ -639,8 +889,8 @@ const DocumentReader = ({
             </Card>
           )}
 
-          {/* Document Summary (if no concepts) */}
-          {totalConcepts === 0 && selectedDoc.summary && (
+          {/* Document Summary (if no concepts and no pages) */}
+          {totalConcepts === 0 && !hasPages && selectedDoc.summary && (
             <Card className="border-border">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
@@ -672,7 +922,7 @@ const DocumentReader = ({
                   value={question}
                   onChange={(e) => setQuestion(e.target.value.slice(0, MAX_SUPPORT_MESSAGE_CHARS))}
                   placeholder={canAskAIQuestion() 
-                    ? "Type your question about this topic..." 
+                    ? `Type your question about this ${viewMode === "pages" ? "page" : "topic"}...` 
                     : "Daily question limit reached. Upgrade for more!"}
                   className="min-h-[80px] resize-none"
                   disabled={askingQuestion || !canAskAIQuestion()}

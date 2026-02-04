@@ -592,6 +592,70 @@ serve(async (req) => {
     // Determine how much text to analyze based on plan
     const analysisTextLimit = userPlan === "pro" ? 15000 : (userPlan === "plus" ? 8000 : 5000);
     
+    // Page extraction limits for Plus/Pro users
+    const maxPages = userPlan === "pro" ? 50 : (userPlan === "plus" ? 30 : 0);
+    let pageContents: Array<{ page: number; text: string; chapter?: string }> = [];
+    let pageCount = 0;
+    
+    // Extract page-by-page content for Plus/Pro users
+    if (maxPages > 0 && LOVABLE_API_KEY) {
+      console.log(`Extracting page-by-page content for ${userPlan} user (max ${maxPages} pages)...`);
+      
+      const pageExtractionResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${LOVABLE_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "google/gemini-2.5-flash",
+          messages: [
+            {
+              role: "system",
+              content: `You are a document parser. Extract text content from the document, organized by page.
+              
+RULES:
+1. DO NOT invent or add content not in the document
+2. Extract ONLY what exists in the document
+3. Preserve the original text as much as possible
+4. Identify chapter/section headings if present
+
+Output JSON array (max ${maxPages} pages):
+[
+  {"page": 1, "text": "Page content here...", "chapter": "Chapter title if present"},
+  {"page": 2, "text": "Page content here..."}
+]`
+            },
+            {
+              role: "user",
+              content: `Extract page-by-page content from this document:\n\n${extractedText.substring(0, analysisTextLimit)}`
+            }
+          ],
+          max_tokens: userPlan === "pro" ? 8000 : 5000,
+          temperature: 0.3
+        })
+      });
+      
+      if (pageExtractionResponse.ok) {
+        const pageData = await pageExtractionResponse.json();
+        const pageContent = pageData.choices?.[0]?.message?.content || "";
+        
+        try {
+          const jsonMatch = pageContent.match(/\[[\s\S]*\]/);
+          if (jsonMatch) {
+            const parsed = JSON.parse(jsonMatch[0]);
+            if (Array.isArray(parsed)) {
+              pageContents = parsed.slice(0, maxPages);
+              pageCount = pageContents.length;
+              console.log(`Extracted ${pageCount} pages for ${userPlan} user`);
+            }
+          }
+        } catch (e) {
+          console.warn("Could not parse page content JSON:", e);
+        }
+      }
+    }
+    
     const summaryResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -610,6 +674,11 @@ ${userPlan === "free" ? "- Create a concise summary (300-500 words) that covers 
 ${userPlan === "plus" ? "- Create a detailed summary (800-1200 words) that covers all important concepts thoroughly" : ""}
 ${userPlan === "pro" ? "- Create a comprehensive, page-by-page style summary (1500-2500 words) that explains concepts in depth like reading the actual textbook" : ""}
 
+CONTENT QUALITY RULES:
+1. DO NOT invent facts not present in the document
+2. Base all content ONLY on what's in the document
+3. Be specific and accurate
+
 Output a JSON object with this structure:
 {
   "summary": "Summary as described above",
@@ -627,7 +696,8 @@ Create ${userPlan === "pro" ? "8-10" : (userPlan === "plus" ? "5-7" : "3-5")} st
             content: `Analyze this document content and create a summary with study prompts:\n\n${extractedText.substring(0, analysisTextLimit)}`
           }
         ],
-        max_tokens: userPlan === "pro" ? 6000 : (userPlan === "plus" ? 4000 : 2000)
+        max_tokens: userPlan === "pro" ? 6000 : (userPlan === "plus" ? 4000 : 2000),
+        temperature: 0.5
       })
     });
 
@@ -892,6 +962,8 @@ Create ${userPlan === "pro" ? "8-10" : (userPlan === "plus" ? "5-7" : "3-5")} st
         status: "ready",
         summary: summary,
         study_prompts: studyPrompts,
+        page_contents: pageContents.length > 0 ? pageContents : [],
+        page_count: pageCount > 0 ? pageCount : null,
         audio_url: audioPath,
         audio_duration_seconds: audioDurationSeconds,
         audio_language: language,

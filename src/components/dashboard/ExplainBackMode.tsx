@@ -27,11 +27,18 @@ interface StudyPrompt {
   prompt: string;
 }
 
+interface PageContent {
+  page: number;
+  text: string;
+  chapter?: string;
+}
+
 interface Document {
   id: string;
   title: string;
   study_prompts: StudyPrompt[] | null;
   summary: string | null;
+  page_contents?: PageContent[] | null;
 }
 
 type RawDocument = {
@@ -39,12 +46,15 @@ type RawDocument = {
   title: string;
   study_prompts: unknown;
   summary: string | null;
+  page_contents: unknown;
 }
 
 interface ExplainBackModeProps {
   documentId?: string;
   documentTitle?: string;
   promptIndex?: number;
+  isPageMode?: boolean;
+  pageIndex?: number;
   onBadgeEarned?: () => void;
 }
 
@@ -76,7 +86,14 @@ const VOICE_LANGUAGES = [
   { code: "pcm", label: "Pidgin" },
 ];
 
-const ExplainBackMode = ({ documentId: propDocumentId, documentTitle, promptIndex: propPromptIndex, onBadgeEarned }: ExplainBackModeProps) => {
+const ExplainBackMode = ({ 
+  documentId: propDocumentId, 
+  documentTitle, 
+  promptIndex: propPromptIndex, 
+  isPageMode: propIsPageMode = false,
+  pageIndex: propPageIndex = 0,
+  onBadgeEarned 
+}: ExplainBackModeProps) => {
   const [isRecording, setIsRecording] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [explanation, setExplanation] = useState("");
@@ -92,6 +109,10 @@ const ExplainBackMode = ({ documentId: propDocumentId, documentTitle, promptInde
   const [userPlan, setUserPlan] = useState<string>("free");
   const [isCheckingPlan, setIsCheckingPlan] = useState(true);
   const [voiceLanguage, setVoiceLanguage] = useState<string>("en");
+  
+  // Page mode state (Plus/Pro only)
+  const [isPageMode, setIsPageMode] = useState(propIsPageMode);
+  const [currentPageIndex, setCurrentPageIndex] = useState(propPageIndex);
   
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
@@ -137,28 +158,32 @@ const ExplainBackMode = ({ documentId: propDocumentId, documentTitle, promptInde
     try {
       const { data, error } = await supabase
         .from("documents")
-        .select("id, title, study_prompts, summary")
+        .select("id, title, study_prompts, summary, page_contents")
         .eq("status", "ready")
         .order("created_at", { ascending: false });
 
       if (error) throw error;
 
-      const docsWithPrompts: Document[] = ((data || []) as RawDocument[])
+      const docsWithContent: Document[] = ((data || []) as RawDocument[])
         .filter((doc) => {
           const prompts = doc.study_prompts;
-          return prompts && Array.isArray(prompts) && prompts.length > 0;
+          const pages = doc.page_contents;
+          // Accept docs with either study prompts or page contents
+          return (prompts && Array.isArray(prompts) && prompts.length > 0) ||
+                 (pages && Array.isArray(pages) && pages.length > 0);
         })
         .map((doc) => ({
           id: doc.id,
           title: doc.title,
           summary: doc.summary,
-          study_prompts: doc.study_prompts as StudyPrompt[]
+          study_prompts: doc.study_prompts as StudyPrompt[],
+          page_contents: (doc.page_contents as unknown) as PageContent[] | null
         }));
       
-      setDocuments(docsWithPrompts);
+      setDocuments(docsWithContent);
       
-      if (docsWithPrompts.length > 0 && !propDocumentId) {
-        setSelectedDocumentId(docsWithPrompts[0].id);
+      if (docsWithContent.length > 0 && !propDocumentId) {
+        setSelectedDocumentId(docsWithContent[0].id);
       }
     } catch (error) {
       console.error("Error fetching documents:", error);
@@ -169,7 +194,14 @@ const ExplainBackMode = ({ documentId: propDocumentId, documentTitle, promptInde
 
   const selectedDocument = documents.find((d) => d.id === selectedDocumentId);
   const studyPrompts = (selectedDocument?.study_prompts as StudyPrompt[]) || [];
+  const pageContents = selectedDocument?.page_contents || [];
   const currentPrompt = studyPrompts[currentPromptIndex];
+  const currentPage = pageContents[currentPageIndex];
+  
+  // Get current content based on mode
+  const currentContent = isPageMode && currentPage
+    ? { topic: `Page ${currentPage.page}${currentPage.chapter ? ` - ${currentPage.chapter}` : ""}`, prompt: currentPage.text }
+    : currentPrompt;
 
   const startRecording = async () => {
     try {
@@ -365,8 +397,8 @@ const ExplainBackMode = ({ documentId: propDocumentId, documentTitle, promptInde
       return;
     }
 
-    if (!currentPrompt) {
-      toast.error("No concept to evaluate against");
+    if (!currentContent) {
+      toast.error("No content to evaluate against");
       return;
     }
 
@@ -374,7 +406,7 @@ const ExplainBackMode = ({ documentId: propDocumentId, documentTitle, promptInde
     try {
       const { data, error } = await supabase.functions.invoke("explain-back-evaluate", {
         body: {
-          concept: currentPrompt.prompt,
+          concept: currentContent.prompt,
           explanation: explanation.trim(),
           documentId: selectedDocumentId,
           documentSummary: selectedDocument?.summary
@@ -422,12 +454,21 @@ const ExplainBackMode = ({ documentId: propDocumentId, documentTitle, promptInde
     setEarnedBadge(null);
   };
 
-  const nextPrompt = () => {
-    if (currentPromptIndex < studyPrompts.length - 1) {
-      setCurrentPromptIndex((prev) => prev + 1);
+  const nextContent = () => {
+    if (isPageMode) {
+      if (currentPageIndex < pageContents.length - 1) {
+        setCurrentPageIndex((prev) => prev + 1);
+      } else {
+        setCurrentPageIndex(0);
+        toast.success("You've reviewed all pages! Starting from the beginning.");
+      }
     } else {
-      setCurrentPromptIndex(0);
-      toast.success("You've reviewed all concepts! Starting from the beginning.");
+      if (currentPromptIndex < studyPrompts.length - 1) {
+        setCurrentPromptIndex((prev) => prev + 1);
+      } else {
+        setCurrentPromptIndex(0);
+        toast.success("You've reviewed all concepts! Starting from the beginning.");
+      }
     }
     resetExercise();
   };
@@ -446,12 +487,15 @@ const ExplainBackMode = ({ documentId: propDocumentId, documentTitle, promptInde
     return "Needs improvement";
   };
 
-  // Generate hint from summary
+  // Generate hint from summary or page content
   const getHint = () => {
-    if (!selectedDocument?.summary || !currentPrompt) return null;
+    if (!selectedDocument?.summary || !currentContent) return null;
     const summaryWords = selectedDocument.summary.split(" ").slice(0, 30).join(" ");
-    return `💡 Hint: Think about ${currentPrompt.topic.toLowerCase()}. Here's a clue from the document: "${summaryWords}..."`;
+    return `💡 Hint: Think about ${currentContent.topic.toLowerCase()}. Here's a clue from the document: "${summaryWords}..."`;
   };
+
+  const totalItems = isPageMode ? pageContents.length : studyPrompts.length;
+  const currentIndex = isPageMode ? currentPageIndex : currentPromptIndex;
 
   const isPaidPlan = userPlan === "plus" || userPlan === "pro";
 
@@ -550,24 +594,33 @@ const ExplainBackMode = ({ documentId: propDocumentId, documentTitle, promptInde
 
       {!result ? (
         <>
-          {/* Concept to Explain */}
-          {currentPrompt && (
+          {/* Content to Explain */}
+          {currentContent && (
             <div className="bg-secondary/30 rounded-xl p-4">
               <div className="flex items-start gap-3">
                 <Volume2 className="h-5 w-5 text-primary flex-shrink-0 mt-0.5" />
                 <div className="flex-1">
                   <div className="flex items-center justify-between mb-1">
                     <p className="text-sm text-muted-foreground">
-                      Concept {currentPromptIndex + 1} of {studyPrompts.length}:
+                      {isPageMode ? "Page" : "Concept"} {currentIndex + 1} of {totalItems}:
                     </p>
-                    {studyPrompts.length > 1 && (
-                      <Button variant="ghost" size="sm" onClick={nextPrompt}>
+                    {totalItems > 1 && (
+                      <Button variant="ghost" size="sm" onClick={nextContent}>
                         Skip
                       </Button>
                     )}
                   </div>
-                  <p className="text-xs text-primary font-medium mb-1">{currentPrompt.topic}</p>
-                  <p className="font-medium text-foreground">{currentPrompt.prompt}</p>
+                  <p className="text-xs text-primary font-medium mb-1">{currentContent.topic}</p>
+                  <p className="font-medium text-foreground">
+                    {isPageMode ? "Explain this page content in your own words" : currentContent.prompt}
+                  </p>
+                  
+                  {/* Show page content preview in page mode */}
+                  {isPageMode && currentPage && (
+                    <div className="mt-2 p-2 bg-secondary/50 rounded text-sm text-muted-foreground max-h-24 overflow-y-auto">
+                      {currentPage.text.substring(0, 300)}...
+                    </div>
+                  )}
                   
                   {/* Hint Section */}
                   <div className="mt-3">
@@ -663,7 +716,7 @@ const ExplainBackMode = ({ documentId: propDocumentId, documentTitle, promptInde
           {/* Submit Button */}
           <Button
             onClick={evaluateExplanation}
-            disabled={isEvaluating || !explanation.trim() || !currentPrompt}
+            disabled={isEvaluating || !explanation.trim() || !currentContent}
             className="w-full gap-2"
             size="lg"
           >
@@ -802,9 +855,9 @@ const ExplainBackMode = ({ documentId: propDocumentId, documentTitle, promptInde
               <RefreshCw className="h-4 w-4" />
               Try Again
             </Button>
-            {studyPrompts.length > 1 && (
-              <Button onClick={nextPrompt} className="flex-1 gap-2">
-                Next Concept
+            {totalItems > 1 && (
+              <Button onClick={nextContent} className="flex-1 gap-2">
+                Next {isPageMode ? "Page" : "Concept"}
               </Button>
             )}
           </div>

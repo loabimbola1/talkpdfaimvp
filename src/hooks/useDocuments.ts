@@ -16,6 +16,12 @@ export interface TTSMetadata {
   file_type?: string;
 }
 
+export interface PageContent {
+  page: number;
+  text: string;
+  chapter?: string;
+}
+
 export interface Document {
   id: string;
   title: string;
@@ -28,8 +34,10 @@ export interface Document {
   explain_back_score: number | null;
   last_studied_at: string | null;
   created_at: string;
+  page_count: number | null;
   study_prompts?: Array<{ topic: string; prompt: string }> | null;
   tts_metadata?: TTSMetadata | null;
+  page_contents?: PageContent[] | null;
 }
 
 export function useDocuments() {
@@ -76,6 +84,7 @@ export function useDocuments() {
         ...doc,
         study_prompts: doc.study_prompts as Array<{ topic: string; prompt: string }> | null,
         tts_metadata: doc.tts_metadata as TTSMetadata | null,
+        page_contents: (doc.page_contents as unknown) as PageContent[] | null,
       }));
 
       setDocuments(typedDocs);

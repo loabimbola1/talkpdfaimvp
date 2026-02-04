@@ -50,6 +50,64 @@ const CreditsUsageTracker = ({ onUpgrade }: CreditsUsageTrackerProps) => {
 
   useEffect(() => {
     fetchCreditsData();
+
+    // Real-time subscription for cross-device sync
+    const setupRealtimeSubscription = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const channel = supabase
+        .channel(`credits-sync-${user.id}`)
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table: "profiles",
+            filter: `user_id=eq.${user.id}`,
+          },
+          () => {
+            console.log("Profile changed, refreshing credits...");
+            fetchCreditsData();
+          }
+        )
+        .on(
+          "postgres_changes",
+          {
+            event: "INSERT",
+            schema: "public",
+            table: "usage_tracking",
+            filter: `user_id=eq.${user.id}`,
+          },
+          () => {
+            console.log("New usage tracked, refreshing credits...");
+            fetchCreditsData();
+          }
+        )
+        .subscribe();
+
+      return () => {
+        supabase.removeChannel(channel);
+      };
+    };
+
+    let cleanup: (() => void) | undefined;
+    setupRealtimeSubscription().then((cleanupFn) => {
+      cleanup = cleanupFn;
+    });
+
+    // Visibility change listener for tab switching
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        fetchCreditsData();
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      cleanup?.();
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
   }, []);
 
   const fetchCreditsData = async () => {

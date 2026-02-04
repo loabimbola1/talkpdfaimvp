@@ -294,7 +294,14 @@ serve(async (req) => {
             
             Keep it conversational and engaging - like a friendly senior student explaining to a junior.
             The explanation should take about 60 seconds when read aloud at normal pace (approximately 150-180 words).
-            ${languageInstructions[language as keyof typeof languageInstructions] || languageInstructions["en"]}`,
+            ${languageInstructions[language as keyof typeof languageInstructions] || languageInstructions["en"]}
+            
+            CONTENT QUALITY RULES (CRITICAL):
+            1. DO NOT invent facts not present in the provided document context
+            2. AVOID filler phrases: "So basically...", "You know...", "Let me tell you..."
+            3. DO NOT repeat explanations in different words - say it once clearly
+            4. Be direct - every sentence should add educational value
+            5. Base explanations ONLY on the provided content`,
           },
           {
             role: "user",
@@ -303,6 +310,7 @@ serve(async (req) => {
           },
         ],
         max_tokens: 400,
+        temperature: 0.6,
       }),
     });
 

@@ -129,6 +129,13 @@ serve(async (req) => {
 
 ${userPlan !== "free" ? `**Paid Plan Bonus:** Since the user is on the ${userPlan} plan, provide more detailed and specific feedback with actionable suggestions.` : ""}
 
+**EVALUATION ACCURACY RULES (CRITICAL):**
+1. Base evaluation ONLY on the provided document context - do not assume knowledge not in the document
+2. DO NOT fabricate strengths or improvements not evident from the actual explanation
+3. Be specific and actionable in feedback - avoid vague statements
+4. If the student's explanation contains errors, identify them specifically
+5. Every point of feedback must be grounded in what the student actually wrote
+
 Respond with JSON:
 {
   "simplicity": <0-10>,
@@ -159,6 +166,7 @@ Evaluate this explanation using the 3-dimension scoring system.`;
       },
       body: JSON.stringify({
         model: "google/gemini-2.5-pro",
+        temperature: 0.4,
         messages: [
           { role: "system", content: systemPrompt },
           { role: "user", content: userPrompt },

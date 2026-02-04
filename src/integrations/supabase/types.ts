@@ -109,6 +109,7 @@ export type Database = {
           file_url: string | null
           id: string
           last_studied_at: string | null
+          page_contents: Json | null
           page_count: number | null
           status: string | null
           study_prompts: Json | null
@@ -129,6 +130,7 @@ export type Database = {
           file_url?: string | null
           id?: string
           last_studied_at?: string | null
+          page_contents?: Json | null
           page_count?: number | null
           status?: string | null
           study_prompts?: Json | null
@@ -149,6 +151,7 @@ export type Database = {
           file_url?: string | null
           id?: string
           last_studied_at?: string | null
+          page_contents?: Json | null
           page_count?: number | null
           status?: string | null
           study_prompts?: Json | null

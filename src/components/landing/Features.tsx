@@ -5,7 +5,7 @@ const features = [
     icon: Headphones,
     title: "Audio Learning",
     description:
-      "Convert any PDF to natural-sounding audio. Listen during your commute, workout, or while relaxing. ElevenLabs-powered voices that sound human.",
+      "Convert any PDF to natural-sounding audio. Listen during your commute, workout, or while relaxing. AI-powered voices with authentic Nigerian accents.",
     highlight: "150+ hours of audio generated",
   },
   {

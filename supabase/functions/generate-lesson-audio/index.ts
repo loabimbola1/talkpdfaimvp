@@ -7,12 +7,14 @@ const corsHeaders = {
 };
 
 // YarnGPT voice mapping for Nigerian languages (Primary TTS provider)
+// Reference: https://yarngpt.ai/api/v1/tts
+// Available voices: Idera, Emma, Zainab, Osagie, Wura, Jude, Chinenye, Tayo, Regina, Femi, Adaora, Umar, Mary, Nonso, Remi, Adam
 const yarngptVoiceMap: Record<string, string> = {
-  "yo": "yoruba_female",    // Yoruba native voice
-  "ha": "hausa_female",     // Hausa native voice
-  "ig": "igbo_female",      // Igbo native voice
-  "en": "nigerian_english", // Nigerian English accent
-  "pcm": "pidgin_male",     // Nigerian Pidgin voice
+  "yo": "Adaora",    // Warm, Engaging - good for Yoruba
+  "ha": "Umar",      // Calm, smooth - good for Hausa
+  "ig": "Chinenye",  // Engaging, warm - good for Igbo
+  "en": "Femi",      // Rich, reassuring - Nigerian English
+  "pcm": "Tayo",     // Upbeat, energetic - good for Pidgin
 };
 
 // Gemini TTS voice mapping (Secondary fallback for Nigerian languages)
@@ -42,7 +44,7 @@ async function generateYarngptAudio(text: string, language: string): Promise<Arr
   try {
     console.log(`YarnGPT: Generating audio with voice ${voice} for language ${language}...`);
     
-    const response = await fetch("https://api.yarngpt.ai/v1/text-to-speech", {
+    const response = await fetch("https://yarngpt.ai/api/v1/tts", {
       method: "POST",
       headers: {
         "Authorization": `Bearer ${YARNGPT_API_KEY}`,
@@ -51,8 +53,7 @@ async function generateYarngptAudio(text: string, language: string): Promise<Arr
       body: JSON.stringify({
         text: text.substring(0, 2000), // YarnGPT limit
         voice: voice,
-        language: language === "pcm" ? "pidgin" : language,
-        output_format: "mp3"
+        response_format: "mp3"
       }),
     });
 

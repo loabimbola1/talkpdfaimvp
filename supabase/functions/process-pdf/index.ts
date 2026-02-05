@@ -41,13 +41,14 @@ const RATE_LIMIT_CONFIG = {
 };
 
 // YarnGPT voice mapping for Nigerian languages (Primary TTS provider)
-// Reference: https://yarngpt.ai
+// Reference: https://yarngpt.ai/api/v1/tts
+// Available voices: Idera, Emma, Zainab, Osagie, Wura, Jude, Chinenye, Tayo, Regina, Femi, Adaora, Umar, Mary, Nonso, Remi, Adam
 const yarngptVoiceMap: Record<string, string> = {
-  "yo": "yoruba_female",    // Yoruba native voice
-  "ha": "hausa_female",     // Hausa native voice
-  "ig": "igbo_female",      // Igbo native voice
-  "en": "nigerian_english", // Nigerian English accent
-  "pcm": "pidgin_male",     // Nigerian Pidgin voice
+  "yo": "Adaora",    // Warm, Engaging - good for Yoruba
+  "ha": "Umar",      // Calm, smooth - good for Hausa
+  "ig": "Chinenye",  // Engaging, warm - good for Igbo
+  "en": "Femi",      // Rich, reassuring - Nigerian English
+  "pcm": "Tayo",     // Upbeat, energetic - good for Pidgin
 };
 
 // Gemini TTS voice mapping (Secondary fallback for Nigerian languages)
@@ -143,7 +144,7 @@ async function generateYarngptAudio(
     console.log(`YarnGPT: Processing chunk ${i + 1}/${chunksToProcess.length} (${chunk.length} chars)`);
     
     try {
-      const response = await fetch("https://api.yarngpt.ai/v1/text-to-speech", {
+      const response = await fetch("https://yarngpt.ai/api/v1/tts", {
         method: "POST",
         headers: {
           "Authorization": `Bearer ${apiKey}`,
@@ -152,8 +153,7 @@ async function generateYarngptAudio(
         body: JSON.stringify({
           text: chunk,
           voice: voice,
-          language: language === "pcm" ? "pidgin" : language,
-          output_format: "mp3"
+          response_format: "mp3"
         }),
       });
       
@@ -469,7 +469,7 @@ serve(async (req) => {
           messages: [
             {
               role: "system",
-              content: `You are a document extraction assistant. Extract ALL text content from the provided document. Preserve the structure and order of the content. Focus on extracting educational content, key concepts, and important information that students would need to learn. Output only the extracted text, no commentary.`
+              content: `You are a document extraction assistant. Your task is to EXTRACT (not generate) ALL text content from the provided document EXACTLY as it appears. CRITICAL RULES: 1. ONLY extract text that EXISTS in the document - DO NOT invent or hallucinate content. 2. DO NOT add explanations, commentary, or additional information. 3. DO NOT rephrase or paraphrase - preserve the original wording. 4. If you cannot read certain parts, indicate with [UNREADABLE] rather than guessing. 5. Preserve the document's original structure and order. Output ONLY the extracted text from the document, nothing else.`
             },
             {
               role: "user",
@@ -506,7 +506,7 @@ serve(async (req) => {
             messages: [
               {
                 role: "system",
-                content: `You are a document extraction assistant. The user has uploaded a Word document (.docx). Extract ALL text content, preserving structure. Focus on educational content.`
+                content: `You are a document extraction assistant. EXTRACT ONLY the actual text content from this Word document. CRITICAL RULES: 1. ONLY extract text that EXISTS in the document - DO NOT invent content. 2. DO NOT add explanations or commentary. 3. Preserve original wording exactly as written. 4. Output ONLY the extracted text, nothing else.`
               },
               {
                 role: "user",
@@ -530,7 +530,7 @@ serve(async (req) => {
           messages: [
             {
               role: "system",
-              content: `You are a document extraction assistant. Extract ALL text content from the provided PDF document. Preserve the structure and order of the content. Focus on extracting educational content, key concepts, and important information that students would need to learn. Output only the extracted text, no commentary.`
+              content: `You are a document extraction assistant. Your task is to EXTRACT (not generate) ALL text content from the provided PDF document EXACTLY as it appears. CRITICAL RULES: 1. ONLY extract text that EXISTS in the document - DO NOT invent or hallucinate content. 2. DO NOT add explanations, commentary, or additional information. 3. DO NOT rephrase or paraphrase - preserve the original wording. 4. If you cannot read certain parts, indicate with [UNREADABLE] rather than guessing. 5. Preserve the document's original structure and order. Output ONLY the extracted text from the document, nothing else.`
             },
             {
               role: "user",

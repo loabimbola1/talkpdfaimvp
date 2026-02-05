@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
@@ -47,89 +47,40 @@ const CreditsUsageTracker = ({ onUpgrade }: CreditsUsageTrackerProps) => {
     billingPeriodEnd: null,
   });
   const [loading, setLoading] = useState(true);
+  const lastFetchTime = useRef<number>(0);
+  const CACHE_DURATION = 3000; // 3 seconds minimum between fetches
 
-  useEffect(() => {
-    fetchCreditsData();
+  const fetchCreditsData = useCallback(async (forceRefresh = false) => {
+    // Prevent rapid re-fetches unless forced
+    const now = Date.now();
+    if (!forceRefresh && now - lastFetchTime.current < CACHE_DURATION) {
+      return;
+    }
+    lastFetchTime.current = now;
 
-    // Real-time subscription for cross-device sync
-    const setupRealtimeSubscription = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-
-      const channel = supabase
-        .channel(`credits-sync-${user.id}`)
-        .on(
-          "postgres_changes",
-          {
-            event: "*",
-            schema: "public",
-            table: "profiles",
-            filter: `user_id=eq.${user.id}`,
-          },
-          () => {
-            console.log("Profile changed, refreshing credits...");
-            fetchCreditsData();
-          }
-        )
-        .on(
-          "postgres_changes",
-          {
-            event: "INSERT",
-            schema: "public",
-            table: "usage_tracking",
-            filter: `user_id=eq.${user.id}`,
-          },
-          () => {
-            console.log("New usage tracked, refreshing credits...");
-            fetchCreditsData();
-          }
-        )
-        .subscribe();
-
-      return () => {
-        supabase.removeChannel(channel);
-      };
-    };
-
-    let cleanup: (() => void) | undefined;
-    setupRealtimeSubscription().then((cleanupFn) => {
-      cleanup = cleanupFn;
-    });
-
-    // Visibility change listener for tab switching
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === "visible") {
-        fetchCreditsData();
-      }
-    };
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-
-    return () => {
-      cleanup?.();
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
-    };
-  }, []);
-
-  const fetchCreditsData = async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
       // Get user's profile for plan, referral credits, and subscription_started_at
-      const { data: profile } = await supabase
+      const { data: profile, error: profileError } = await supabase
         .from("profiles")
         .select("subscription_plan, referral_credits, subscription_started_at")
         .eq("user_id", user.id)
         .single();
+
+      if (profileError) {
+        console.error("Error fetching profile:", profileError);
+        return;
+      }
 
       const plan = profile?.subscription_plan || "free";
       const referralCredits = profile?.referral_credits || 0;
       const planCredits = PLAN_CREDITS[plan] || 0;
       const subscriptionStartedAt = profile?.subscription_started_at;
 
-      // CRITICAL FIX: Calculate billing period based on subscription start date
-      // This ensures credits reset correctly on the user's billing anniversary
-      const now = new Date();
+      // Calculate billing period based on subscription start date
+      const currentDate = new Date();
       let periodStart: Date;
       let periodEnd: Date;
       
@@ -137,33 +88,32 @@ const CreditsUsageTracker = ({ onUpgrade }: CreditsUsageTrackerProps) => {
         const subStart = new Date(subscriptionStartedAt);
         const subscriptionDay = subStart.getDate();
         
-        // Calculate current billing period
-        // Start with this month's billing date
-        periodStart = new Date(now.getFullYear(), now.getMonth(), subscriptionDay);
+        periodStart = new Date(currentDate.getFullYear(), currentDate.getMonth(), subscriptionDay);
         
-        // If we haven't reached this month's billing date yet, billing period started last month
-        if (periodStart > now) {
-          periodStart = new Date(now.getFullYear(), now.getMonth() - 1, subscriptionDay);
+        if (periodStart > currentDate) {
+          periodStart = new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, subscriptionDay);
         }
         
-        // Period ends one month after start
         periodEnd = new Date(periodStart.getFullYear(), periodStart.getMonth() + 1, subscriptionDay);
       } else {
-        // Fallback for free users or those without subscription date
-        periodStart = new Date(now.getFullYear(), now.getMonth(), 1);
-        periodEnd = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+        periodStart = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
+        periodEnd = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1);
       }
 
       const startDate = periodStart.toISOString();
       const endDate = periodEnd.toISOString();
       
       // Query usage within the billing period only
-      const { data: usageData } = await supabase
+      const { data: usageData, error: usageError } = await supabase
         .from("usage_tracking")
         .select("action_type, audio_minutes_used")
         .eq("user_id", user.id)
         .gte("created_at", startDate)
         .lt("created_at", endDate);
+
+      if (usageError) {
+        console.error("Error fetching usage:", usageError);
+      }
 
       // Calculate credits used with proper cost structure
       let usedCredits = 0;
@@ -206,7 +156,84 @@ const CreditsUsageTracker = ({ onUpgrade }: CreditsUsageTrackerProps) => {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    // Initial fetch - force refresh
+    fetchCreditsData(true);
+
+    // Real-time subscription for cross-device sync
+    const setupRealtimeSubscription = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const channel = supabase
+        .channel(`credits-sync-${user.id}-${Date.now()}`)
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table: "profiles",
+            filter: `user_id=eq.${user.id}`,
+          },
+          () => {
+            console.log("Profile changed, refreshing credits...");
+            fetchCreditsData(true);
+          }
+        )
+        .on(
+          "postgres_changes",
+          {
+            event: "INSERT",
+            schema: "public",
+            table: "usage_tracking",
+            filter: `user_id=eq.${user.id}`,
+          },
+          () => {
+            console.log("New usage tracked, refreshing credits...");
+            fetchCreditsData(true);
+          }
+        )
+        .subscribe();
+
+      return () => {
+        supabase.removeChannel(channel);
+      };
+    };
+
+    let cleanup: (() => void) | undefined;
+    setupRealtimeSubscription().then((cleanupFn) => {
+      cleanup = cleanupFn;
+    });
+
+    // Visibility change listener for tab/app switching - force refresh
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        fetchCreditsData(true);
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    // Focus event for additional sync (especially for PWA)
+    const handleFocus = () => {
+      fetchCreditsData(true);
+    };
+    window.addEventListener("focus", handleFocus);
+
+    // Online event for network reconnection
+    const handleOnline = () => {
+      fetchCreditsData(true);
+    };
+    window.addEventListener("online", handleOnline);
+
+    return () => {
+      cleanup?.();
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("focus", handleFocus);
+      window.removeEventListener("online", handleOnline);
+    };
+  }, [fetchCreditsData]);
 
   if (loading) {
     return null;

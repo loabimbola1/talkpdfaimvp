@@ -39,6 +39,10 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { useOfflineAudio } from "@/hooks/useOfflineAudio";
 
+// Poll for document completion after background processing
+const POLL_INTERVAL_MS = 3000;
+const MAX_POLL_ATTEMPTS = 40; // 2 minutes max polling
+
 interface NigerianLanguage {
   code: string;
   name: string;
@@ -82,6 +86,7 @@ const AudioPlayer = ({ selectedDocumentId: propDocumentId, onExplainBackTrigger 
   const [generatingAudio, setGeneratingAudio] = useState(false);
   const [usingBrowserTTS, setUsingBrowserTTS] = useState(false);
   const [browserTTSPlaying, setBrowserTTSPlaying] = useState(false);
+  const [pollingDocId, setPollingDocId] = useState<string | null>(null);
   
   // Offline audio hook
   const {
@@ -101,9 +106,75 @@ const AudioPlayer = ({ selectedDocumentId: propDocumentId, onExplainBackTrigger 
   
   const audioRef = useRef<HTMLAudioElement>(null);
   const lastCheckedTimeRef = useRef(0);
+  const pollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const pollCountRef = useRef(0);
 
   useEffect(() => {
     fetchDocumentsWithAudio();
+  }, []);
+
+  // Cleanup polling on unmount
+  useEffect(() => {
+    return () => {
+      if (pollTimeoutRef.current) {
+        clearTimeout(pollTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  // Poll for document completion
+  const pollForCompletion = useCallback(async (docId: string) => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { data, error } = await supabase
+        .from("documents")
+        .select("id, status, audio_url")
+        .eq("id", docId)
+        .eq("user_id", user.id)
+        .single();
+
+      if (error) {
+        console.error("Poll error:", error);
+        setPollingDocId(null);
+        return;
+      }
+
+      if (data.status === "ready" && data.audio_url) {
+        // Success! Audio is ready
+        setPollingDocId(null);
+        pollCountRef.current = 0;
+        await fetchDocumentsWithAudio();
+        toast.success("Audio generated successfully!");
+        return;
+      }
+
+      if (data.status === "error") {
+        // Processing failed
+        setPollingDocId(null);
+        pollCountRef.current = 0;
+        toast.error("Audio generation failed. You can use browser voice instead.");
+        return;
+      }
+
+      // Still processing - continue polling
+      pollCountRef.current += 1;
+      if (pollCountRef.current >= MAX_POLL_ATTEMPTS) {
+        setPollingDocId(null);
+        pollCountRef.current = 0;
+        toast.info("Audio generation is taking longer than expected. It will appear when ready.");
+        return;
+      }
+
+      // Schedule next poll
+      pollTimeoutRef.current = setTimeout(() => {
+        pollForCompletion(docId);
+      }, POLL_INTERVAL_MS);
+    } catch (err) {
+      console.error("Polling error:", err);
+      setPollingDocId(null);
+    }
   }, []);
 
   // Handle prop document change
@@ -231,15 +302,24 @@ const AudioPlayer = ({ selectedDocumentId: propDocumentId, onExplainBackTrigger 
 
       if (error) throw error;
 
-      // Refresh documents to get updated audio_url
-      await fetchDocumentsWithAudio();
-      
-      // Check if audio was actually generated
-      const updatedDoc = documents.find(d => d.id === doc.id);
-      if (updatedDoc?.audio_url) {
-        toast.success("Audio generated successfully!");
+      // Check if this is background processing
+      if (data?.status === "processing") {
+        // Start polling for completion
+        toast.info("Audio generation started. This may take a minute...");
+        setPollingDocId(doc.id);
+        pollCountRef.current = 0;
+        pollTimeoutRef.current = setTimeout(() => {
+          pollForCompletion(doc.id);
+        }, POLL_INTERVAL_MS);
       } else {
-        toast.info("Document processed, but audio generation is temporarily unavailable. You can use browser voice instead.");
+        // Synchronous completion (legacy path)
+        await fetchDocumentsWithAudio();
+        const updatedDoc = documents.find(d => d.id === doc.id);
+        if (updatedDoc?.audio_url) {
+          toast.success("Audio generated successfully!");
+        } else {
+          toast.info("Document processed, but audio generation is temporarily unavailable. You can use browser voice instead.");
+        }
       }
     } catch (error: any) {
       console.error("Error generating audio:", error);

@@ -124,7 +124,7 @@ const DocumentReader = ({
     refetch: refetchUsage 
   } = useUsageLimits();
 
-  const { hasFeature, isFree } = useFeatureAccess();
+  const { hasFeature, isFree, loading: featureLoading } = useFeatureAccess();
 
   useEffect(() => {
     fetchDocuments();
@@ -473,6 +473,15 @@ const DocumentReader = ({
   };
 
   if (loading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  // Also wait for feature access to load so we know the user's plan
+  if (featureLoading) {
     return (
       <div className="flex items-center justify-center py-12">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />

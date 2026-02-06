@@ -40,8 +40,8 @@ import { Badge } from "@/components/ui/badge";
 import { useOfflineAudio } from "@/hooks/useOfflineAudio";
 
 // Poll for document completion after background processing
-const POLL_INTERVAL_MS = 3000;
-const MAX_POLL_ATTEMPTS = 40; // 2 minutes max polling
+const POLL_INTERVAL_MS = 5000;
+const MAX_POLL_ATTEMPTS = 60; // 5 minutes max polling
 
 interface NigerianLanguage {
   code: string;

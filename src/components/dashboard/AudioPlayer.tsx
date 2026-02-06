@@ -141,12 +141,16 @@ const AudioPlayer = ({ selectedDocumentId: propDocumentId, onExplainBackTrigger 
         return;
       }
 
-      if (data.status === "ready" && data.audio_url) {
-        // Success! Audio is ready
+      if (data.status === "ready") {
+        // Document is ready
         setPollingDocId(null);
         pollCountRef.current = 0;
         await fetchDocumentsWithAudio();
-        toast.success("Audio generated successfully!");
+        if (data.audio_url) {
+          toast.success("Audio generated successfully!");
+        } else {
+          toast.info("Document processed. Audio could not be generated — you can use browser voice instead.");
+        }
         return;
       }
 

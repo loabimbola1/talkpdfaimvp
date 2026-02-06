@@ -149,99 +149,20 @@ async function processDocumentInBackground(
     let pageCount = 0;
     let extractedText = "";
 
-    if (maxPages > 0) {
-      // COMBINED extraction: get both full text AND page-by-page in one call
-      console.log(`Background: Extracting text + pages for ${userPlan} user (max ${maxPages} pages)...`);
-      const pageExtractResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${lovableApiKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "google/gemini-2.5-flash",
-          messages: [
-            {
-              role: "system",
-              content: `You are a precise document text extractor. Your ONLY job is to extract the EXACT text from the provided document.
-
-CRITICAL RULES:
-1. Extract ONLY text that physically exists on each page of the document.
-2. NEVER add, invent, paraphrase, or hallucinate any content.
-3. NEVER use your pre-trained knowledge to fill in gaps or "improve" the text.
-4. If a page is blank or unreadable, output {"page": N, "text": "[BLANK PAGE]"}.
-5. Preserve the exact wording, spelling, and structure from the document.
-6. If you see headers/chapters, include them in the "chapter" field.
-
-Output valid JSON only, no markdown fences:
-{"pages": [{"page": 1, "text": "exact text from page 1", "chapter": "Chapter Title if any"}, ...], "full_text": "all text concatenated"}
-
-Extract up to ${maxPages} pages.`
-            },
-            {
-              role: "user",
-              content: [
-                { type: "text", text: "Extract all text from this document page by page." },
-                {
-                  type: "file",
-                  file: {
-                    filename: document.file_name,
-                    file_data: `data:application/pdf;base64,${fileBase64}`
-                  }
-                }
-              ]
-            }
-          ],
-          max_tokens: 16000,
-          temperature: 0.1 // Very low temperature for faithful extraction
-        })
-      });
-
-      if (pageExtractResponse.ok) {
-        const pageData = await pageExtractResponse.json();
-        const rawContent = pageData.choices?.[0]?.message?.content || "";
-        try {
-          // Clean markdown fences if present
-          const cleaned = rawContent.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
-          const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
-          if (jsonMatch) {
-            const parsed = JSON.parse(jsonMatch[0]);
-            if (Array.isArray(parsed.pages)) {
-              pageContents = parsed.pages.slice(0, maxPages).map((p: any) => ({
-                page: p.page || 0,
-                text: String(p.text || ""),
-                chapter: p.chapter || undefined
-              }));
-              pageCount = pageContents.length;
-            }
-            extractedText = parsed.full_text || pageContents.map(p => p.text).join("\n\n");
-          }
-        } catch (e) {
-          console.warn("Page extraction JSON parse error:", e);
-        }
-      }
-
-      // If page extraction failed, fall back to simple extraction
-      if (!extractedText || extractedText.length < 50) {
-        console.log("Background: Page extraction failed, falling back to simple extraction...");
-      }
-    }
-
-    // If we don't have extracted text yet (free plan or page extraction failed), do simple extraction
-    if (!extractedText || extractedText.length < 50) {
-      console.log("Background: Simple text extraction...");
-      const extractResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${lovableApiKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "google/gemini-2.5-flash",
-          messages: [
-            {
-              role: "system",
-              content: `You are a document text extractor. Extract ALL text from the provided document EXACTLY as it appears.
+    // STEP 1a: Always extract full text first (reliable, no JSON issues)
+    console.log("Background: Extracting full text...");
+    const extractResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${lovableApiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "google/gemini-2.5-flash",
+        messages: [
+          {
+            role: "system",
+            content: `You are a document text extractor. Extract ALL text from the provided document EXACTLY as it appears.
 
 CRITICAL RULES:
 1. ONLY extract text that EXISTS in the document - DO NOT invent or hallucinate content.
@@ -250,11 +171,67 @@ CRITICAL RULES:
 4. If you cannot read certain parts, indicate with [UNREADABLE] rather than guessing.
 5. Preserve the document's original structure and order.
 6. Output ONLY the extracted text from the document, nothing else.`
+          },
+          {
+            role: "user",
+            content: [
+              { type: "text", text: "Extract all text content from this document." },
+              {
+                type: "file",
+                file: {
+                  filename: document.file_name,
+                  file_data: `data:application/pdf;base64,${fileBase64}`
+                }
+              }
+            ]
+          }
+        ],
+        max_tokens: 16000,
+        temperature: 0.1
+      })
+    });
+
+    if (extractResponse.ok) {
+      const extractData = await extractResponse.json();
+      extractedText = extractData.choices?.[0]?.message?.content || "";
+      console.log(`Background: Full text extracted, length: ${extractedText.length}`);
+    } else {
+      const errText = await extractResponse.text();
+      console.error("AI extraction failed:", extractResponse.status, errText.substring(0, 300));
+      await supabase.from("documents").update({ status: "error" }).eq("id", documentId);
+      return;
+    }
+
+    // STEP 1b: For Plus/Pro users, identify page boundaries from the extracted text
+    if (maxPages > 0 && extractedText.length >= 50) {
+      console.log(`Background: Identifying page boundaries for ${userPlan} user (max ${maxPages} pages)...`);
+      const pageBoundaryResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${lovableApiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "google/gemini-2.5-flash",
+          messages: [
+            {
+              role: "system",
+              content: `You are a document page analyzer. Given a PDF document, identify the page boundaries.
+
+For each page, provide:
+- page: the page number (1-indexed)
+- start: the first 6-8 words on that page (exact quote from document)
+- chapter: chapter/section title if one starts on this page (or null)
+
+Output valid JSON array only, no markdown fences:
+[{"page":1,"start":"first words on page one","chapter":"Title if any"},{"page":2,"start":"first words on page two","chapter":null}]
+
+Analyze up to ${maxPages} pages. Be precise with the starting words - they must match the document exactly.`
             },
             {
               role: "user",
               content: [
-                { type: "text", text: "Extract all text content from this document." },
+                { type: "text", text: "Identify page boundaries in this document." },
                 {
                   type: "file",
                   file: {
@@ -265,21 +242,82 @@ CRITICAL RULES:
               ]
             }
           ],
-          max_tokens: 16000,
+          max_tokens: 4000,
           temperature: 0.1
         })
       });
 
-      if (!extractResponse.ok) {
-        const errText = await extractResponse.text();
-        console.error("AI extraction failed:", extractResponse.status, errText.substring(0, 300));
-        await supabase.from("documents").update({ status: "error" }).eq("id", documentId);
-        return;
-      }
+      if (pageBoundaryResponse.ok) {
+        const boundaryData = await pageBoundaryResponse.json();
+        const rawBoundary = boundaryData.choices?.[0]?.message?.content || "";
+        try {
+          const cleaned = rawBoundary.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
+          const jsonMatch = cleaned.match(/\[[\s\S]*\]/);
+          if (jsonMatch) {
+            const boundaries = JSON.parse(jsonMatch[0]) as Array<{ page: number; start: string; chapter?: string | null }>;
+            console.log(`Background: Found ${boundaries.length} page boundaries`);
 
-      const extractData = await extractResponse.json();
-      extractedText = extractData.choices?.[0]?.message?.content || "";
+            // Split extractedText using the boundary markers
+            for (let i = 0; i < boundaries.length && i < maxPages; i++) {
+              const boundary = boundaries[i];
+              const nextBoundary = boundaries[i + 1];
+
+              // Find start position in text
+              const startMarker = boundary.start?.trim();
+              let startIdx = 0;
+              if (startMarker && i > 0) {
+                const foundIdx = extractedText.indexOf(startMarker, i > 0 ? (pageContents[i - 1] ? extractedText.indexOf(pageContents[i - 1].text) + pageContents[i - 1].text.length - 50 : 0) : 0);
+                if (foundIdx >= 0) startIdx = foundIdx;
+              } else if (i === 0) {
+                startIdx = 0;
+              }
+
+              // Find end position
+              let endIdx = extractedText.length;
+              if (nextBoundary?.start) {
+                const nextMarker = nextBoundary.start.trim();
+                const foundEnd = extractedText.indexOf(nextMarker, startIdx + 10);
+                if (foundEnd >= 0) endIdx = foundEnd;
+              }
+
+              const pageText = extractedText.substring(startIdx, endIdx).trim();
+              if (pageText.length > 10) {
+                pageContents.push({
+                  page: boundary.page || (i + 1),
+                  text: pageText,
+                  chapter: boundary.chapter || undefined
+                });
+              }
+            }
+
+            // If boundary matching failed, fall back to even splitting
+            if (pageContents.length === 0 && boundaries.length > 0) {
+              console.log("Background: Boundary matching failed, splitting text evenly...");
+              const chunkSize = Math.ceil(extractedText.length / boundaries.length);
+              for (let i = 0; i < boundaries.length && i < maxPages; i++) {
+                const start = i * chunkSize;
+                const end = Math.min((i + 1) * chunkSize, extractedText.length);
+                const pageText = extractedText.substring(start, end).trim();
+                if (pageText.length > 10) {
+                  pageContents.push({
+                    page: boundaries[i].page || (i + 1),
+                    text: pageText,
+                    chapter: boundaries[i].chapter || undefined
+                  });
+                }
+              }
+            }
+
+            pageCount = pageContents.length;
+            console.log(`Background: Successfully split into ${pageCount} pages`);
+          }
+        } catch (e) {
+          console.warn("Page boundary parse error:", e);
+        }
+      }
     }
+
+    // Text was already extracted in Step 1a above
 
     console.log("Background: Extracted text length:", extractedText.length);
 

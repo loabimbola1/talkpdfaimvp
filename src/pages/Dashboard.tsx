@@ -113,8 +113,14 @@ const Dashboard = () => {
 
   const handleLogout = async () => {
     const { error } = await supabase.auth.signOut();
-    if (error) toast.error("Error signing out");
-    else {
+    if (error) {
+      const msg = (error.message || "").toLowerCase();
+      if (msg.includes("failed to fetch") || msg.includes("network") || msg.includes("err_internet_disconnected")) {
+        toast.error("Network connection failed. Please check your internet connection and try again.");
+      } else {
+        toast.error("Error signing out. Please try again.");
+      }
+    } else {
       toast.success("Signed out successfully");
       navigate("/");
     }

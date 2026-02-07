@@ -19,6 +19,11 @@ const passwordSchema = z
 
 const loginPasswordSchema = z.string().min(1, "Please enter your password");
 
+const isNetworkError = (error: any): boolean => {
+  const msg = (error?.message || error?.toString() || "").toLowerCase();
+  return msg.includes("failed to fetch") || msg.includes("network") || msg.includes("fetch") && msg.includes("fail") || msg.includes("err_internet_disconnected") || msg.includes("networkerror");
+};
+
 type AuthMode = "login" | "signup" | "forgot-password" | "reset-password";
 
 const Auth = () => {
@@ -155,7 +160,9 @@ const Auth = () => {
         });
 
         if (error) {
-          if (error.message.includes("Invalid login credentials")) {
+          if (isNetworkError(error)) {
+            toast.error("Network connection failed. Please check your internet connection and try again.");
+          } else if (error.message.includes("Invalid login credentials")) {
             toast.error("Invalid email or password. Please try again.");
           } else {
             toast.error(error.message);
@@ -178,7 +185,9 @@ const Auth = () => {
         });
 
         if (error) {
-          if (error.message.includes("already registered")) {
+          if (isNetworkError(error)) {
+            toast.error("Network connection failed. Please check your internet connection and try again.");
+          } else if (error.message.includes("already registered")) {
             toast.error("This email is already registered. Please login instead.");
           } else {
             toast.error(error.message);
@@ -189,8 +198,12 @@ const Auth = () => {
         toast.success("Account created successfully!");
         navigate("/dashboard");
       }
-    } catch (error) {
-      toast.error("An unexpected error occurred. Please try again.");
+    } catch (error: any) {
+      if (isNetworkError(error)) {
+        toast.error("Network connection failed. Please check your internet connection and try again.");
+      } else {
+        toast.error("An unexpected error occurred. Please try again.");
+      }
     } finally {
       setLoading(false);
     }

@@ -250,8 +250,16 @@ const AudioPlayer = ({ selectedDocumentId: propDocumentId, onExplainBackTrigger 
          setSelectedLanguage(selectedDoc.audio_language || "en");
         if (selectedDoc.audio_url) {
           loadAudioForDocument(selectedDoc);
-         } else {
-           setAudioUrl(null);
+        } else {
+          setAudioUrl(null);
+          // Auto-start polling if document is still processing
+          if (selectedDoc.status === "processing" && !pollingDocId) {
+            setPollingDocId(selectedDoc.id);
+            pollCountRef.current = 0;
+            pollTimeoutRef.current = setTimeout(() => {
+              pollForCompletion(selectedDoc.id);
+            }, POLL_INTERVAL_MS);
+          }
         }
       }
     } catch (error) {
@@ -704,55 +712,94 @@ const AudioPlayer = ({ selectedDocumentId: propDocumentId, onExplainBackTrigger 
         ) : !selectedDocument?.audio_url ? (
           <div className="text-center py-8">
             <div className="w-20 h-20 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-4">
-              <Headphones className="h-10 w-10 text-primary" />
-            </div>
-            <h3 className="font-display text-xl font-semibold text-foreground mb-2">
-              No Audio for "{selectedDocument?.title}"
-            </h3>
-            <p className="text-muted-foreground mb-4">
-              This document doesn't have audio yet. Try generating it or use browser voice as a fallback.
-            </p>
-            
-            <div className="flex flex-col sm:flex-row gap-3 justify-center">
-              <Button 
-                onClick={() => selectedDocument && generateAudioForDocument(selectedDocument)}
-                disabled={generatingAudio}
-                className="gap-2"
-              >
-                {generatingAudio ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Generating...
-                  </>
-                ) : (
-                  <>
-                    <Headphones className="h-4 w-4" />
-                    Generate Audio
-                  </>
-                )}
-              </Button>
-              
-              {/* Browser TTS Fallback */}
-              {!browserTTSPlaying ? (
-                <Button 
-                  variant="outline"
-                  onClick={startBrowserTTS}
-                  className="gap-2"
-                >
-                  <Volume2 className="h-4 w-4" />
-                  Use Browser Voice
-                </Button>
+              {(selectedDocument?.status === "processing" || pollingDocId === selectedDocument?.id || generatingAudio) ? (
+                <Loader2 className="h-10 w-10 text-primary animate-spin" />
               ) : (
-                <Button 
-                  variant="destructive"
-                  onClick={stopBrowserTTS}
-                  className="gap-2"
-                >
-                  <VolumeX className="h-4 w-4" />
-                  Stop Voice
-                </Button>
+                <Headphones className="h-10 w-10 text-primary" />
               )}
             </div>
+
+            {/* Processing / Polling state */}
+            {(selectedDocument?.status === "processing" || pollingDocId === selectedDocument?.id || generatingAudio) ? (
+              <>
+                <h3 className="font-display text-xl font-semibold text-foreground mb-2">
+                  Generating Audio...
+                </h3>
+                <p className="text-muted-foreground mb-2">
+                  Your audio is being generated. This usually takes 1–3 minutes.
+                </p>
+                <p className="text-xs text-muted-foreground mb-4">
+                  You can stay here or come back later — it'll be ready when you return.
+                </p>
+                <div className="w-full max-w-xs mx-auto mb-4">
+                  <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+                    <div className="h-full rounded-full bg-primary animate-pulse w-2/3" />
+                  </div>
+                </div>
+                
+                {/* Browser TTS Fallback while waiting */}
+                <p className="text-sm text-muted-foreground mb-3">While you wait, you can listen with browser voice:</p>
+                {!browserTTSPlaying ? (
+                  <Button 
+                    variant="outline"
+                    onClick={startBrowserTTS}
+                    className="gap-2"
+                  >
+                    <Volume2 className="h-4 w-4" />
+                    Use Browser Voice
+                  </Button>
+                ) : (
+                  <Button 
+                    variant="destructive"
+                    onClick={stopBrowserTTS}
+                    className="gap-2"
+                  >
+                    <VolumeX className="h-4 w-4" />
+                    Stop Voice
+                  </Button>
+                )}
+              </>
+            ) : (
+              <>
+                <h3 className="font-display text-xl font-semibold text-foreground mb-2">
+                  No Audio for "{selectedDocument?.title}"
+                </h3>
+                <p className="text-muted-foreground mb-4">
+                  This document doesn't have audio yet. Generate it or use browser voice as a fallback.
+                </p>
+                
+                <div className="flex flex-col sm:flex-row gap-3 justify-center">
+                  <Button 
+                    onClick={() => selectedDocument && generateAudioForDocument(selectedDocument)}
+                    disabled={generatingAudio}
+                    className="gap-2"
+                  >
+                    <Headphones className="h-4 w-4" />
+                    Generate Audio
+                  </Button>
+                  
+                  {!browserTTSPlaying ? (
+                    <Button 
+                      variant="outline"
+                      onClick={startBrowserTTS}
+                      className="gap-2"
+                    >
+                      <Volume2 className="h-4 w-4" />
+                      Use Browser Voice
+                    </Button>
+                  ) : (
+                    <Button 
+                      variant="destructive"
+                      onClick={stopBrowserTTS}
+                      className="gap-2"
+                    >
+                      <VolumeX className="h-4 w-4" />
+                      Stop Voice
+                    </Button>
+                  )}
+                </div>
+              </>
+            )}
             
             {usingBrowserTTS && (
               <p className="text-xs text-primary mt-4 animate-pulse">

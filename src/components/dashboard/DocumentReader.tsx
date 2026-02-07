@@ -262,9 +262,19 @@ const DocumentReader = ({
         }
       });
       
-      if (error || !data?.audioBase64) {
-        console.error("Audio generation error:", error, data);
-        toast.error("Failed to generate audio");
+      if (error) {
+        console.error("Audio generation error:", error);
+        toast.error("Failed to generate audio. Please try again.");
+        return;
+      }
+
+      if (!data?.audioBase64) {
+        // If no audio but we got an explanation, show that at least
+        if (data?.explanation) {
+          toast.info("Audio couldn't be generated, but here's the text explanation.");
+        } else {
+          toast.error("Failed to generate audio");
+        }
         return;
       }
       
@@ -363,19 +373,18 @@ const DocumentReader = ({
     setExplanation("");
 
     try {
-      const contextPrefix = `As a Nigerian academic tutor, please explain this ${viewMode === "pages" ? "page content" : "concept"} in simple terms that a secondary school or university student would understand. Use local examples where possible:\n\nTopic: ${topicName}\n\nContent: `;
-      const message = buildConstrainedMessage("", contextPrefix, contentToExplain);
-      
-      const { data, error } = await supabase.functions.invoke("support-chatbot", {
+      // Use generate-lesson-audio which uses Gemini directly for explanation + audio
+      const { data, error } = await supabase.functions.invoke("generate-lesson-audio", {
         body: {
-          message,
-          conversationHistory: []
+          concept: `${topicName}: ${contentToExplain}`,
+          documentSummary: selectedDoc.summary,
+          language: selectedDoc.audio_language || "en"
         }
       });
 
       if (error) throw error;
 
-      setExplanation(data.response || "I couldn't generate an explanation. Please try again.");
+      setExplanation(data.explanation || "I couldn't generate an explanation. Please try again.");
       
       // Track usage after successful response
       await trackAIQuestion("explain_concept", selectedDoc.id);

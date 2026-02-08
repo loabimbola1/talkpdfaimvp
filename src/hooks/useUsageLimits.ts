@@ -74,7 +74,7 @@ export function useUsageLimits() {
       setSubscriptionStartedAt(profile?.subscription_started_at || null);
 
       // Get today's usage (for daily limits - free plan and audio)
-      const today = new Date().toISOString().split("T")[0];
+      const today = new Date().toISOString().split("T")[0]; // UTC date
       const { data: dailyUsage } = await supabase
         .from("daily_usage_summary")
         .select("*")
@@ -92,7 +92,7 @@ export function useUsageLimits() {
       if (currentPlan !== "free") {
         // Determine billing period start
         const now = new Date();
-        const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+        const startOfMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
         
         let periodStart = startOfMonth;
         if (profile?.subscription_started_at) {

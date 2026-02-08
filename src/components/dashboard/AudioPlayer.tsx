@@ -110,7 +110,8 @@ const AudioPlayer = ({ selectedDocumentId: propDocumentId, onExplainBackTrigger 
   const pollCountRef = useRef(0);
 
   useEffect(() => {
-    fetchDocumentsWithAudio();
+    // Recover stale documents first, then fetch
+    recoverStaleDocuments().then(() => fetchDocumentsWithAudio());
   }, []);
 
   // Cleanup polling on unmount
@@ -120,6 +121,31 @@ const AudioPlayer = ({ selectedDocumentId: propDocumentId, onExplainBackTrigger 
         clearTimeout(pollTimeoutRef.current);
       }
     };
+  }, []);
+
+  // Recover stale "processing" documents (stuck for >10 minutes)
+  const recoverStaleDocuments = useCallback(async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+      const { data: staleDocs } = await supabase
+        .from("documents")
+        .select("id")
+        .eq("user_id", user.id)
+        .eq("status", "processing")
+        .lt("updated_at", tenMinutesAgo);
+
+      if (staleDocs && staleDocs.length > 0) {
+        console.log(`Recovering ${staleDocs.length} stale processing documents`);
+        for (const doc of staleDocs) {
+          await supabase.from("documents").update({ status: "error" }).eq("id", doc.id);
+        }
+      }
+    } catch (err) {
+      console.error("Stale doc recovery error:", err);
+    }
   }, []);
 
   // Poll for document completion
@@ -142,7 +168,6 @@ const AudioPlayer = ({ selectedDocumentId: propDocumentId, onExplainBackTrigger 
       }
 
       if (data.status === "ready") {
-        // Document is ready
         setPollingDocId(null);
         pollCountRef.current = 0;
         await fetchDocumentsWithAudio();
@@ -155,23 +180,24 @@ const AudioPlayer = ({ selectedDocumentId: propDocumentId, onExplainBackTrigger 
       }
 
       if (data.status === "error") {
-        // Processing failed
         setPollingDocId(null);
         pollCountRef.current = 0;
-        toast.error("Audio generation failed. You can use browser voice instead.");
+        toast.error("Audio generation failed. Try again or use browser voice.");
+        await fetchDocumentsWithAudio();
         return;
       }
 
-      // Still processing - continue polling
       pollCountRef.current += 1;
       if (pollCountRef.current >= MAX_POLL_ATTEMPTS) {
         setPollingDocId(null);
         pollCountRef.current = 0;
-        toast.info("Audio generation is taking longer than expected. It will appear when ready.");
+        // Mark as error so user can retry
+        await supabase.from("documents").update({ status: "error" }).eq("id", docId);
+        toast.info("Audio generation timed out. You can retry or use browser voice.");
+        await fetchDocumentsWithAudio();
         return;
       }
 
-      // Schedule next poll
       pollTimeoutRef.current = setTimeout(() => {
         pollForCompletion(docId);
       }, POLL_INTERVAL_MS);
@@ -762,10 +788,16 @@ const AudioPlayer = ({ selectedDocumentId: propDocumentId, onExplainBackTrigger 
             ) : (
               <>
                 <h3 className="font-display text-xl font-semibold text-foreground mb-2">
-                  No Audio for "{selectedDocument?.title}"
+                  {selectedDocument?.status === "error" 
+                    ? `Audio Failed for "${selectedDocument?.title}"`
+                    : `No Audio for "${selectedDocument?.title}"`
+                  }
                 </h3>
                 <p className="text-muted-foreground mb-4">
-                  This document doesn't have audio yet. Generate it or use browser voice as a fallback.
+                  {selectedDocument?.status === "error"
+                    ? "Audio generation failed. Try again or use browser voice as a fallback."
+                    : "This document doesn't have audio yet. Generate it or use browser voice as a fallback."
+                  }
                 </p>
                 
                 <div className="flex flex-col sm:flex-row gap-3 justify-center">

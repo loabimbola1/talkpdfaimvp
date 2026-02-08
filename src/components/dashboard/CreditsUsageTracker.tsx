@@ -79,25 +79,26 @@ const CreditsUsageTracker = ({ onUpgrade }: CreditsUsageTrackerProps) => {
       const planCredits = PLAN_CREDITS[plan] || 0;
       const subscriptionStartedAt = profile?.subscription_started_at;
 
-      // Calculate billing period based on subscription start date
+      // Calculate billing period based on subscription start date using UTC
       const currentDate = new Date();
       let periodStart: Date;
       let periodEnd: Date;
       
       if (subscriptionStartedAt && plan !== "free") {
         const subStart = new Date(subscriptionStartedAt);
-        const subscriptionDay = subStart.getDate();
+        const subscriptionDay = subStart.getUTCDate();
         
-        periodStart = new Date(currentDate.getFullYear(), currentDate.getMonth(), subscriptionDay);
+        // Use UTC to prevent timezone-dependent period calculations
+        periodStart = new Date(Date.UTC(currentDate.getUTCFullYear(), currentDate.getUTCMonth(), subscriptionDay));
         
         if (periodStart > currentDate) {
-          periodStart = new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, subscriptionDay);
+          periodStart = new Date(Date.UTC(currentDate.getUTCFullYear(), currentDate.getUTCMonth() - 1, subscriptionDay));
         }
         
-        periodEnd = new Date(periodStart.getFullYear(), periodStart.getMonth() + 1, subscriptionDay);
+        periodEnd = new Date(Date.UTC(periodStart.getUTCFullYear(), periodStart.getUTCMonth() + 1, subscriptionDay));
       } else {
-        periodStart = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
-        periodEnd = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1);
+        periodStart = new Date(Date.UTC(currentDate.getUTCFullYear(), currentDate.getUTCMonth(), 1));
+        periodEnd = new Date(Date.UTC(currentDate.getUTCFullYear(), currentDate.getUTCMonth() + 1, 1));
       }
 
       const startDate = periodStart.toISOString();

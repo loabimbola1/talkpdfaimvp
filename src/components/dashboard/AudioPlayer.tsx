@@ -807,7 +807,7 @@ const AudioPlayer = ({ selectedDocumentId: propDocumentId, onExplainBackTrigger 
                     className="gap-2"
                   >
                     <Headphones className="h-4 w-4" />
-                    Generate Audio
+                    {selectedDocument?.status === "error" ? "Retry Audio" : "Generate Audio"}
                   </Button>
                   
                   {!browserTTSPlaying ? (
